@@ -1,30 +1,41 @@
 from builtin.coroutine import Coroutine
 from collections.optional import OptionalReg
-alias TaskOut = UInt32
+from algorithm.functional import parallelize, sync_parallelize
 
 
-struct Task[task_id: StringLiteral, T: AnyRegType, R: async fn(*args: T, **kwargs: T) -> T]():
-    var id: StringLiteral
-
-    async fn __init__(inout self) -> None:
-        self.id = task_id
-
-    async fn run(self, *args: T, **kwargs: T) -> OptionalReg[T]:
-        print("Running task", self.task_id, "with arguments len", len(args), "and kwargs len", len(kwargs))
-        if len(args) == 0:
-            return None
-        else:
-            var arg = await R(args[0])
-            return OptionalReg[T](arg)
+trait Runnable:
+    fn run(self):
+        ...
 
 
-async fn run[T: AnyRegType](*args: T, **kwargs: T) -> T:
-    return args[0]
+trait IsTask(Runnable, CollectionElement):
+    pass
 
 
-async fn run_tasks():
-    var task = Task["example_task", TaskOut, run[TaskOut]]()
-    var out = await task.run(4)
-    print("Task output is:", out.value())
-    # print(run(1)())
-    # print(run[Float64](1.2)())
+fn run[T: IsTask](**task_collection: List[T]):
+    for task_group in task_collection.items():
+        print("Running the tasks under ", task_group[].key)
+        var tasks = task_group[].value
+
+        @parameter
+        fn run_task(n: Int) capturing:
+            print("Running Task no. ", n, "...")
+            tasks[n].run()
+
+        sync_parallelize[run_task](len(tasks))
+        print("Task for", task_group[].key, "completed successfully!")
+
+
+# fn run(**task_collection: List[Pointer[IsTask]]):
+#     for task_group in task_collection.items():
+#         print("Running the tasks under ", task_group[].key)
+#         var tasks = task_group[].value
+
+#         @parameter
+#         fn run_task(n: Int) capturing:
+#             print("Running Task no. ", n, "...")
+#             var task = tasks[n]
+#             task[].run()
+
+#         sync_parallelize[run_task](len(tasks))
+#         print("Task for", task_group[].key, "completed successfully!")

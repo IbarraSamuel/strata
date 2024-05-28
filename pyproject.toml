@@ -20,10 +20,10 @@ build-backend = "hatchling.build"
 [tool.rye]
 managed = true
 dev-dependencies = [
-    "pyright>=1.1.361",
     "ruff-lsp>=0.0.53",
     "ruff>=0.4.2",
     "typos>=1.21.0",
+    "basedpyright>=1.12.2",
 ]
 
 [tool.hatch.metadata]

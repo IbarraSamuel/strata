@@ -1,20 +1,24 @@
 from collections.optional import OptionalReg
-
-async fn run(*args: Int, **kwargs: Int) -> Int:
-    return args[0]
-
-struct MyTask[R: async fn(*args: Int, **kwargs: Int) -> Int]:
-    @staticmethod
-    async fn run(*args: Int, **kwargs: Int) -> Int:
-        if len(args) == 0:
-            return 0
-        return await R(args[0])
+from task.model import run, IsTask
 
 
-async fn run_tasks():
-    var my_task = await MyTask[run].run(1)
-    print("Task output is:", my_task)
+@value
+struct MyTask(IsTask):
+    fn run(self) -> None:
+        print("Running My Task")
+
+
+@value
+struct MySecondTask(IsTask):
+    fn run(self) -> None:
+        print("Running My Second Task")
+
+
+# TODO: Generalize to be able to use anytype on the runner. Now all tasks need to have the same type, and isn't a good implementation
 
 
 fn main():
-    run_tasks()()
+    var task = MyTask()
+    var task2 = MySecondTask()
+    var first_group = List(task, task, task, task, task, task, task, task)
+    run(first_tasks=first_group)
