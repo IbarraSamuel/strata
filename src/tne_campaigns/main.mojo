@@ -1,5 +1,5 @@
 from collections.optional import OptionalReg
-from task.model import run, IsTask
+from task.model import run, IsTask, TaskGroup
 
 
 @value
@@ -14,11 +14,9 @@ struct MySecondTask(IsTask):
         print("Running My Second Task")
 
 
-# TODO: Generalize to be able to use anytype on the runner. Now all tasks need to have the same type, and isn't a good implementation
-
-
 fn main():
     var task = MyTask()
     var task2 = MySecondTask()
-    var first_group = List(task, task, task, task, task, task, task, task)
-    run(first_tasks=first_group)
+    var first_group = TaskGroup(task2)
+    var second_group = TaskGroup(task2)
+    run(first_tasks=first_group, second_tasks=second_group)
