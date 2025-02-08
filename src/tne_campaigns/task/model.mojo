@@ -1,7 +1,5 @@
-from builtin.coroutine import Coroutine
-from collections.optional import OptionalReg
-from algorithm.functional import parallelize, sync_parallelize
-from algorithm.reduction import unroll
+from algorithm import parallelize
+from memory.pointer import Pointer
 
 
 trait Runnable:
@@ -9,223 +7,117 @@ trait Runnable:
         ...
 
 
-trait IsTask(Runnable, CollectionElement):
-    pass
-
-
-fn run[T: IsTask](**task_collection: List[T]):
-    for task_group in task_collection.items():
-        var task_group_id = task_group[].key
-        print("Running the tasks under ", task_group_id)
-        var tasks = task_group[].value
-
-        @parameter
-        fn run_task(n: Int) capturing:
-            print("Running Task no. ", n, "...")
-            tasks[n].run()
-
-        sync_parallelize[run_task](len(tasks))
-        print("Task for", task_group_id, "completed successfully!")
-
-
-fn run(**task_collection: TaskGroup[_]):
-    for task_group_id in task_collection.items():
-        var group_id = task_group_id[].key
-        print("Running the tasks under ", group_id)
-        var task_group = task_group_id[].value
-        alias task_len = task_group.__len__()
-
-        @parameter
-        fn run_task[n: Int]() capturing:
-            print("Running task no. ", n, "...")
-            task_group[n].run()
-
-        unroll[run_task, task_len]()
-        print("Task for", group_id, "completed successfully!")
-
-
-@lldb_formatter_wrapping_type
-struct TaskGroup[*element_types: IsTask](Sized, IsTask):
-    """The type of a literal tuple expression.
-
-    A tuple consists of zero or more values, separated by commas.
-
-    Parameters:
-        element_types: The elements type.
-    """
-
+# @value
+struct SeriesTask[origin: Origin[False], *Ts: Runnable](Runnable):
     alias _mlir_type = __mlir_type[
-        `!kgen.pack<:!kgen.variadic<`,
-        IsTask,
+        `!lit.ref.pack<:variadic<`,
+        Runnable,
         `> `,
-        +element_types,
+        Ts,
+        `, `,
+        origin._mlir_origin,
         `>`,
     ]
-
     var storage: Self._mlir_type
-    """The underlying storage for the tuple."""
 
+    fn __init__(out self, *args: *Ts):
+        self.storage = rebind[Self._mlir_type](args._value)
 
-    @always_inline("nodebug")
-    fn __init__(inout self, *args: *element_types):
-        """Construct the tuple.
+    fn __getitem__[i: Int](self) -> ref [origin._mlir_origin] Ts[i.value]:
+        value = __mlir_op.`lit.ref.pack.extract`[index = i.value](self.storage)
+        return __get_litref_as_mvalue(value)
 
-        Args:
-            args: Initial values.
-        """
-        self = Self(storage=args)
-
-    @always_inline("nodebug")
-    fn __init__(
-        inout self,
-        *,
-        storage: VariadicPack[_, _, IsTask, element_types],
-    ):
-        """Construct the tuple from a low-level internal representation.
-
-        Args:
-            storage: The variadic pack storage to construct from.
-        """
-        # Mark 'storage' as being initialized so we can work on it.
-        __mlir_op.`lit.ownership.mark_initialized`(
-            __get_mvalue_as_litref(self.storage)
-        )
+    fn run(self):
+        alias lst = VariadicList(Ts)
 
         @parameter
-        fn initialize_elt[idx: Int]():
-            # TODO: We could be fancier and take the values out of an owned
-            # pack. For now just keep everything simple and copy the element.
-            initialize_pointee_copy(
-                UnsafePointer(self[idx]),
-                storage.get_element[idx]()[],
-            )
+        for i in range(len(lst)):
+            self[i].run()
 
-        unroll[initialize_elt, Self.__len__()]()
+    fn __add__[
+        t: Runnable,
+        o: Origin[False],
+    ](self, ref [o]other: t) -> ParallelTask[origin, Self, t]:
+        return ParallelTask[origin](self, other)
 
-    fn __del__(owned self):
-        """Destructor that destroys all of the elements."""
+    fn __rshift__[
+        t: Runnable,
+        o: Origin[False],
+    ](self, ref [o]other: t) -> SeriesTask[origin, Self, t]:
+        return SeriesTask[origin](self, other)
 
-        # Run the destructor on each member, the destructor of !kgen.pack is
-        # trivial and won't do anything.
+
+# @value
+struct ParallelTask[origin: ImmutableOrigin, *Ts: Runnable](Runnable):
+    alias _mlir_type = __mlir_type[
+        `!lit.ref.pack<:variadic<`,
+        Runnable,
+        `> `,
+        Ts,
+        `, `,
+        origin._mlir_origin,
+        `>`,
+    ]
+    var storage: Self._mlir_type
+
+    fn __init__(out self, *args: *Ts):
+        self.storage = rebind[Self._mlir_type](args._value)
+
+    fn __getitem__[i: Int](self) -> ref [origin._mlir_origin] Ts[i.value]:
+        value = __mlir_op.`lit.ref.pack.extract`[index = i.value](self.storage)
+        return __get_litref_as_mvalue(value)
+
+    fn run(self):
         @parameter
-        fn destroy_elt[idx: Int]():
-            destroy_pointee(UnsafePointer(self[idx]))
+        fn exec(i: Int):
+            @parameter
+            for ti in range(len(VariadicList(Ts))):
+                if ti == i:
+                    self[ti].run()
 
-        unroll[destroy_elt, Self.__len__()]()
+        parallelize[exec](len(VariadicList(Ts)))
 
-    @always_inline("nodebug")
-    fn __copyinit__(inout self, existing: Self):
-        """Copy construct the tuple.
+    fn __add__[
+        t: Runnable,
+        o: Origin[False],
+    ](self, ref [o]other: t) -> ParallelTask[origin, Self, t]:
+        return ParallelTask[origin](self, other)
 
-        Args:
-            existing: The value to copy from.
-        """
-        # Mark 'storage' as being initialized so we can work on it.
-        __mlir_op.`lit.ownership.mark_initialized`(
-            __get_mvalue_as_litref(self.storage)
-        )
+    fn __rshift__[
+        t: Runnable,
+        o: Origin[False],
+    ](self, ref [o]other: t) -> SeriesTask[origin, Self, t]:
+        return SeriesTask[origin](self, other)
 
-        @parameter
-        fn initialize_elt[idx: Int]():
-            initialize_pointee_copy(UnsafePointer(self[idx]), existing[idx])
 
-        unroll[initialize_elt, Self.__len__()]()
+trait RunnableMovable(Runnable, Movable):
+    ...
 
-    @always_inline("nodebug")
-    fn __moveinit__(inout self, owned existing: Self):
-        """Move construct the tuple.
 
-        Args:
-            existing: The value to move from.
-        """
-        # Mark 'storage' as being initialized so we can work on it.
-        __mlir_op.`lit.ownership.mark_initialized`(
-            __get_mvalue_as_litref(self.storage)
-        )
+trait RunnableMovableDefaultable(RunnableMovable, Defaultable):
+    ...
 
-        @parameter
-        fn initialize_elt[idx: Int]():
-            var existing_elt_ptr = UnsafePointer(existing[idx]).address
-            initialize_pointee_move(
-                UnsafePointer(self[idx]),
-                __get_address_as_owned_value(existing_elt_ptr),
-            )
 
-        unroll[initialize_elt, Self.__len__()]()
+struct Task[o: Origin[False], T: RunnableMovable](Runnable):
+    var inner: Pointer[T, o]
 
-        # We transfered all of the elements out of 'existing', so we need to
-        # disable its destructor so they aren't destroyed.
-        __mlir_op.`lit.ownership.mark_destroyed`(Reference(existing).value)
+    fn __init__[t: RunnableMovableDefaultable](out self: Task[o, t]):
+        self.inner = Pointer[t, o](t()._mlir_type)
 
-    @always_inline
-    @staticmethod
-    fn __len__() -> Int:
-        """Return the number of elements in the tuple.
+    fn __init__(out self, owned inner: T):
+        self.inner = inner^
 
-        Returns:
-            The tuple length.
-        """
+    fn run(self):
+        self.inner.run()
 
-        @parameter
-        fn variadic_size(x: __mlir_type[`!kgen.variadic<`, IsTask, `>`]) -> Int:
-            return __mlir_op.`pop.variadic.size`(x)
+    fn __add__[
+        t: Runnable,
+        origin: Origin[False],
+    ](self, ref [origin]other: t) -> ParallelTask[origin, Self, t]:
+        return ParallelTask[origin](self, other)
 
-        alias result = variadic_size(element_types)
-        return result
-
-    @always_inline("nodebug")
-    fn __len__(self) -> Int:
-        """Get the number of elements in the tuple.
-
-        Returns:
-            The tuple length.
-        """
-        return Self.__len__()
-
-    @always_inline("nodebug")
-    fn __refitem__[
-        idx: Int,
-        mutability: __mlir_type.i1,
-        self_life: AnyLifetime[mutability].type,
-    ](self_lit: Reference[Self, mutability, self_life]._mlir_type) -> Reference[
-        element_types[idx.value], mutability, self_life
-    ]:
-        # Return a reference to an element at the specified index, propagating
-        # mutability of self.
-        var storage_kgen_ptr = UnsafePointer.address_of(
-            Reference(self_lit)[].storage
-        ).address
-
-        # KGenPointer to the element.
-        var elt_kgen_ptr = __mlir_op.`kgen.pack.gep`[index = idx.value](
-            storage_kgen_ptr
-        )
-        # Convert to an immortal mut reference, which conforms to self_life.
-        return UnsafePointer(elt_kgen_ptr)[]
-
-    # TODO(#38268): Remove this method when references and parameter expressions
-    # cooperate better.  We can't handle the use in test_simd without this.
-    @always_inline("nodebug")
-    fn get[i: Int, T: IsTask](self) -> T:
-        """Get a tuple element and rebind to the specified type.
-
-        Parameters:
-            i: The element index.
-            T: The element type.
-
-        Returns:
-            The tuple element at the requested index.
-        """
-        return rebind[T](self[i])
-
-    @always_inline("nodebug")
-    fn run(self) -> None:
-        """Run all tasks in the group."""
-        alias task_len = Self.__len__()
-
-        @parameter
-        fn run_task[n: Int]() capturing:
-            print("Running task no. ", n, "...")
-            self[n].run()
-
-        unroll[run_task, task_len]()
+    fn __rshift__[
+        t: Runnable,
+        origin: Origin[False],
+    ](self, ref [origin]other: t) -> SeriesTask[origin, Self, t]:
+        return SeriesTask[origin](self, other)
