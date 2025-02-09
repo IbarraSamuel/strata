@@ -1,4 +1,3 @@
-from task.model import Task
 from time import sleep
 
 # Tasks
@@ -7,103 +6,70 @@ from time import sleep
 @value
 struct Initialize:
     fn run(self):
-        print("Initializing Everything")
+        print("Initializing...")
         sleep(UInt(1))
 
 
 @value
-struct Selection:
+struct LoadData:
     fn run(self):
-        print("Running My Selection Task.")
+        print("Loading Data...")
         sleep(UInt(1))
 
 
 @value
-struct Suppression1:
+struct FindMax:
     fn run(self):
-        print("S001")
+        print("Finding Max Value...")
         sleep(UInt(1))
 
 
 @value
-struct Suppression11:
+struct FindMean:
     fn run(self):
-        print("---- S011")
+        print("Finding Mean Value...")
         sleep(UInt(1))
 
 
 @value
-struct Suppression12:
+struct Merge:
     fn run(self):
-        print("---- S012")
-        sleep(UInt(1))
-
-
-@value
-struct Suppression121:
-    fn run(self):
-        print("---- ---- S121")
-        sleep(UInt(1))
-
-
-@value
-struct Suppression122:
-    fn run(self):
-        print("---- ---- S122")
-        sleep(UInt(1))
-
-
-@value
-struct Suppression2:
-    fn run(self):
-        print("S002")
-        sleep(UInt(1))
-
-
-@value
-struct Deliver:
-    fn run(self):
-        print("Deliver Everything")
+        print("Merging the Data...")
         sleep(UInt(1))
 
 
 fn main():
     # Run time values...
+    from task.model import Task as T, SeriesTask as ST
+
     init = Initialize()
-    sel = Selection()
-    s1 = Suppression1()
-    s11 = Suppression11()
-    s12 = Suppression12()
-    s121 = Suppression121()
-    s122 = Suppression122()
-    s2 = Suppression2()
-    d = Deliver()
-    t = Task(init)
+    load = LoadData()
+    findmax = FindMax()
+    findmean = FindMean()
+    merge = Merge()
 
-    graph = (
-        Task(init)
-        >> Task(sel)
-        >> (
-            (
-                Task(s2) + Task(s1)
-                >> (Task(s11) + (Task(s12) >> (Task(s121) + Task(s122))))
-            )
-        )
-        >> Task(d)
+    graph0 = T(init) >> load >> T(findmax) + findmean >> merge
+
+    # Runtime tasks.
+    print("Running the Graph...")
+    graph0.run()
+
+    # If the tasks are defaultable, you can compile time them.
+
+    from task.model import (
+        ParallelDefaultTask as PD,
+        SeriesDefaultTask as SD,
+        DefaultTask as DT,
     )
 
-    # If the Runnable tasks are Defaultable, you can pass it as parameters!
+    alias graph = SD[Initialize, LoadData, PD[FindMax, FindMean], Merge]
+    print("Running the Graph...")
+    graph().run()
+
+    print("Running the Graph2 using kind of airflow syntax...")
     graph2 = (
-        Task[Initialize]()
-        >> Task[Selection]()
-        >> Task[Suppression1]() + Task[Suppression2]()
-        >> Task[Deliver]()
+        DT[Initialize]() >> LoadData() >> DT[FindMax]() + FindMean() >> Merge()
     )
-
-    print("Running first graph...")
-    graph.run()
-
-    print("Running Second graph...")
     graph2.run()
 
     # runner.run()
