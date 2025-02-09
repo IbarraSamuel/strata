@@ -3,7 +3,7 @@ authors = ["Samuel Ibarra <Samuel.E.Ibarra@dell.com>"]
 channels = ["https://repo.prefix.dev/conda-forge", "https://conda.modular.com/max-nightly"]
 description = "Add a short description here"
 name = "tne_campaigns"
-platforms = ["linux-64"]
+platforms = ["linux-64", "osx-arm64"]
 version = "0.1.0"
 
 [tasks]
