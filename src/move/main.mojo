@@ -78,6 +78,7 @@ fn main():
     s122 = Suppression122()
     s2 = Suppression2()
     d = Deliver()
+    t = Task(init)
 
     graph = (
         Task(init)
