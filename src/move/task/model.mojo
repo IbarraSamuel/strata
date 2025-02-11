@@ -113,6 +113,16 @@ struct ParallelDefaultTask[*Ts: RunnableDefaultable](RunnableDefaultable):
     fn run(self):
         parallel_runner[*Ts]()
 
+    fn __add__[
+        t: RunnableDefaultable
+    ](self, other: t) -> ParallelDefaultTask[Self, t]:
+        return ParallelDefaultTask[Self, t]()
+
+    fn __rshift__[
+        t: RunnableDefaultable
+    ](self, other: t) -> SeriesDefaultTask[Self, t]:
+        return SeriesDefaultTask[Self, t]()
+
 
 struct SeriesDefaultTask[*Ts: RunnableDefaultable](RunnableDefaultable):
     fn __init__(out self):
@@ -120,6 +130,16 @@ struct SeriesDefaultTask[*Ts: RunnableDefaultable](RunnableDefaultable):
 
     fn run(self):
         series_runner[*Ts]()
+
+    fn __add__[
+        t: RunnableDefaultable
+    ](self, other: t) -> ParallelDefaultTask[Self, t]:
+        return ParallelDefaultTask[Self, t]()
+
+    fn __rshift__[
+        t: RunnableDefaultable
+    ](self, other: t) -> SeriesDefaultTask[Self, t]:
+        return SeriesDefaultTask[Self, t]()
 
 
 struct DefaultTask[T: RunnableDefaultable](RunnableDefaultable):
@@ -134,11 +154,11 @@ struct DefaultTask[T: RunnableDefaultable](RunnableDefaultable):
         T().run()
 
     fn __add__[
-        o: RunnableDefaultable
-    ](self, other: o) -> DefaultTask[ParallelDefaultTask[Self, o]]:
-        return DefaultTask[ParallelDefaultTask[Self, o]]()
+        t: RunnableDefaultable
+    ](self, other: t) -> ParallelDefaultTask[Self.T, t]:
+        return ParallelDefaultTask[Self.T, t]()
 
     fn __rshift__[
-        o: RunnableDefaultable
-    ](self, other: o) -> DefaultTask[SeriesDefaultTask[Self, o]]:
-        return DefaultTask[SeriesDefaultTask[Self, o]]()
+        t: RunnableDefaultable
+    ](self, other: t) -> SeriesDefaultTask[Self.T, t]:
+        return SeriesDefaultTask[Self.T, t]()

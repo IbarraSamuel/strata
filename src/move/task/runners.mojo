@@ -7,11 +7,8 @@ from algorithm import parallelize
 
 
 fn series_runner[*ts: Runnable](*args: *ts):
-    alias size = len(VariadicList(ts))
-
-    @parameter
-    for i in range(size):
-        args[i].run()
+    rp = RunnablePack(args._value)
+    series_runner(rp)
 
 
 fn series_runner[*Ts: RunnableDefaultable]():
@@ -34,16 +31,8 @@ fn series_runner[*Ts: Runnable](runnables: RunnablePack[_, *Ts]):
 
 # Execute tasks in parallel
 fn parallel_runner[*ts: Runnable](*args: *ts):
-    alias size = len(VariadicList(ts))
-
-    @parameter
-    fn exec(i: Int):
-        @parameter
-        for ci in range(size):
-            if ci == i:
-                args[ci].run()
-
-    parallelize[exec](size)
+    rp = RunnablePack(args._value)
+    parallel_runner(runnables=rp)
 
 
 fn parallel_runner[*Ts: RunnableDefaultable]():
