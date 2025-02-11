@@ -119,7 +119,7 @@ fn main():
     # types_graph_1().run()
 
     # Test if nesting Parallels will not loose anything
-    r = PD[FindMin, FindMax, PD[FindMean, FindMedian]]()
+    r = PD[PD[FindMedian, FindMean], FindMin, FindMax]()
     r.run()
 
     # Airflow Syntax
