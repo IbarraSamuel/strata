@@ -1,10 +1,10 @@
-from move.task.traits import Runnable
+from move.task.traits import Callable
 
 
-struct RunnablePack[origin: Origin, *Ts: Runnable](Copyable):
+struct CallablePack[origin: Origin, *Ts: Callable](Copyable):
     """Stores a reference variadic pack of `Runnable` structs."""
 
-    alias _mlir_type = VariadicPack[origin, Runnable, *Ts]._mlir_type
+    alias _mlir_type = VariadicPack[origin, Callable, *Ts]._mlir_type
 
     var storage: Self._mlir_type
 

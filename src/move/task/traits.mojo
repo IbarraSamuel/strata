@@ -1,26 +1,26 @@
-trait Runnable:
+trait Callable:
     """The struct should contain a fn run method.
 
     ```mojo
-    trait Runnable:
-        fn run(self):
+    trait Callable:
+        fn __call__(self):
             ...
     ```
     """
 
-    fn run(self):
+    fn __call__(self):
         ...
 
 
-trait RunnableMovable(Runnable, Movable):
-    """A `Runnable` + `Movable`.
+trait CallableMovable(Callable, Movable):
+    """A `Callable` + `Movable`.
 
     ```mojo
-    trait RunnableMovable:
+    trait CallableMovable:
         fn __moveinit__(out self, owned existing: Self):
             ...
 
-        fn run(self):
+        fn __call__(self):
             ...
     ```
     """
@@ -28,15 +28,15 @@ trait RunnableMovable(Runnable, Movable):
     ...
 
 
-trait RunnableDefaultable(Runnable, Defaultable):
-    """A `Runnable` + `Defaultable`.
+trait CallableDefaultable(Callable, Defaultable):
+    """A `Callable` + `Defaultable`.
 
     ```mojo
-    trait RunnableDefaultable:
+    trait CallableDefaultable:
         fn __init__(out self):
             ...
 
-        fn run(self):
+        fn __call__(self):
             ...
     ```
     """

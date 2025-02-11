@@ -1,124 +1,51 @@
 from time import sleep
 
-# Tasks should be Runnable
 
-# from move.task.traits import Runnable
-
-
-struct Initialize:
+struct MyDefaultTask[name: StringLiteral]:
     fn __init__(out self):
         pass
 
-    fn run(self):
-        print("Initializing...")
+    fn __call__(self):
+        print("Task [", name, "] Running...")
         sleep(UInt(1))
 
 
-struct LoadData:
-    fn __init__(out self):
-        pass
+struct MyTask[job: StringLiteral]:
+    var some_data: String
 
-    fn run(self):
-        print("Loading Data...")
-        sleep(UInt(1))
+    fn __init__(out self, owned some_data: StringLiteral):
+        self.some_data = some_data
 
-
-struct FindMin:
-    fn __init__(out self):
-        pass
-
-    fn run(self):
-        print("Finding Min Value...")
-        sleep(UInt(1))
-
-
-struct FindMax:
-    fn __init__(out self):
-        pass
-
-    fn run(self):
-        print("Finding Max Value...")
-        sleep(UInt(1))
-
-
-struct FindMean:
-    fn __init__(out self):
-        pass
-
-    fn run(self):
-        print("Finding Mean Value...")
-        sleep(UInt(1))
-
-
-struct FindMedian:
-    fn __init__(out self):
-        pass
-
-    fn run(self):
-        print("Finding Median Value...")
-        sleep(UInt(1))
-
-
-struct MergeResults:
-    fn __init__(out self):
-        pass
-
-    fn run(self):
-        print("Merging the Data...")
+    fn __call__(self):
+        print("Running [", job, "]:", self.some_data)
         sleep(UInt(1))
 
 
 fn main():
-    # Run time values...
-    from move.task.model import Task as T, SeriesTask as ST, ParallelTask as PT
-
-    init = Initialize()
-    load = LoadData()
-    find_min = FindMin()
-    find_max = FindMax()
-    find_mean = FindMean()
-    find_median = FindMedian()
-    merge_results = MergeResults()
-
-    # Using Type syntax
-    graph_1 = ST(
-        init,
-        load,
-        PT(find_min, find_max, find_mean, find_median),
-        merge_results,
-    )
-    print("[GRAPH 1]...")
-    graph_1.run()
-
-    # # Airflow Syntax
-    graph_2 = (
-        T(init)
-        >> load
-        >> T(find_min) + find_max + find_mean + find_median
-        >> merge_results
-    )
-    # T is needed to implement the __add__ and __rshift__ methods.
-    # Will not be needed when default traits implementations works.
-    # Or you can implement those methods yourself.
-    print("[GRAPH 2]...")
-    graph_2.run()
-
-    # If the tasks are defaultable, you can instanciate them when calling them, so it's more 'lazy'
-
+    # Defaultables
     from move.task.model import (
         ParallelDefaultTask as PD,
         SeriesDefaultTask as SD,
         DefaultTask as DT,
     )
 
-    alias types_graph = SD[
+    alias Initialize = MyDefaultTask["Initialize"]
+    alias LoadData = MyDefaultTask["LoadData"]
+    alias FindMin = MyDefaultTask["FindMin"]
+    alias FindMax = MyDefaultTask["FindMax"]
+    alias FindMean = MyDefaultTask["FindMean"]
+    alias FindMedian = MyDefaultTask["FindMedian"]
+    alias MergeResults = MyDefaultTask["MergeResults"]
+
+    alias TypesGraph = SD[
         Initialize,
         LoadData,
         PD[FindMin, FindMax, FindMean, FindMedian],
         MergeResults,
     ]
     print("[TYPES GRAPH 1]...")
-    types_graph().run()
+    types_graph = TypesGraph()
+    types_graph()
 
     # Airflow Syntax with structs Instanciated.
 
@@ -129,6 +56,35 @@ fn main():
         >> MergeResults()
     )
     print("[TYPES GRAPH 2]...")
-    defaultables_graph.run()
+    defaultables_graph()
 
-    # runner.run()
+    # Run time values...
+    from move.task.model import Task as T, SeriesTask as ST, ParallelTask as PT
+
+    init = MyTask["Initialize"]("Setting up...")
+    load = MyTask["Load Data"]("Reading from some place...")
+    find_min = MyTask["Min"]("Calculating...")
+    find_max = MyTask["Max"]("Calculating...")
+    find_mean = MyTask["Mean"]("Calculating...")
+    find_median = MyTask["Median"]("Calculating...")
+    merge_results = MyTask["Merge Results"]("Getting all together...")
+
+    # Using Type syntax
+    graph_1 = ST(
+        init,
+        load,
+        PT(find_min, find_max, find_mean, find_median),
+        merge_results,
+    )
+    print("[GRAPH 1]...")
+    graph_1()
+
+    # # Airflow Syntax
+    graph_2 = (
+        T(init)
+        >> load
+        >> T(find_min) + find_max + find_mean + find_median
+        >> merge_results
+    )
+    print("[GRAPH 2]...")
+    graph_2()
