@@ -35,12 +35,14 @@ fn series_runner[*Ts: Runnable](runnables: RunnablePack[_, *Ts]):
 fn parallel_runner[*Ts: RunnableDefaultable]():
     """Run Runnable structs in parallel."""
     alias size = len(VariadicList(Ts))
+    print("running", size, "functions")
 
     @parameter
     fn exec(i: Int):
         @parameter
         for ti in range(size):
             if ti == i:
+                print("Running fn.")
                 Ts[ti]().run()
 
     parallelize[exec](size)
