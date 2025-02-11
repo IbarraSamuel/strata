@@ -1,27 +1,32 @@
 from memory.pointer import Pointer
-from move.task.traits import Runnable, RunnableDefaultable
+from memory.owned_pointer import OwnedPointer
+from move.task.traits import Runnable, RunnableDefaultable, RunnableMovable
 from move.task.runnable_pack import RunnablePack
 from move.task.runners import series_runner, parallel_runner
 
 
 # Task collections.
+
+
+# Variadic Series
 struct SeriesTask[origin: Origin, *Ts: Runnable](Runnable):
-    var runnables: VariadicPack[origin, Runnable, *Ts]._mlir_type
+    alias _value_type = RunnablePack[origin, *Ts]._mlir_type
+    var runnables: RunnablePack[origin, *Ts]
 
     fn __init__(
         out self: SeriesTask[__origin_of(args._value), *Ts], *args: *Ts
     ):
-        alias S = __type_of(self.runnables)
-        # [TODO]: As a workaround because we cannot identify the origin of *args
-        # so we point at the origin of args._value.
-        self.runnables = rebind[S](args._value)
+        self.runnables = rebind[RunnablePack[__origin_of(args._value), *Ts]](
+            RunnablePack(args._value)
+        )
 
     fn run(self):
         series_runner(self.runnables)
 
 
+# Series Pair
 struct SeriesTaskPair[o1: Origin, o2: Origin, t1: Runnable, t2: Runnable](
-    Runnable
+    RunnableMovable
 ):
     var v1: Pointer[t1, o1]
     var v2: Pointer[t2, o2]
@@ -30,35 +35,33 @@ struct SeriesTaskPair[o1: Origin, o2: Origin, t1: Runnable, t2: Runnable](
         self.v1 = Pointer.address_of(v1)
         self.v2 = Pointer.address_of(v2)
 
+    fn __moveinit__(out self, owned existing: Self):
+        self.v1 = existing.v1
+        self.v2 = existing.v2
+
     fn run(self):
         series_runner(self.v1[], self.v2[])
 
-    fn __add__[
-        s: Origin, o: Origin, t: Runnable, //
-    ](ref [s]self, ref [o]other: t) -> ParallelTaskPair[s, o, Self, t]:
-        return ParallelTaskPair[s, o, Self, t](self, other)
 
-    fn __rshift__[
-        s: Origin, o: Origin, t: Runnable, //
-    ](ref [s]self, ref [o]other: t) -> SeriesTaskPair[s, o, Self, t]:
-        return SeriesTaskPair[s, o, Self, t](self, other)
-
-
-# Task Collections.
+# Variadic Parallel
 struct ParallelTask[origin: Origin, *Ts: Runnable](Runnable):
     var runnables: RunnablePack[origin, *Ts]
 
     fn __init__(
         out self: ParallelTask[__origin_of(args._value), *Ts], *args: *Ts
     ):
-        alias S = __type_of(self.runnables)
-        self.runnables = rebind[S](args._value)
+        self.runnables = rebind[RunnablePack[__origin_of(args._value), *Ts]](
+            RunnablePack(args._value)
+        )
 
     fn run(self):
         parallel_runner(self.runnables)
 
 
-struct ParallelTaskPair[o1: Origin, o2: Origin, t1: Runnable, t2: Runnable]:
+# Parallel Pair
+struct ParallelTaskPair[o1: Origin, o2: Origin, t1: Runnable, t2: Runnable](
+    RunnableMovable
+):
     var v1: Pointer[t1, o1]
     var v2: Pointer[t2, o2]
 
@@ -66,44 +69,78 @@ struct ParallelTaskPair[o1: Origin, o2: Origin, t1: Runnable, t2: Runnable]:
         self.v1 = Pointer.address_of(v1)
         self.v2 = Pointer.address_of(v2)
 
+    fn __moveinit__(out self, owned existing: Self):
+        self.v1 = existing.v1
+        self.v2 = existing.v2
+
     fn run(self):
         parallel_runner(self.v1[], self.v2[])
 
-    fn __add__[
-        s: Origin, o: Origin, t: Runnable, //
-    ](ref [s]self, ref [o]other: t) -> ParallelTaskPair[s, o, Self, t]:
-        return ParallelTaskPair[s, o, Self, t](self, other)
-
-    fn __rshift__[
-        s: Origin, o: Origin, t: Runnable, //
-    ](ref [s]self, ref [o]other: t) -> SeriesTaskPair[s, o, Self, t]:
-        return SeriesTaskPair[s, o, Self, t](self, other)
-
 
 # # Unit Task. To add + and >> functionality to Runnables.
-struct Task[origin: Origin, T: Runnable](Runnable):
+struct OwnedTask[T: RunnableMovable](RunnableMovable):
+    """This Struct is only needed to avoid having `__add__` and `__rshift__`
+    in series/parallel implementation. Will be needed in Task and OwnedTask only.
+    """
+
+    var inner: T
+
+    @implicit
+    fn __init__(out self, owned v: T):
+        self.inner = v^
+
+    fn __moveinit__(out self, owned other: Self):
+        self.inner = other.inner^
+
+    fn run(self):
+        self.inner.run()
+
+    fn __add__[
+        o: Origin, t: Runnable, //
+    ](self, ref [o]other: t) -> OwnedTask[
+        ParallelTaskPair[__origin_of(self.inner), o, T, t]
+    ]:
+        return OwnedTask(ParallelTaskPair(self.inner, other))
+
+    fn __rshift__[
+        o: Origin, t: Runnable, //
+    ](self, ref [o]other: t) -> OwnedTask[
+        SeriesTaskPair[__origin_of(self.inner), o, T, t]
+    ]:
+        return OwnedTask(SeriesTaskPair(self.inner, other))
+
+
+struct Task[origin: Origin, T: Runnable](RunnableMovable):
     var inner: Pointer[T, origin]
 
     @implicit
     fn __init__(out self, ref [origin]inner: T):
         self.inner = Pointer.address_of(inner)
 
+    fn __moveinit__(out self, owned other: Self):
+        self.inner = other.inner
+
     fn run(self):
         self.inner[].run()
 
     fn __add__[
         s: Origin, o: Origin, t: Runnable, //
-    ](ref [s]self, ref [o]other: t) -> ParallelTaskPair[origin, o, T, t]:
-        return ParallelTaskPair(self.inner[], other)
+    ](ref [s]self, ref [o]other: t) -> OwnedTask[
+        ParallelTaskPair[origin, o, T, t]
+    ]:
+        return OwnedTask(ParallelTaskPair(self.inner[], other))
 
     fn __rshift__[
         s: Origin, o: Origin, t: Runnable, //
-    ](ref [s]self, ref [o]other: t) -> SeriesTaskPair[origin, o, T, t]:
-        return SeriesTaskPair(self.inner[], other)
+    ](ref [s]self, ref [o]other: t) -> OwnedTask[
+        SeriesTaskPair[origin, o, T, t]
+    ]:
+        return OwnedTask(SeriesTaskPair(self.inner[], other))
 
 
-# # ============= Defaults ============
-# # This only works if the Struct is defaultable.
+# ============= Defaults ============
+# This only works if the Struct is defaultable.
+# Struct instances will be created in a `lazy` way if you use types only.
 
 
 struct ParallelDefaultTask[*Ts: RunnableDefaultable](RunnableDefaultable):
@@ -127,7 +164,7 @@ struct DefaultTask[T: RunnableDefaultable](RunnableDefaultable):
         pass
 
     @implicit
-    fn __init__[t: RunnableDefaultable, //](out self: DefaultTask[t], val: t):
+    fn __init__(out self, val: T):
         pass
 
     fn run(self):

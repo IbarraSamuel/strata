@@ -81,13 +81,16 @@ fn main():
     merge_results = MergeResults()
 
     # Using Type syntax
-    # graph_1 = ST(
-    #     init, load, PT(find_max, find_mean, find_median), merge_results
-    # )
-    # print("[GRAPH 1]...")
-    # graph_1.run()
+    graph_1 = ST(
+        init,
+        load,
+        PT(find_min, find_max, find_mean, find_median),
+        merge_results,
+    )
+    print("[GRAPH 1]...")
+    graph_1.run()
 
-    # Airflow Syntax
+    # # Airflow Syntax
     graph_2 = (
         T(init)
         >> load
@@ -98,8 +101,7 @@ fn main():
     # Will not be needed when default traits implementations works.
     # Or you can implement those methods yourself.
     print("[GRAPH 2]...")
-    _ = graph_2^
-    # graph_2.run()
+    graph_2.run()
 
     # If the tasks are defaultable, you can instanciate them when calling them, so it's more 'lazy'
 
@@ -109,29 +111,24 @@ fn main():
         DefaultTask as DT,
     )
 
-    alias types_graph_1 = SD[
+    alias types_graph = SD[
         Initialize,
         LoadData,
         PD[FindMin, FindMax, FindMean, FindMedian],
         MergeResults,
     ]
     print("[TYPES GRAPH 1]...")
-    # types_graph_1().run()
+    types_graph().run()
 
-    # Test if nesting Parallels will not loose anything
-    r = PD[PD[FindMedian, FindMean], FindMin, FindMax]()
-    r.run()
+    # Airflow Syntax with structs Instanciated.
 
-    # Airflow Syntax
-
-    types_graph_2 = (
+    defaultables_graph = (
         DT[Initialize]()
         >> LoadData()
         >> DT[FindMin]() + FindMax() + FindMean() + FindMedian()
         >> MergeResults()
     )
     print("[TYPES GRAPH 2]...")
-    _ = types_graph_2^
-    # types_graph_2.run()
+    defaultables_graph.run()
 
     # runner.run()

@@ -1,6 +1,6 @@
 from move.task.runnable_pack import RunnablePack
 from move.task.traits import Runnable, RunnableDefaultable
-from algorithm import parallelize
+from algorithm import sync_parallelize
 
 
 # Execute tasks in series
@@ -35,17 +35,15 @@ fn series_runner[*Ts: Runnable](runnables: RunnablePack[_, *Ts]):
 fn parallel_runner[*Ts: RunnableDefaultable]():
     """Run Runnable structs in parallel."""
     alias size = len(VariadicList(Ts))
-    print("running", size, "functions")
 
     @parameter
     fn exec(i: Int):
         @parameter
         for ti in range(size):
             if ti == i:
-                print("Running fn.")
                 Ts[ti]().run()
 
-    parallelize[exec](size)
+    sync_parallelize[exec](size)
 
 
 fn parallel_runner[*ts: Runnable](*args: *ts):
@@ -64,4 +62,4 @@ fn parallel_runner[*Ts: Runnable](runnables: RunnablePack[_, *Ts]):
             if ti == i:
                 runnables[ti].run()
 
-    parallelize[exec](size)
+    sync_parallelize[exec](size)
