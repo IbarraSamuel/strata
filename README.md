@@ -131,6 +131,32 @@ graph_2()
 ```
 
 ### Why needs to use `Task` and `DefaultTask` in Airflow Syntax?
-The struct needs to be converted to a `Task`, to be combined with other tasks. If the first task of the group is converted to a `Task`, the rest can be combined. To avoid this, you can implement the `__add__` and `__rshift__` methods on your structs, but still there is no trait created for it.
+In airflow syntax you can see some `T(task)` on non-defaultables and `DT(task)` for defaultables.
+
+The reason is because airflow syntax relies on the `__add__` and `__rshift__` and since those Callable struct didn't implement the operator, we need to
+wrap those tasks into a `Task` or `DefaultTask` to be able to do these two operations.
+
+If the first task of the group is converted to a `Task`, the rest can be combined.
+
+To avoid this, you can implement the `__add__` and `__rshift__` methods on your structs.
+
+Something like:
+
+```mojo
+fn __add__[
+    s: Origin, o: Origin, t: Callable, //
+](ref [s]self, ref [o]other: t) -> OwnedTask[
+    ParallelTaskPair[s, o, Self, t]
+]:
+    return OwnedTask(ParallelTaskPair(self, other))
+
+fn __rshift__[
+    s: Origin, o: Origin, t: Callable, //
+](ref [s]self, ref [o]other: t) -> OwnedTask[
+    SeriesTaskPair[s, o, Self, t]
+]:
+    return OwnedTask(SeriesTaskPair(self, other))
+```
+
 ## TODO:
 Fix problem with Variadic Arguments when trying to use it directly.

@@ -1,7 +1,11 @@
 from memory.pointer import Pointer
 from memory.owned_pointer import OwnedPointer
-from move.task.traits import Callable, CallableDefaultable, CallableMovable
-from move.task.callable_pack import CallablePack
+from move.task.callable import (
+    CallablePack,
+    Callable,
+    CallableDefaultable,
+    CallableMovable,
+)
 from move.task.runners import series_runner, parallel_runner
 
 

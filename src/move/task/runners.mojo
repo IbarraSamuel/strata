@@ -1,5 +1,4 @@
-from move.task.callable_pack import CallablePack
-from move.task.traits import Callable, CallableDefaultable
+from move.task.callable import CallablePack, Callable, CallableDefaultable
 from algorithm import sync_parallelize
 
 
@@ -12,9 +11,7 @@ fn series_runner[*Ts: CallableDefaultable]():
 
     @parameter
     for i in range(size):
-        alias T = Ts[i]
-        t = T()
-        t()
+        Ts[i]()()
 
 
 fn series_runner[*ts: Callable](*args: *ts):
@@ -43,9 +40,7 @@ fn parallel_runner[*Ts: CallableDefaultable]():
         @parameter
         for ti in range(size):
             if ti == i:
-                alias T = Ts[ti]
-                t = T()
-                t()
+                Ts[ti]()()
 
     sync_parallelize[exec](size)
 
