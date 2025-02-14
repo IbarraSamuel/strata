@@ -88,3 +88,30 @@ fn main():
     )
     print("[GRAPH 2]...")
     graph_2()
+
+    # What about functions? Yes, but need to be wrapped in the Fn struct.
+    # Internally it will be converted to a Fn struct that implements __call__
+    from move.task.model import Fn
+
+    fn first_task():
+        print("Initialize everything...")
+        sleep(UInt(1))
+
+    fn last_task():
+        print("Finalize everything...")
+        sleep(UInt(1))
+
+    fn parallel1():
+        print("Parallel 1...")
+        sleep(UInt(1))
+
+    fn parallel2():
+        print("Parallel 2...")
+        sleep(UInt(1))
+
+    # Fn will make them callable since `fn() -> None` not implements __call__(self)
+
+    fn_graph = (
+        T(Fn(first_task)) >> T(Fn(parallel1)) + Fn(parallel2) >> Fn(last_task)
+    )
+    fn_graph()

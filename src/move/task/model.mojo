@@ -81,6 +81,21 @@ struct ParallelTaskPair[o1: Origin, o2: Origin, t1: Callable, t2: Callable](
         parallel_runner(self.v1[], self.v2[])
 
 
+# Workaround for functions to be converted to a struct
+struct Fn(CallableMovable):
+    var func: fn ()
+
+    @implicit
+    fn __init__(out self, ref func: fn ()):
+        self.func = func
+
+    fn __moveinit__(out self, owned other: Self):
+        self.func = other.func
+
+    fn __call__(self):
+        self.func()
+
+
 # # Unit Task. To add + and >> functionality to Callables.
 struct OwnedTask[T: CallableMovable](CallableMovable):
     """This Struct is only needed to avoid having `__add__` and `__rshift__`
