@@ -4,7 +4,7 @@ channels = ["https://repo.prefix.dev/conda-forge", "https://conda.modular.com/ma
 description = "Series/Parallel Runner"
 name = "move"
 platforms = ["linux-64", "osx-arm64"]
-version = "0.1.0"
+version = "0.2.0"
 
 [tasks]
 example = "mojo run src/examples.mojo"
