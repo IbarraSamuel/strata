@@ -110,8 +110,10 @@ fn main():
         sleep(UInt(1))
 
     # Fn will make them callable since `fn() -> None` not implements __call__(self)
-
-    fn_graph = (
-        T(Fn(first_task)) >> T(Fn(parallel1)) + Fn(parallel2) >> Fn(last_task)
-    )
+    ft = Fn(first_task)
+    p1 = Fn(parallel1)
+    p2 = Fn(parallel2)
+    lt = Fn(last_task)
+    print("[ Function Graph ]...")
+    fn_graph = T(ft) >> T(p1) + p2 >> lt
     fn_graph()
