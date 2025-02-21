@@ -4,7 +4,7 @@ Series/Parallel Task runner for Mojo.
 ## Try it
 Use the command and follow the move:
 ```sh
-magic run example
+magic run examples
 ```
 
 ## Examples

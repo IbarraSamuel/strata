@@ -1,13 +1,13 @@
 [project]
 authors = ["Samuel Ibarra <Samuel.E.Ibarra@dell.com>"]
-channels = ["https://repo.prefix.dev/conda-forge", "https://conda.modular.com/max-nightly"]
+channels = ["https://conda.modular.com/max-nightly", "https://conda.modular.com/max", "https://repo.prefix.dev/modular-community", "https://repo.prefix.dev/conda-forge"]
 description = "Series/Parallel Runner"
 name = "move"
 platforms = ["linux-64", "osx-arm64"]
 version = "0.2.0"
 
 [tasks]
-example = "mojo run src/examples.mojo"
+examples = "mojo run examples.mojo"
 
 [dependencies]
 max = "*"
