@@ -1,3 +1,16 @@
+from move.callable import CallableMovable, Callable, CallableDefaultable
+from move.task_groups.series import (
+    SeriesTaskPair,
+    SeriesTask,
+    SeriesDefaultTask,
+)
+from move.task_groups.parallel import (
+    ParallelTaskPair,
+    ParallelTask,
+    ParallelDefaultTask,
+)
+
+
 # Workaround for functions to be converted to a struct
 struct Fn(CallableMovable):
     var func: fn ()
@@ -14,7 +27,7 @@ struct Fn(CallableMovable):
 
 
 # # Unit Task. To add + and >> functionality to Callables.
-struct OwnedTask[T: CallableMovable](CallableMovable):
+struct _OwnedTask[T: CallableMovable](CallableMovable):
     """This Struct is only needed to avoid having `__add__` and `__rshift__`
     in series/parallel implementation. Will be needed in Task and OwnedTask only.
     """
@@ -33,17 +46,17 @@ struct OwnedTask[T: CallableMovable](CallableMovable):
 
     fn __add__[
         o: Origin, t: Callable, //
-    ](self, ref [o]other: t) -> OwnedTask[
+    ](self, ref [o]other: t) -> _OwnedTask[
         ParallelTaskPair[__origin_of(self.inner), o, T, t]
     ]:
-        return OwnedTask(ParallelTaskPair(self.inner, other))
+        return _OwnedTask(ParallelTaskPair(self.inner, other))
 
     fn __rshift__[
         o: Origin, t: Callable, //
-    ](self, ref [o]other: t) -> OwnedTask[
+    ](self, ref [o]other: t) -> _OwnedTask[
         SeriesTaskPair[__origin_of(self.inner), o, T, t]
     ]:
-        return OwnedTask(SeriesTaskPair(self.inner, other))
+        return _OwnedTask(SeriesTaskPair(self.inner, other))
 
 
 struct Task[origin: Origin, T: Callable](CallableMovable):
@@ -61,17 +74,17 @@ struct Task[origin: Origin, T: Callable](CallableMovable):
 
     fn __add__[
         s: Origin, o: Origin, t: Callable, //
-    ](ref [s]self, ref [o]other: t) -> OwnedTask[
+    ](ref [s]self, ref [o]other: t) -> _OwnedTask[
         ParallelTaskPair[origin, o, T, t]
     ]:
-        return OwnedTask(ParallelTaskPair(self.inner[], other))
+        return _OwnedTask(ParallelTaskPair(self.inner[], other))
 
     fn __rshift__[
         s: Origin, o: Origin, t: Callable, //
-    ](ref [s]self, ref [o]other: t) -> OwnedTask[
+    ](ref [s]self, ref [o]other: t) -> _OwnedTask[
         SeriesTaskPair[origin, o, T, t]
     ]:
-        return OwnedTask(SeriesTaskPair(self.inner[], other))
+        return _OwnedTask(SeriesTaskPair(self.inner[], other))
 
 
 struct DefaultTask[T: CallableDefaultable](CallableDefaultable):

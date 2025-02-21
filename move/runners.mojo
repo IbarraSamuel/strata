@@ -1,4 +1,4 @@
-from move.task.callable import CallablePack, Callable, CallableDefaultable
+from move.callable import CallablePack, Callable, CallableDefaultable
 from algorithm import sync_parallelize
 
 

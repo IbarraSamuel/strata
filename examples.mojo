@@ -23,7 +23,7 @@ struct MyTask[job: StringLiteral]:
 
 fn main():
     # Defaultables
-    from move.task.model import (
+    from move import (
         ParallelDefaultTask as PD,
         SeriesDefaultTask as SD,
         DefaultTask as DT,
@@ -59,7 +59,7 @@ fn main():
     defaultables_graph()
 
     # Run time values...
-    from move.task.model import Task as T, SeriesTask as ST, ParallelTask as PT
+    from move import Task as T, SeriesTask as ST, ParallelTask as PT
 
     init = MyTask["Initialize"]("Setting up...")
     load = MyTask["Load Data"]("Reading from some place...")
@@ -91,7 +91,7 @@ fn main():
 
     # What about functions? Yes, but need to be wrapped in the Fn struct.
     # Internally it will be converted to a Fn struct that implements __call__
-    from move.task.model import Fn
+    from move import Fn
 
     fn first_task():
         print("Initialize everything...")
