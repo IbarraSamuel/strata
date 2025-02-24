@@ -1126,6 +1126,7 @@ packages:
   - libgcc >=13
   - ncurses >=6.5,<7.0a0
   license: GPL-3.0-only
+  license_family: GPL
   size: 282480
   timestamp: 1740379431762
 - conda: https://repo.prefix.dev/conda-forge/osx-arm64/readline-8.2-h1d1bf99_2.conda
@@ -1134,6 +1135,7 @@ packages:
   depends:
   - ncurses >=6.5,<7.0a0
   license: GPL-3.0-only
+  license_family: GPL
   size: 252359
   timestamp: 1740379663071
 - conda: https://repo.prefix.dev/conda-forge/linux-64/sentencepiece-0.2.0-hc8f76dd_10.conda
