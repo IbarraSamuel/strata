@@ -1,5 +1,5 @@
 trait Callable:
-    """The struct should contain a fn run method.
+    """The struct should contain a fn __call__ method.
 
     ```mojo
     trait Callable:
