@@ -58,6 +58,6 @@ struct CallablePack[origin: Origin, *Ts: Callable](Copyable):
     fn __copyinit__(out self, other: Self):
         self.storage = other.storage
 
-    fn __getitem__[i: Int](self) -> ref [origin._mlir_origin] Ts[i.value]:
+    fn __getitem__[i: Int](self) -> ref [origin] Ts[i.value]:
         value = __mlir_op.`lit.ref.pack.extract`[index = i.value](self.storage)
         return __get_litref_as_mvalue(value)

@@ -1,4 +1,9 @@
-from move.callable import Callable, CallableMovable, CallableDefaultable
+from move.callable import (
+    CallablePack,
+    Callable,
+    CallableMovable,
+    CallableDefaultable,
+)
 from move.runners import parallel_runner
 
 
