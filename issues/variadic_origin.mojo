@@ -12,6 +12,7 @@ struct VPack[origin: Origin, *types: AnyType]:
     # or instantiate again a VariadicPack.
 
 
+# This doesn't work when using owned kwargs, since those will be droppen in the __init__
 struct VpackWorking[origin: Origin, *types: AnyType]:
     alias _mlir_type = VariadicPack[origin, AnyType, *types]._mlir_type
     var storage: Self._mlir_type
