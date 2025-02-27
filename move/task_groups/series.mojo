@@ -66,6 +66,25 @@ struct SeriesMutableOwnedTaskPair[
         series_runner(self.v1, self.v2)
 
 
+# Parallel Mutable Collections
+struct SeriesMutableTask[origin: Origin[True], *types: CallableMutable](
+    CallableMutable
+):
+    var tasks: VariadicPack[origin, CallableMutable, *types]
+
+    fn __init__(
+        out self: SeriesMutableTask[
+            MutableOrigin.cast_from[__origin_of(args._value)].result, *types
+        ],
+        mut*args: *types,
+    ):
+        value = rebind[__type_of(self.tasks)._mlir_type](args._value)
+        self.tasks = VariadicPack(value, is_owned=False)
+
+    fn __call__(mut self):
+        series_runner(self.tasks)
+
+
 struct SeriesDefaultTask[*Ts: CallableDefaultable](CallableDefaultable):
     fn __init__(out self):
         pass

@@ -65,7 +65,18 @@ fn series_runner[*ts: Callable](*args: *ts):
     series_runner(rp)
 
 
-fn series_runner[*Ts: CallableMutable](mut*callables: *Ts):
+# This could be Variadic but I don't want this overhead now, because we don't have a struct collection for MutableCallables.
+fn series_runner[
+    t1: CallableMutable, t2: CallableMutable
+](mut c1: t1, mut c2: t2):
+    """Run a pair of `RunnableMutable` structs in sequence."""
+    c1()
+    c2()
+
+
+fn series_runner[
+    o: Origin[True], *Ts: CallableMutable
+](callables: VariadicPack[o, CallableMutable, *Ts]):
     """Run Runnable struct instances in sequence."""
     alias size = len(VariadicList(Ts))
 
@@ -142,7 +153,25 @@ fn parallel_runner[*ts: Callable](*callables: *ts):
     parallel_runner(rp)
 
 
-fn parallel_runner[*Ts: CallableMutable](mut*callables: *Ts):
+# This could be Variadic but I don't want this overhead now, because we don't have a struct collection for MutableCallables.
+fn parallel_runner[
+    t1: CallableMutable, t2: CallableMutable
+](mut c1: t1, mut c2: t2):
+    """Run Runnable struct instances in parallel."""
+
+    @parameter
+    fn exec(i: Int):
+        if i == 1:
+            c1()
+        else:
+            c2()
+
+    sync_parallelize[exec](2)
+
+
+fn parallel_runner[
+    o: Origin[True], *Ts: CallableMutable
+](callables: VariadicPack[o, CallableMutable, *Ts]):
     """Run Runnable struct instances in parallel."""
     alias size = len(VariadicList(Ts))
 
