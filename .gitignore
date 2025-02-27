@@ -13,3 +13,6 @@ wheels/
 *.egg-info
 # magic environments
 .magic
+
+# Bin to ignore
+.examples

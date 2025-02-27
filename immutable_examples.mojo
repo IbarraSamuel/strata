@@ -7,7 +7,7 @@ struct MyDefaultTask[name: StringLiteral]:
 
     fn __call__(self):
         print("Task [", name, "] Running...")
-        sleep(UInt(1))
+        sleep(0.5)
 
 
 struct MyTask[job: StringLiteral]:
@@ -18,10 +18,24 @@ struct MyTask[job: StringLiteral]:
 
     fn __call__(self):
         print("Running [", job, "]:", self.some_data)
-        sleep(UInt(1))
+        sleep(0.5)
+
+
+struct MutTask[name: StringLiteral]:
+    var value: Int
+
+    fn __init__(out self, value: Int):
+        self.value = value
+
+    fn __call__(mut self):
+        print("Running [", name, "]: Incrementing value", self.value)
+        sleep(0.5)
+        self.value += 1
+        print("Finish [", name, "]: Value incremented. Now it's", self.value)
 
 
 fn main():
+    print("Hey! Running Immutable Examples...")
     # Defaultables
     from move.task.unit import DefaultTask as DT
     from move.task_groups.series import SeriesDefaultTask as SD
@@ -95,21 +109,21 @@ fn main():
 
     fn first_task():
         print("Initialize everything...")
-        sleep(UInt(1))
+        sleep(0.5)
 
     fn last_task():
         print("Finalize everything...")
-        sleep(UInt(1))
+        sleep(0.5)
 
     fn parallel1():
         print("Parallel 1...")
-        sleep(UInt(1))
+        sleep(0.5)
 
     fn parallel2():
         print("Parallel 2...")
-        sleep(UInt(1))
+        sleep(0.5)
 
-    # Fn will make them callable since `fn() -> None` not implements __call__(self)
+    # Fn will make them callable since `fn() -> None` does not implements __call__(self)
     ft = Fn(first_task)
     p1 = Fn(parallel1)
     p2 = Fn(parallel2)
@@ -117,3 +131,6 @@ fn main():
     print("[ Function Graph ]...")
     fn_graph = T(ft) >> T(p1) + p2 >> lt
     fn_graph()
+
+    # Hey, but these things are not useful, because you cannot mutate anything.
+    # That's not true, but if you really need that, see mutable_examples.mojo

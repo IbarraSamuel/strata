@@ -1,8 +1,9 @@
 from move.callable import (
     Callable,
     CallablePack,
-    CallableMovable,
     CallableDefaultable,
+    CallableMutable,
+    CallableMutableMovable,
 )
 from move.runners import series_runner
 
@@ -25,7 +26,7 @@ struct SeriesTask[origin: Origin, *Ts: Callable](Callable):
 
 # Series Pair
 struct SeriesTaskPair[o1: Origin, o2: Origin, t1: Callable, t2: Callable](
-    CallableMovable
+    Callable, Movable
 ):
     var v1: Pointer[t1, o1]
     var v2: Pointer[t2, o2]
@@ -40,6 +41,29 @@ struct SeriesTaskPair[o1: Origin, o2: Origin, t1: Callable, t2: Callable](
 
     fn __call__(self):
         series_runner(self.v1[], self.v2[])
+
+
+# Series Mutable Pair
+struct SeriesMutableOwnedTaskPair[
+    t1: CallableMutableMovable,
+    t2: CallableMutableMovable,
+](CallableMutableMovable):
+    var v1: t1
+    var v2: t2
+
+    @always_inline("nodebug")
+    fn __init__(out self, owned v1: t1, owned v2: t2):
+        self.v1 = v1^
+        self.v2 = v2^
+
+    @always_inline("nodebug")
+    fn __moveinit__(out self, owned existing: Self):
+        self.v1 = existing.v1^
+        self.v2 = existing.v2^
+
+    @always_inline("nodebug")
+    fn __call__(mut self):
+        series_runner(self.v1, self.v2)
 
 
 struct SeriesDefaultTask[*Ts: CallableDefaultable](CallableDefaultable):

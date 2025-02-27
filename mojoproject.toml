@@ -7,7 +7,10 @@ platforms = ["linux-64", "osx-arm64"]
 version = "0.2.0"
 
 [tasks]
-examples = "mojo run examples.mojo"
+examples = { depends-on = ["immutable_examples", "mutable_examples"] }
+mutable_examples = "mojo mutable_examples.mojo"
+immutable_examples = "mojo immutable_examples.mojo"
+test = "mojo test"
 
 [dependencies]
 max = "*"
