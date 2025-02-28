@@ -1,19 +1,20 @@
 from move.callable import (
     CallablePack,
-    Callable,
+    ImmCallable,
     CallableDefaultable,
-    CallableMutable,
-    CallableMutableMovable,
+    Callable,
+    CallableMovable,
 )
 from move.runners import parallel_runner
+from move.task_groups.series import ImmSeriesTaskPair
 
 
 # Variadic Parallel
-struct ParallelTask[origin: Origin, *Ts: Callable](Callable):
+struct ImmParallelTask[origin: Origin, *Ts: ImmCallable](ImmCallable):
     var callables: CallablePack[origin, *Ts]
 
     fn __init__(
-        out self: ParallelTask[__origin_of(args._value), *Ts], *args: *Ts
+        out self: ImmParallelTask[__origin_of(args._value), *Ts], *args: *Ts
     ):
         self.callables = rebind[CallablePack[__origin_of(args._value), *Ts]](
             CallablePack(args._value)
@@ -24,9 +25,9 @@ struct ParallelTask[origin: Origin, *Ts: Callable](Callable):
 
 
 # Parallel Pair
-struct ParallelTaskPair[o1: Origin, o2: Origin, t1: Callable, t2: Callable](
-    Callable, Movable
-):
+struct ImmParallelTaskPair[
+    o1: Origin, o2: Origin, t1: ImmCallable, t2: ImmCallable
+](ImmCallable):
     var v1: Pointer[t1, o1]
     var v2: Pointer[t2, o2]
 
@@ -41,12 +42,21 @@ struct ParallelTaskPair[o1: Origin, o2: Origin, t1: Callable, t2: Callable](
     fn __call__(self):
         parallel_runner(self.v1[], self.v2[])
 
+    fn __add__[
+        s: Origin, o: Origin, t: ImmCallable, //
+    ](ref [s]self, ref [o]other: t) -> ImmParallelTaskPair[s, o, Self, t]:
+        return ImmParallelTaskPair(self, other)
+
+    fn __rshift__[
+        s: Origin, o: Origin, t: ImmCallable, //
+    ](ref [s]self, ref [o]other: t) -> ImmSeriesTaskPair[s, o, Self, t]:
+        return ImmSeriesTaskPair(self, other)
+
 
 # Parallel Mutable Pair
-struct ParallelMutableOwnedTaskPair[
-    t1: CallableMutableMovable,
-    t2: CallableMutableMovable,
-](CallableMutableMovable):
+struct ParallelTaskPair[t1: CallableMovable, t2: CallableMovable](
+    CallableMovable
+):
     var v1: t1
     var v2: t2
 
@@ -65,23 +75,21 @@ struct ParallelMutableOwnedTaskPair[
         parallel_runner(self.v1, self.v2)
 
 
-# Parallel Mutable Collections
-struct ParallelMutableTask[origin: Origin[True], *types: CallableMutable](
-    CallableMutable
-):
-    var tasks: VariadicPack[origin, CallableMutable, *types]
+# Parallel Mutable Collections (NOT WORKING)
+# struct ParallelTask[origin: Origin[True], *types: Callable](Callable):
+#     var tasks: VariadicPack[origin, Callable, *types]
 
-    fn __init__(
-        out self: ParallelMutableTask[
-            MutableOrigin.cast_from[__origin_of(args._value)].result, *types
-        ],
-        mut*args: *types,
-    ):
-        value = rebind[__type_of(self.tasks)._mlir_type](args._value)
-        self.tasks = VariadicPack(value, is_owned=False)
+#     fn __init__(
+#         out self: ParallelTask[
+#             MutableOrigin.cast_from[__origin_of(args._value)].result, *types
+#         ],
+#         mut*args: *types,
+#     ):
+#         value = rebind[__type_of(self.tasks)._mlir_type](args._value)
+#         self.tasks = VariadicPack(value, is_owned=False)
 
-    fn __call__(mut self):
-        parallel_runner(self.tasks)
+#     fn __call__(mut self):
+#         parallel_runner(self.tasks)
 
 
 struct ParallelDefaultTask[*Ts: CallableDefaultable](CallableDefaultable):

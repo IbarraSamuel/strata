@@ -1,8 +1,8 @@
-trait Callable:
+trait ImmCallable:
     """The struct should contain a fn __call__ method.
 
     ```mojo
-    trait Callable:
+    trait ImmCallable:
         fn __call__(self):
             ...
     ```
@@ -12,11 +12,11 @@ trait Callable:
         ...
 
 
-trait CallableMutable:
+trait Callable:
     """The struct should contain a fn __call__ method.
 
     ```mojo
-    trait CallableMutable:
+    trait Callable:
         fn __call__(mut self):
             ...
     ```
@@ -28,22 +28,6 @@ trait CallableMutable:
 
 trait CallableMovable(Callable, Movable):
     """A `Callable` + `Movable`.
-
-    ```mojo
-    trait CallableMovable:
-        fn __moveinit__(out self, owned existing: Self):
-            ...
-
-        fn __call__(self):
-            ...
-    ```
-    """
-
-    ...
-
-
-trait CallableMutableMovable(CallableMutable, Movable):
-    """A `CallableMutable` + `Movable`.
 
     ```mojo
     trait CallableMutableMovable:
@@ -58,7 +42,7 @@ trait CallableMutableMovable(CallableMutable, Movable):
     ...
 
 
-trait CallableDefaultable(Callable, Defaultable):
+trait CallableDefaultable(ImmCallable, Defaultable):
     """A `Callable` + `Defaultable`.
 
     ```mojo
@@ -74,7 +58,7 @@ trait CallableDefaultable(Callable, Defaultable):
     ...
 
 
-struct CallablePack[origin: Origin, *Ts: Callable](Copyable):
+struct CallablePack[origin: Origin, *Ts: ImmCallable](Copyable):
     """Stores a reference variadic pack of `Callable` structs.
 
     The storage it's just the `VariadicPack` inner _value.
@@ -84,9 +68,9 @@ struct CallablePack[origin: Origin, *Ts: Callable](Copyable):
     hack to point to the _value lifetime instead of the args lifetime.
 
     ```mojo
-    from move.callable import CallablePack, Callable
+    from move.callable import CallablePack, ImmCallable
 
-    struct MyTask(Callable):
+    struct MyTask(ImmCallable):
         fn __init__(out self):
             pass
 
@@ -94,7 +78,7 @@ struct CallablePack[origin: Origin, *Ts: Callable](Copyable):
             print("Running my call...")
 
     # hack to point to the _value lifetime instead of the args lifetime.
-    fn store_value[*Ts: Callable](*args: *Ts) -> CallablePack[__origin_of(args._value), *Ts]:
+    fn store_value[*Ts: ImmCallable](*args: *Ts) -> CallablePack[__origin_of(args._value), *Ts]:
         return rebind[CallablePack[__origin_of(args._value), *Ts]](CallablePack(args._value))
 
 
@@ -107,12 +91,12 @@ struct CallablePack[origin: Origin, *Ts: Callable](Copyable):
     ```
     """
 
-    alias _mlir_type = VariadicPack[origin, Callable, *Ts]._mlir_type
+    alias Storage = VariadicPack[origin, ImmCallable, *Ts]._mlir_type
 
-    var storage: Self._mlir_type
+    var storage: Self.Storage
 
     @implicit
-    fn __init__(out self, storage: Self._mlir_type):
+    fn __init__(out self, storage: Self.Storage):
         self.storage = storage
 
     fn __copyinit__(out self, other: Self):

@@ -2,19 +2,19 @@ from move.callable import (
     Callable,
     CallablePack,
     CallableDefaultable,
-    CallableMutable,
-    CallableMutableMovable,
+    ImmCallable,
+    CallableMovable,
 )
 from move.runners import series_runner
+from move.task_groups.parallel import ImmParallelTaskPair
 
 
 # Variadic Series
-struct SeriesTask[origin: Origin, *Ts: Callable](Callable):
-    alias _value_type = CallablePack[origin, *Ts]._mlir_type
+struct ImmSeriesTask[origin: Origin, *Ts: ImmCallable](ImmCallable):
     var callables: CallablePack[origin, *Ts]
 
     fn __init__(
-        out self: SeriesTask[__origin_of(args._value), *Ts], *args: *Ts
+        out self: ImmSeriesTask[__origin_of(args._value), *Ts], *args: *Ts
     ):
         self.callables = rebind[CallablePack[__origin_of(args._value), *Ts]](
             CallablePack(args._value)
@@ -25,9 +25,9 @@ struct SeriesTask[origin: Origin, *Ts: Callable](Callable):
 
 
 # Series Pair
-struct SeriesTaskPair[o1: Origin, o2: Origin, t1: Callable, t2: Callable](
-    Callable, Movable
-):
+struct ImmSeriesTaskPair[
+    o1: Origin, o2: Origin, t1: ImmCallable, t2: ImmCallable
+](ImmCallable, Movable):
     var v1: Pointer[t1, o1]
     var v2: Pointer[t2, o2]
 
@@ -42,12 +42,22 @@ struct SeriesTaskPair[o1: Origin, o2: Origin, t1: Callable, t2: Callable](
     fn __call__(self):
         series_runner(self.v1[], self.v2[])
 
+    fn __add__[
+        s: Origin, o: Origin, t: ImmCallable, //
+    ](ref [s]self, ref [o]other: t) -> ImmParallelTaskPair[s, o, Self, t]:
+        return ImmParallelTaskPair(self, other)
+
+    fn __rshift__[
+        s: Origin, o: Origin, t: ImmCallable, //
+    ](ref [s]self, ref [o]other: t) -> ImmSeriesTaskPair[s, o, Self, t]:
+        return ImmSeriesTaskPair(self, other)
+
 
 # Series Mutable Pair
-struct SeriesMutableOwnedTaskPair[
-    t1: CallableMutableMovable,
-    t2: CallableMutableMovable,
-](CallableMutableMovable):
+struct SeriesTaskPair[
+    t1: CallableMovable,
+    t2: CallableMovable,
+](CallableMovable):
     var v1: t1
     var v2: t2
 
@@ -66,23 +76,21 @@ struct SeriesMutableOwnedTaskPair[
         series_runner(self.v1, self.v2)
 
 
-# Parallel Mutable Collections
-struct SeriesMutableTask[origin: Origin[True], *types: CallableMutable](
-    CallableMutable
-):
-    var tasks: VariadicPack[origin, CallableMutable, *types]
+# Parallel Mutable Collections: (NOT WORKING)
+# struct SeriesTask[origin: Origin[True], *types: Callable](Callable):
+#     var tasks: VariadicPack[origin, Callable, *types]
 
-    fn __init__(
-        out self: SeriesMutableTask[
-            MutableOrigin.cast_from[__origin_of(args._value)].result, *types
-        ],
-        mut*args: *types,
-    ):
-        value = rebind[__type_of(self.tasks)._mlir_type](args._value)
-        self.tasks = VariadicPack(value, is_owned=False)
+#     fn __init__(
+#         out self: SeriesTask[
+#             MutableOrigin.cast_from[__origin_of(args._value)].result, *types
+#         ],
+#         mut*args: *types,
+#     ):
+#         value = rebind[__type_of(self.tasks)._mlir_type](args._value)
+#         self.tasks = VariadicPack(value, is_owned=False)
 
-    fn __call__(mut self):
-        series_runner(self.tasks)
+#     fn __call__(mut self):
+#         series_runner(self.tasks)
 
 
 struct SeriesDefaultTask[*Ts: CallableDefaultable](CallableDefaultable):

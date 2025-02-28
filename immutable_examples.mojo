@@ -36,44 +36,8 @@ struct MutTask[name: StringLiteral]:
 
 fn main():
     print("Hey! Running Immutable Examples...")
-    # Defaultables
-    from move.task.unit import DefaultTask as DT
-    from move.task_groups.series import SeriesDefaultTask as SD
-    from move.task_groups.parallel import ParallelDefaultTask as PD
-
-    alias Initialize = MyDefaultTask["Initialize"]
-    alias LoadData = MyDefaultTask["LoadData"]
-    alias FindMin = MyDefaultTask["FindMin"]
-    alias FindMax = MyDefaultTask["FindMax"]
-    alias FindMean = MyDefaultTask["FindMean"]
-    alias FindMedian = MyDefaultTask["FindMedian"]
-    alias MergeResults = MyDefaultTask["MergeResults"]
-
-    alias TypesGraph = SD[
-        Initialize,
-        LoadData,
-        PD[FindMin, FindMax, FindMean, FindMedian],
-        MergeResults,
-    ]
-    print("[TYPES GRAPH 1]...")
-    types_graph = TypesGraph()
-    types_graph()
-
-    # Airflow Syntax with structs Instanciated.
-
-    defaultables_graph = (
-        DT[Initialize]()
-        >> LoadData()
-        >> DT[FindMin]() + FindMax() + FindMean() + FindMedian()
-        >> MergeResults()
-    )
-    print("[TYPES GRAPH 2]...")
-    defaultables_graph()
-
-    # Run time values...
-    from move.task.unit import Task as T
-    from move.task_groups.series import SeriesTask as ST
-    from move.task_groups.parallel import ParallelTask as PT
+    from move.task_groups.series import ImmSeriesTask as IS
+    from move.task_groups.parallel import ImmParallelTask as IP
 
     init = MyTask["Initialize"]("Setting up...")
     load = MyTask["Load Data"]("Reading from some place...")
@@ -84,28 +48,30 @@ fn main():
     merge_results = MyTask["Merge Results"]("Getting all together...")
 
     # Using Type syntax
-    graph_1 = ST(
+    graph_1 = IS(
         init,
         load,
-        PT(find_min, find_max, find_mean, find_median),
+        IP(find_min, find_max, find_mean, find_median),
         merge_results,
     )
     print("[GRAPH 1]...")
     graph_1()
 
-    # # Airflow Syntax
+    # Airflow Syntax
+    from move.task.unit import ImmTask as IT
+
     graph_2 = (
-        T(init)
+        IT(init)
         >> load
-        >> T(find_min) + find_max + find_mean + find_median
+        >> IT(find_min) + find_max + find_mean + find_median
         >> merge_results
     )
     print("[GRAPH 2]...")
     graph_2()
 
-    # What about functions? Yes, but need to be wrapped in the Fn struct.
-    # Internally it will be converted to a Fn struct that implements __call__
-    from move.task.unit import Fn
+    # What about functions? Yes, those can be considered as ImmTasks.
+    # But, you need to wrap those function into a FnTask type.
+    # No arguments or captures are allowed, no returns. So it's not so useful.
 
     fn first_task():
         print("Initialize everything...")
@@ -123,13 +89,19 @@ fn main():
         print("Parallel 2...")
         sleep(0.5)
 
-    # Fn will make them callable since `fn() -> None` does not implements __call__(self)
+    # NOTE: You need to do it here, because we need to have an Origin to be able to
+    # use a reference to this functions. We can do it also by passing ownership, but I
+    # don't want to do it right now. It will require to duplicate a lot of functions and
+    # structs. But this is how I did for Mutable ones.
+
+    from move import FnTask as Fn
+
     ft = Fn(first_task)
     p1 = Fn(parallel1)
     p2 = Fn(parallel2)
     lt = Fn(last_task)
     print("[ Function Graph ]...")
-    fn_graph = T(ft) >> T(p1) + p2 >> lt
+    fn_graph = IT(ft) >> IT(p1) + p2 >> lt
     fn_graph()
 
     # Hey, but these things are not useful, because you cannot mutate anything.

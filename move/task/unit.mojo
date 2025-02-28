@@ -1,76 +1,41 @@
 from move.callable import (
     CallableMovable,
-    Callable,
+    ImmCallable,
     CallableDefaultable,
-    CallableMutable,
-    CallableMutableMovable,
+    Callable,
+    CallableMovable,
 )
 from move.task_groups.series import (
+    ImmSeriesTaskPair,
+    ImmSeriesTask,
     SeriesTaskPair,
     SeriesTask,
-    SeriesMutableOwnedTaskPair,
     SeriesDefaultTask,
 )
 from move.task_groups.parallel import (
+    ImmParallelTaskPair,
+    ImmParallelTask,
     ParallelTaskPair,
     ParallelTask,
-    ParallelMutableOwnedTaskPair,
     ParallelDefaultTask,
 )
 
 from utils.variant import Variant
 
 
-# Workaround for functions to be converted to a struct
-struct Fn(CallableMovable):
+struct FnTask(ImmCallable):
     var func: fn ()
 
-    @implicit
-    fn __init__(out self, ref func: fn ()):
+    fn __init__(out self, func: fn ()):
         self.func = func
-
-    fn __moveinit__(out self, owned other: Self):
-        self.func = other.func
 
     fn __call__(self):
         self.func()
 
 
-# # Unit Task. To add + and >> functionality to Callables.
-struct _OwnedTask[T: CallableMovable](CallableMovable):
-    """This Struct is only needed to avoid having `__add__` and `__rshift__`
-    in series/parallel implementation. Will be needed in Task and OwnedTask only.
-    """
+struct ImmTask[origin: Origin, T: ImmCallable](ImmCallable):
+    """Refers to a task that cannot be mutated."""
 
-    var inner: T
-
-    @implicit
-    fn __init__(out self, owned v: T):
-        self.inner = v^
-
-    fn __moveinit__(out self, owned other: Self):
-        self.inner = other.inner^
-
-    fn __call__(self):
-        self.inner()
-
-    fn __add__[
-        o: Origin, t: Callable, //
-    ](self, ref [o]other: t) -> _OwnedTask[
-        ParallelTaskPair[__origin_of(self.inner), o, T, t]
-    ]:
-        return _OwnedTask(ParallelTaskPair(self.inner, other))
-
-    fn __rshift__[
-        o: Origin, t: Callable, //
-    ](self, ref [o]other: t) -> _OwnedTask[
-        SeriesTaskPair[__origin_of(self.inner), o, T, t]
-    ]:
-        return _OwnedTask(SeriesTaskPair(self.inner, other))
-
-
-# TODO: Remove operations from here to ownedTask and rename it.
-struct Task[origin: Origin, T: Callable](CallableMovable):
     var inner: Pointer[T, origin]
 
     @implicit
@@ -84,18 +49,14 @@ struct Task[origin: Origin, T: Callable](CallableMovable):
         self.inner[]()
 
     fn __add__[
-        s: Origin, o: Origin, t: Callable, //
-    ](ref [s]self, ref [o]other: t) -> _OwnedTask[
-        ParallelTaskPair[origin, o, T, t]
-    ]:
-        return _OwnedTask(ParallelTaskPair(self.inner[], other))
+        s: Origin, o: Origin, t: ImmCallable, //
+    ](ref [s]self, ref [o]other: t) -> ImmParallelTaskPair[s, o, Self, t]:
+        return ImmParallelTaskPair(self, other)
 
     fn __rshift__[
-        s: Origin, o: Origin, t: Callable, //
-    ](ref [s]self, ref [o]other: t) -> _OwnedTask[
-        SeriesTaskPair[origin, o, T, t]
-    ]:
-        return _OwnedTask(SeriesTaskPair(self.inner[], other))
+        s: Origin, o: Origin, t: ImmCallable, //
+    ](ref [s]self, ref [o]other: t) -> ImmSeriesTaskPair[s, o, Self, t]:
+        return ImmSeriesTaskPair(self, other)
 
 
 struct DefaultTask[T: CallableDefaultable](CallableDefaultable):
@@ -120,9 +81,7 @@ struct DefaultTask[T: CallableDefaultable](CallableDefaultable):
         return DefaultTask[SeriesDefaultTask[Self.T, t]]()
 
 
-struct MutableTask[
-    T: CallableMutableMovable,
-](CallableMutable, Movable):
+struct Task[T: CallableMovable](CallableMovable):
     var inner: T
 
     @implicit
@@ -133,9 +92,9 @@ struct MutableTask[
     @implicit
     @always_inline("nodebug")
     fn __init__[
-        o: Origin[True], t: CallableMutable
-    ](out self: MutableTask[MutableTaskRef[o, t]], ref [o]v: t):
-        self.inner = MutableTaskRef(v)
+        o: Origin[True], t: Callable
+    ](out self: Task[TaskRef[o, t]], ref [o]v: t):
+        self.inner = TaskRef(v)
 
     @always_inline("nodebug")
     fn __moveinit__(out self, owned other: Self):
@@ -147,41 +106,33 @@ struct MutableTask[
 
     @always_inline("nodebug")
     fn __add__[
-        o: Origin[True], t: CallableMutable, //
-    ](owned self, ref [o]other: t) -> MutableTask[
-        ParallelMutableOwnedTaskPair[Self, MutableTaskRef[o, t]]
+        o: Origin[True], t: Callable, //
+    ](owned self, ref [o]other: t) -> Task[
+        ParallelTaskPair[Self, TaskRef[o, t]]
     ]:
-        return ParallelMutableOwnedTaskPair(self^, MutableTaskRef(other))
+        return ParallelTaskPair(self^, TaskRef(other))
 
     @always_inline("nodebug")
     fn __add__[
-        t: CallableMutableMovable, //
-    ](owned self, owned other: t) -> MutableTask[
-        ParallelMutableOwnedTaskPair[Self, t]
-    ]:
-        return ParallelMutableOwnedTaskPair(self^, other^)
+        t: CallableMovable, //
+    ](owned self, owned other: t) -> Task[ParallelTaskPair[Self, t]]:
+        return ParallelTaskPair(self^, other^)
 
     @always_inline("nodebug")
     fn __rshift__[
-        o: Origin[True], t: CallableMutable, //
-    ](owned self, ref [o]other: t) -> MutableTask[
-        SeriesMutableOwnedTaskPair[Self, MutableTaskRef[o, t]]
-    ]:
-        return SeriesMutableOwnedTaskPair(self^, MutableTaskRef(other))
+        o: Origin[True], t: Callable, //
+    ](owned self, ref [o]other: t) -> Task[SeriesTaskPair[Self, TaskRef[o, t]]]:
+        return SeriesTaskPair(self^, TaskRef(other))
 
     @always_inline("nodebug")
     fn __rshift__[
-        t: CallableMutableMovable, //
-    ](owned self, owned other: t) -> MutableTask[
-        SeriesMutableOwnedTaskPair[Self, t]
-    ]:
-        return SeriesMutableOwnedTaskPair(self^, other^)
+        t: CallableMovable, //
+    ](owned self, owned other: t) -> Task[SeriesTaskPair[Self, t]]:
+        return SeriesTaskPair(self^, other^)
 
 
 @register_passable("trivial")
-struct MutableTaskRef[origin: Origin[True], T: CallableMutable](
-    CallableMutable, Movable
-):
+struct TaskRef[origin: Origin[True], T: Callable](CallableMovable):
     """A reference to a Mutable Task with `Operation` capabilities.
 
     There is a known issue. When doing expressions, the Left hand side needs to be
@@ -194,9 +145,6 @@ struct MutableTaskRef[origin: Origin[True], T: CallableMutable](
     @always_inline("nodebug")
     fn __init__(out self, ref [origin]inner: T):
         self.inner = Pointer.address_of(inner)
-
-    # fn __moveinit__(out self, owned other: Self):
-    #     self.inner = other.inner
 
     @always_inline("nodebug")
     fn __call__(mut self):
