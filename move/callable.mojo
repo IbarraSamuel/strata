@@ -1,3 +1,6 @@
+from move.message import Message
+
+
 trait ImmCallable:
     """The struct should contain a fn __call__ method.
 
@@ -58,8 +61,27 @@ trait CallableDefaultable(ImmCallable, Defaultable):
     ...
 
 
-struct CallablePack[origin: Origin, *Ts: ImmCallable](Copyable):
-    """Stores a reference variadic pack of `Callable` structs.
+trait ImmCallableWithMessage:
+    """A `ImmCallable` with a Message to pass to the next task.
+
+    ```mojo
+    from move.message import Message
+
+    trait ImmCallableWithMessage:
+        fn __call__(self, msg: Message) -> Message:
+            ...
+    ```
+    """
+
+    fn __call__(self, owned msg: Message) -> Message:
+        ...
+
+
+struct GenericCallablePack[origin: Origin, tr: __type_of(AnyType), *Ts: tr](
+    Copyable
+):
+    # struct CallablePack[origin: Origin, *Ts: ImmCallable](Copyable):
+    """Stores a reference variadic pack of (read only) `Callable` structs.
 
     The storage it's just the `VariadicPack` inner _value.
 
@@ -68,7 +90,7 @@ struct CallablePack[origin: Origin, *Ts: ImmCallable](Copyable):
     hack to point to the _value lifetime instead of the args lifetime.
 
     ```mojo
-    from move.callable import CallablePack, ImmCallable
+    from move.callable import GenericCallablePack, ImmCallable
 
     struct MyTask(ImmCallable):
         fn __init__(out self):
@@ -78,8 +100,8 @@ struct CallablePack[origin: Origin, *Ts: ImmCallable](Copyable):
             print("Running my call...")
 
     # hack to point to the _value lifetime instead of the args lifetime.
-    fn store_value[*Ts: ImmCallable](*args: *Ts) -> CallablePack[__origin_of(args._value), *Ts]:
-        return rebind[CallablePack[__origin_of(args._value), *Ts]](CallablePack(args._value))
+    fn store_value[*Ts: ImmCallable](*args: *Ts) -> GenericCallablePack[__origin_of(args._value), ImmCallable, *Ts]:
+        return rebind[GenericCallablePack[__origin_of(args._value), ImmCallable, *Ts]](GenericCallablePack(args._value))
 
 
     task = MyTask()
@@ -91,7 +113,7 @@ struct CallablePack[origin: Origin, *Ts: ImmCallable](Copyable):
     ```
     """
 
-    alias Storage = VariadicPack[origin, ImmCallable, *Ts]._mlir_type
+    alias Storage = VariadicPack[origin, tr, *Ts]._mlir_type
 
     var storage: Self.Storage
 
@@ -105,3 +127,7 @@ struct CallablePack[origin: Origin, *Ts: ImmCallable](Copyable):
     fn __getitem__[i: Int](self) -> ref [origin] Ts[i.value]:
         value = __mlir_op.`lit.ref.pack.extract`[index = i.value](self.storage)
         return __get_litref_as_mvalue(value)
+
+
+alias CallablePack = GenericCallablePack[tr=ImmCallable]
+alias CallableMsgPack = GenericCallablePack[tr=ImmCallableWithMessage]

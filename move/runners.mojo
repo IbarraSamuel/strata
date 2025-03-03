@@ -1,11 +1,16 @@
 from move.callable import (
     CallablePack,
+    CallableMsgPack,
     ImmCallable,
     CallableDefaultable,
     Callable,
+    ImmCallableWithMessage,
 )
 from algorithm import sync_parallelize
 
+# For msg
+from move.message import Message
+from memory import ArcPointer
 
 # Execute tasks in series
 
@@ -179,3 +184,51 @@ fn parallel_runner[
                 callables[ti]()
 
     sync_parallelize[exec](size)
+
+
+# ----------------- MESSAGE RUNNERS --------------------
+
+
+fn parallel_msg_runner[
+    *C: ImmCallableWithMessage
+](owned msg: Message, *callables: *C) -> Message:
+    cmp = CallableMsgPack(callables._value)
+    return parallel_msg_runner(msg, cmp)
+
+
+fn parallel_msg_runner[
+    o: Origin, *C: ImmCallableWithMessage
+](owned msg: Message, callables: CallableMsgPack[o, *C]) -> Message:
+    alias size = len(VariadicList(C))
+    m = ArcPointer(msg.copy())
+
+    @parameter
+    fn append_msg(i: Int):
+        @parameter
+        for ti in range(size):
+            if ti == i:
+                new_msg = callables[ti](msg)
+                m[].update(new_msg)
+
+    return msg
+
+
+fn series_msg_runner[
+    *C: ImmCallableWithMessage
+](owned msg: Message, *callables: *C) -> Message:
+    cmp = CallableMsgPack(callables._value)
+    return series_msg_runner(msg, cmp)
+
+
+fn series_msg_runner[
+    o: Origin, *C: ImmCallableWithMessage
+](owned msg: Message, callables: CallableMsgPack[o, *C]) -> Message:
+    alias size = len(VariadicList(C))
+    msg_copy = msg.copy()
+
+    @parameter
+    for i in range(size):
+        new_msg = callables[i](msg_copy)
+        msg.update(new_msg)
+
+    return msg
