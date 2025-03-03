@@ -90,30 +90,46 @@ fn main() raises:
     value = str_to_int(result_msg["final"])
     print("final value is:", value)
 
-    # Functions (NOT YET)
+    # Functions
 
-    # fn first_task(msg: Message) -> Message:
-    #     print("Initialize everything...")
-    #     sleep(0.5)
+    fn first_task(owned msg: Message) -> Message:
+        print("Running [First Task]:", msg.__str__())
+        msg["init"] = String(12)
+        return msg
 
-    # fn last_task(msg: Message) -> Message:
-    #     print("Finalize everything...")
-    #     sleep(0.5)
+    fn last_task(owned msg: Message) -> Message:
+        print("Running [Last Task]...")
+        cal1 = str_to_int(msg.pop("calc1", "0"))
+        cal2 = str_to_int(msg.pop("calc2", "0"))
+        f = cal1 * cal2 + cal2
+        msg["final"] = String(f)
+        print("Finalized with Message:", msg.__str__())
+        return msg
 
-    # fn parallel1(msg: Message) -> Message:
-    #     print("Parallel 1...")
-    #     sleep(0.5)
+    fn parallel1(owned msg: Message) -> Message:
+        i = msg.pop("init", "0")
+        no = str_to_int(i)
+        no += 1
+        msg["calc1"] = String(no)
+        return msg
 
-    # fn parallel2(msg: Message) -> Message:
-    #     print("Parallel 2...")
-    #     sleep(0.5)
+    fn parallel2(owned msg: Message) -> Message:
+        i = msg.pop("init", "0")
+        no = str_to_int(i)
+        no *= 10
+        msg["calc2"] = String(no)
+        return msg
 
-    # from move.task.immutable import FnTask as Fn
+    from move.task.immutable import MsgFnTask as Fn
 
-    # ft = Fn(first_task)
-    # p1 = Fn(parallel1)
-    # p2 = Fn(parallel2)
-    # lt = Fn(last_task)
-    # print("[ Function Graph ]...")
-    # fn_graph = IT(ft) >> IT(p1) + p2 >> lt
-    # fn_graph()
+    ft = Fn(first_task)
+    p1 = Fn(parallel1)
+    p2 = Fn(parallel2)
+    lt = Fn(last_task)
+    print("[ Function Graph ]...")
+    fn_graph = T(ft) >> T(p1) + p2 >> lt
+
+    initial_msg = Message()
+    res = fn_graph(initial_msg)
+    val = str_to_int(res["final"])
+    print("Functional last value is:", val)

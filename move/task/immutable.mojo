@@ -52,6 +52,16 @@ struct ImmTask[origin: Origin, T: ImmCallable](ImmCallable):
         return ImmSeriesTaskPair(self, other)
 
 
+struct MsgFnTask(ImmCallableWithMessage):
+    var func: fn (owned Message) -> Message
+
+    fn __init__(out self, func: fn (owned Message) -> Message):
+        self.func = func
+
+    fn __call__(self, owned message: Message) -> Message:
+        return self.func(message^)
+
+
 struct ImmMessageTask[origin: Origin, T: ImmCallableWithMessage](
     ImmCallableWithMessage
 ):
