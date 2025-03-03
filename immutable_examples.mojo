@@ -35,7 +35,7 @@ struct MutTask[name: StringLiteral]:
 
 
 fn main():
-    print("Hey! Running Immutable Examples...")
+    print("\n\nHey! Running Immutable Examples...")
     from move.task_groups.series import ImmSeriesTask as IS
     from move.task_groups.parallel import ImmParallelTask as IP
 

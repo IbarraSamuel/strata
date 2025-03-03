@@ -16,7 +16,7 @@ struct MyTask[name: StringLiteral]:
 
 
 fn main():
-    print("Hey! Running Mutable Examples...")
+    print("\n\nHey! Running Mutable Examples...")
 
     initial = MyTask["Initial"](0)
     group1_1 = MyTask["Group 1 First"](10)
