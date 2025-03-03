@@ -199,17 +199,19 @@ fn parallel_msg_runner[
 fn parallel_msg_runner[
     o: Origin, *C: ImmCallableWithMessage
 ](owned msg: Message, callables: CallableMsgPack[o, *C]) -> Message:
+    """In parallel, you cannot modify the Message, only append values."""
     alias size = len(VariadicList(C))
-    m = ArcPointer(msg.copy())
+    inp = msg.copy()
 
     @parameter
     fn append_msg(i: Int):
         @parameter
         for ti in range(size):
             if ti == i:
-                new_msg = callables[ti](msg)
-                m[].update(new_msg)
+                new_msg = callables[ti](inp)
+                msg.update(new_msg)
 
+    sync_parallelize[append_msg](size)
     return msg
 
 
@@ -224,11 +226,9 @@ fn series_msg_runner[
     o: Origin, *C: ImmCallableWithMessage
 ](owned msg: Message, callables: CallableMsgPack[o, *C]) -> Message:
     alias size = len(VariadicList(C))
-    msg_copy = msg.copy()
 
     @parameter
     for i in range(size):
-        new_msg = callables[i](msg_copy)
-        msg.update(new_msg)
+        msg = callables[i](msg^)
 
     return msg

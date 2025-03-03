@@ -10,8 +10,8 @@ fn str_to_int(str: String) -> Int:
     size = len(str)
 
     v = 0
-    for i in range(0, size, -1):
-        v += (10**i) * (ord(str[i]) - ord0)
+    for i in range(size):
+        v += (10 ** (size - i - 1)) * (ord(str[i]) - ord0)
 
     return Int(v)
 
@@ -21,7 +21,7 @@ struct Init(ImmCallableWithMessage):
     var count: Int
 
     fn __call__(self, owned msg: Message) -> Message:
-        print("Running [INIT]:", msg.__str__())
+        print("Running [Init]:", msg.__str__())
 
         msg["init"] = String(self.count)
         return msg
@@ -30,7 +30,7 @@ struct Init(ImmCallableWithMessage):
 @value
 struct Par1(ImmCallableWithMessage):
     fn __call__(self, owned msg: Message) -> Message:
-        print("Running par1")
+        print("Running [par1]...", msg.__str__())
         init = msg.pop("init", "0")
         no = str_to_int(init)
 
@@ -42,7 +42,7 @@ struct Par1(ImmCallableWithMessage):
 @value
 struct Par2(ImmCallableWithMessage):
     fn __call__(self, owned msg: Message) -> Message:
-        print("Running par2")
+        print("Running [par2]...", msg.__str__())
         init = msg.pop("init", "0")
         no = str_to_int(init)
 
@@ -54,12 +54,13 @@ struct Par2(ImmCallableWithMessage):
 @value
 struct Final(ImmCallableWithMessage):
     fn __call__(self, owned msg: Message) -> Message:
-        print("Finalizing")
+        print("Running [Final]", msg.__str__())
         calc1 = str_to_int(msg.pop("calc1", "0"))
         calc2 = str_to_int(msg.pop("calc2", "0"))
         final = calc1 * calc2 + calc2
 
         msg["final"] = String(final)
+        print("Finalized with Message:", msg.__str__())
         return msg
 
 
