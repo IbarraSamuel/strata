@@ -8,6 +8,18 @@ trait ImmCallable:
     trait ImmCallable:
         fn __call__(self):
             ...
+
+    struct MyStruct(ImmCallable):
+        fn __init__(out self):
+            pass
+
+        fn __call__(self):
+            print("calling...")
+
+    inst = MyStruct()
+
+    # Calling the instance.
+    inst()
     ```
     """
 
@@ -22,6 +34,18 @@ trait Callable:
     trait Callable:
         fn __call__(mut self):
             ...
+
+    struct MyStruct(Callable):
+        fn __init__(out self):
+            pass
+
+        fn __call__(mut self):
+            print("calling...")
+
+    inst = MyStruct()
+
+    # Calling the instance.
+    inst()
     ```
     """
 
@@ -33,12 +57,28 @@ trait CallableMovable(Callable, Movable):
     """A `Callable` + `Movable`.
 
     ```mojo
-    trait CallableMutableMovable:
+    trait CallableMovable:
         fn __moveinit__(out self, owned existing: Self):
             ...
 
         fn __call__(mut self):
             ...
+
+    struct MyStruct(CallableMovable):
+        fn __init__(out self):
+            pass
+
+        fn __moveinit__(out self, owned existing: Self):
+            pass
+
+        fn __call__(mut self):
+            print("calling...")
+
+    inst = MyStruct()
+
+    # Calling the instance.
+    # moved = inst^
+    inst()
     ```
     """
 
@@ -55,6 +95,18 @@ trait CallableDefaultable(ImmCallable, Defaultable):
 
         fn __call__(self):
             ...
+
+    struct MyStruct(CallableDefaultable):
+        fn __init__(out self):
+            pass
+
+        fn __call__(self):
+            print("calling...")
+
+    default = MyStruct()
+
+    # Calling the instance.
+    default()
     ```
     """
 
@@ -68,8 +120,26 @@ trait ImmCallableWithMessage:
     from move.message import Message
 
     trait ImmCallableWithMessage:
-        fn __call__(self, msg: Message) -> Message:
+        fn __call__(self, owned msg: Message) -> Message:
             ...
+
+    struct MyStruct(ImmCallableWithMessage):
+        fn __init__(out self):
+            pass
+
+        fn __call__(self, owned msg: Message) -> Message:
+            nm = msg.get("name").value()
+            msg["greet"] = String("Hello, ", nm, "!")
+            return msg
+
+    tsk = MyStruct()
+
+    # Calling the instance.
+    msg = Message()
+    msg["name"] = "Samuel"
+    res = tsk(msg)
+    print(res["greet"])
+
     ```
     """
 
