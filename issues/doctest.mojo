@@ -24,7 +24,7 @@ struct Bar:
         fn __moveinit__(out self, owned o: Self): pass
 
     a = Baz()
-    b = a^ # This triggers the error.
+    # b = a^ # This triggers the error.
     ```
     """
 

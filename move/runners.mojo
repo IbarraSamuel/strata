@@ -18,6 +18,9 @@ from memory import ArcPointer
 fn series_runner[*Ts: CallableDefaultable]():
     """Run Runnable structs in sequence.
 
+    Parameters:
+        Ts: Variadic `CallableDefaltable` types.
+
     ```mojo
     from move.runners import series_runner
     from time import perf_counter_ns, sleep
