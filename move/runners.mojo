@@ -1,17 +1,25 @@
 from move.callable import (
     CallablePack,
+    CallableMsgPack,
     ImmCallable,
     CallableDefaultable,
     Callable,
+    ImmCallableWithMessage,
 )
 from algorithm import sync_parallelize
 
+# For msg
+from move.message import Message
+from memory import ArcPointer
 
 # Execute tasks in series
 
 
 fn series_runner[*Ts: CallableDefaultable]():
     """Run Runnable structs in sequence.
+
+    Parameters:
+        Ts: Variadic `CallableDefaltable` types.
 
     ```mojo
     from move.runners import series_runner
@@ -179,3 +187,51 @@ fn parallel_runner[
                 callables[ti]()
 
     sync_parallelize[exec](size)
+
+
+# ----------------- MESSAGE RUNNERS --------------------
+
+
+fn parallel_msg_runner[
+    *C: ImmCallableWithMessage
+](owned msg: Message, *callables: *C) -> Message:
+    cmp = CallableMsgPack(callables._value)
+    return parallel_msg_runner(msg, cmp)
+
+
+fn parallel_msg_runner[
+    o: Origin, *C: ImmCallableWithMessage
+](owned msg: Message, callables: CallableMsgPack[o, *C]) -> Message:
+    """In parallel, you cannot modify the Message, only append values."""
+    alias size = len(VariadicList(C))
+    inp = msg.copy()
+
+    @parameter
+    fn append_msg(i: Int):
+        @parameter
+        for ti in range(size):
+            if ti == i:
+                new_msg = callables[ti](inp)
+                msg.update(new_msg)
+
+    sync_parallelize[append_msg](size)
+    return msg
+
+
+fn series_msg_runner[
+    *C: ImmCallableWithMessage
+](owned msg: Message, *callables: *C) -> Message:
+    cmp = CallableMsgPack(callables._value)
+    return series_msg_runner(msg, cmp)
+
+
+fn series_msg_runner[
+    o: Origin, *C: ImmCallableWithMessage
+](owned msg: Message, callables: CallableMsgPack[o, *C]) -> Message:
+    alias size = len(VariadicList(C))
+
+    @parameter
+    for i in range(size):
+        msg = callables[i](msg^)
+
+    return msg

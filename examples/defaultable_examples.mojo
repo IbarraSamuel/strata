@@ -13,8 +13,8 @@ struct MyDefaultTask[name: StringLiteral]:
 fn main():
     print("\n\nHey! Running Defaultable Examples...")
     # Defaultables
-    from move.task_groups.series import SeriesDefaultTask as SD
-    from move.task_groups.parallel import ParallelDefaultTask as PD
+    from move.task_groups.series.immutable import SeriesDefaultTask as SD
+    from move.task_groups.parallel.immutable import ParallelDefaultTask as PD
 
     alias Initialize = MyDefaultTask["Initialize"]
     alias LoadData = MyDefaultTask["LoadData"]
@@ -35,7 +35,7 @@ fn main():
     types_graph()
 
     # Airflow Syntax with structs Instanciated.
-    from move.task.unit import DefaultTask as DT
+    from move.task.immutable import DefaultTask as DT
 
     defaultables_graph = (
         DT[Initialize]()

@@ -47,7 +47,7 @@ fn main():
 
     # Airflow Syntax. We solve all these problems.
     # You can just wrap the initial struct with a MutableTask and do operations.
-    from move import Task as T
+    from move.task.mutable import Task as T
 
     mutable_graph = (
         T(initial)

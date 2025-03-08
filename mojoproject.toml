@@ -7,10 +7,11 @@ platforms = ["linux-64", "osx-arm64"]
 version = "0.2.0"
 
 [tasks]
-examples = { depends-on = ["defaultable_examples", "immutable_examples", "mutable_examples"] }
-mutable_examples = "mojo mutable_examples.mojo"
-immutable_examples = "mojo immutable_examples.mojo"
-defaultable_examples = "mojo defaultable_examples.mojo"
+examples = { depends-on = ["defaultable_examples", "immutable_examples", "message_examples", "mutable_examples"] }
+mutable_examples = "mojo examples/mutable_examples.mojo"
+immutable_examples = "mojo examples/immutable_examples.mojo"
+defaultable_examples = "mojo examples/defaultable_examples.mojo"
+message_examples = "mojo examples/message_examples.mojo"
 test = "mojo test"
 
 [dependencies]

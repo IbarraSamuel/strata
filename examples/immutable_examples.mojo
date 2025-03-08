@@ -35,9 +35,9 @@ struct MutTask[name: StringLiteral]:
 
 
 fn main():
-    print("\n\nHey! Running Immutable Examples...")
-    from move.task_groups.series import ImmSeriesTask as IS
-    from move.task_groups.parallel import ImmParallelTask as IP
+    print("Hey! Running Immutable Examples...")
+    from move.task_groups.series.immutable import ImmSeriesTask as IS
+    from move.task_groups.parallel.immutable import ImmParallelTask as IP
 
     init = MyTask["Initialize"]("Setting up...")
     load = MyTask["Load Data"]("Reading from some place...")
@@ -58,7 +58,7 @@ fn main():
     graph_1()
 
     # Airflow Syntax
-    from move.task.unit import ImmTask as IT
+    from move.task.immutable import ImmTask as IT
 
     graph_2 = (
         IT(init)
@@ -94,7 +94,7 @@ fn main():
     # don't want to do it right now. It will require to duplicate a lot of functions and
     # structs. But this is how I did for Mutable ones.
 
-    from move import FnTask as Fn
+    from move.task.immutable import FnTask as Fn
 
     ft = Fn(first_task)
     p1 = Fn(parallel1)
