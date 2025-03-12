@@ -11,7 +11,7 @@ struct MyDefaultTask[name: StringLiteral]:
 
 
 fn main():
-    print("Hey! Running Defaultable Examples...")
+    print("\n\nHey! Running Defaultable Examples...")
     # Defaultables
     from move.task_groups.series.immutable import SeriesDefaultTask as SD
     from move.task_groups.parallel.immutable import ParallelDefaultTask as PD

@@ -16,9 +16,11 @@ fn str_to_int(str: String) -> Int:
     return Int(v)
 
 
-@value
 struct Init(ImmCallableWithMessage):
     var count: Int
+
+    fn __init__(out self, count: Int):
+        self.count = count
 
     fn __call__(self, owned msg: Message) -> Message:
         print("Running [Init]:", msg.__str__())
@@ -27,8 +29,10 @@ struct Init(ImmCallableWithMessage):
         return msg
 
 
-@value
 struct Par1(ImmCallableWithMessage):
+    fn __init__(out self):
+        pass
+
     fn __call__(self, owned msg: Message) -> Message:
         print("Running [par1]...", msg.__str__())
         init = msg.pop("init", "0")
@@ -41,6 +45,9 @@ struct Par1(ImmCallableWithMessage):
 
 @value
 struct Par2(ImmCallableWithMessage):
+    fn __init__(out self):
+        pass
+
     fn __call__(self, owned msg: Message) -> Message:
         print("Running [par2]...", msg.__str__())
         init = msg.pop("init", "0")
@@ -51,8 +58,10 @@ struct Par2(ImmCallableWithMessage):
         return msg
 
 
-@value
 struct Final(ImmCallableWithMessage):
+    fn __init__(out self):
+        pass
+
     fn __call__(self, owned msg: Message) -> Message:
         print("Running [Final]", msg.__str__())
         calc1 = str_to_int(msg.pop("calc1", "0"))
@@ -65,7 +74,7 @@ struct Final(ImmCallableWithMessage):
 
 
 fn main() raises:
-    print("Hey! Running Message Examples...")
+    print("\n\nHey! Running Message Examples...")
     from move.task_groups.series.immutable import ImmSeriesMsgTask as S
     from move.task_groups.parallel.immutable import ImmParallelMsgTask as P
 
