@@ -17,12 +17,23 @@ from move.message import Message
 
 
 struct FnTask(ImmCallable):
+    """This function takes any function with a signature: `fn() -> None`
+    and hold it to later call it using `__call__()`.
+    """
+
     var func: fn ()
+    """Pointer to the function to call."""
 
     fn __init__(out self, func: fn ()):
+        """Takes a `fn() -> None` and wrap it.
+
+        Args:
+            func: The function to be wraped.
+        """
         self.func = func
 
     fn __call__(self):
+        """Call the inner function."""
         self.func()
 
 
@@ -30,20 +41,33 @@ struct ImmTask[origin: Origin, T: ImmCallable](ImmCallable):
     """Refers to a task that cannot be mutated."""
 
     var inner: Pointer[T, origin]
+    """The immutable task wrapped."""
 
     @implicit
     fn __init__(out self, ref [origin]inner: T):
+        """Create a wrapper to a ImmutableTask using a pointer.
+
+        Args:
+            inner: The ImmutableTask to be wrapped.
+        """
         self.inner = Pointer.address_of(inner)
 
     fn __moveinit__(out self, owned other: Self):
+        """Move the pointer.
+
+        Args:
+            other: The value to move the pointer from.
+        """
         self.inner = other.inner
 
     fn __call__(self):
+        """Invoke the inner value of the ImmutableTask."""
         self.inner[]()
 
     fn __add__[
         s: Origin, o: Origin, t: ImmCallable, //
     ](ref [s]self, ref [o]other: t) -> ImmParallelTaskPair[s, o, Self, t]:
+        """Concatenate Two Tasks to be executed in parallel."""
         return ImmParallelTaskPair(self, other)
 
     fn __rshift__[
