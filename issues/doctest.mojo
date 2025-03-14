@@ -29,3 +29,24 @@ struct Bar:
     """
 
     pass
+
+
+struct SyncPar:
+    """Sync Parallelize didn't work on doctests.
+
+    ```mojo
+    from time import sleep
+    from algorithm import sync_parallelize, parallelize
+    from testing import assert_true
+
+    fn do_par(i: Int) capturing:
+        print("Running iteration", i)
+        sleep(0.1)
+        print("finish iteration", i)
+
+    sync_parallelize[do_par](4)
+
+    assert_true(False)
+
+    ```
+    """
