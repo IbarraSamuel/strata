@@ -19,6 +19,11 @@ from move.message import Message
 struct ImmSeriesTask[origin: Origin, *Ts: ImmCallable](ImmCallable):
     """Collection of immutable tasks to run in Series.
 
+    Parameters:
+        is_mutable: Wether if the origin of `VariadicPack` is mutable or not.
+        origin: The origin of the `VariadicPack` values.
+        Ts: ImmutableCallable types that conforms to `ImmCallable`.
+
     ```mojo
     from move.task_groups.series.immutable import ImmSeriesTask
 
@@ -64,6 +69,13 @@ struct ImmSeriesTaskPair[
     o1: Origin, o2: Origin, t1: ImmCallable, t2: ImmCallable
 ](ImmCallable, Movable):
     """Collects a pair of immutable tasks pointers.
+
+    Parameters:
+        is_mutable: Wether if the origin is mutable or not.
+        o1: Origin for the first type.
+        o2: Origin for the second type.
+        t1: Type that conforms to `ImmCallable`.
+        t2: Type that conforms to `ImmCallable`.
 
     ```mojo
     from move.task_groups.series.immutable import ImmSeriesTaskPair
@@ -119,8 +131,16 @@ struct ImmSeriesTaskPair[
         This task will keep the internal order, but meanwhile the current one is running,
         the other one could run too.
 
+        Parameters:
+            s: Origin of self.
+            o: Origin of the other type.
+            t: Type that conforms to `ImmCallable`.
+
         Args:
             other: The task to be executed at the same time than this group.
+
+        Returns:
+            A pair of references to self, and other task, to be ran on parallel.
         """
         return ImmParallelTaskPair(self, other)
 
@@ -130,8 +150,16 @@ struct ImmSeriesTaskPair[
         """Add another task to be executed after these two.
         It's like appending another task to a list of ordered tasks.
 
+        Parameters:
+            s: Origin of self.
+            o: Origin of the other type.
+            t: Type that conforms to `ImmCallable`.
+
         Args:
             other: The task to be executed after this pair.
+
+        Returns:
+            A pair of references to self, and other task, to be ran on sequence.
         """
         return ImmSeriesTaskPair(self, other)
 
@@ -141,6 +169,11 @@ struct ImmSeriesMsgTask[origin: Origin, *Ts: ImmCallableWithMessage](
     ImmCallableWithMessage
 ):
     """Immutable tasks that will use a message in, message out.
+
+    Parameters:
+        is_mutable: Wether if the origin of `VariadicPack` is mutable or not.
+        origin: The origin of the `VariadicPack` values.
+        Ts: ImmutableCallableWithMessage types that conforms to `ImmCallableWithMessage`.
 
     ```mojo
     from move.task_groups.series.immutable import ImmSeriesMsgTask
@@ -206,6 +239,13 @@ struct ImmSeriesMsgTaskPair[
 ](ImmCallableWithMessage):
     """A pair of Message Immutalbe Tasks.
 
+    Parameters:
+        is_mutable: Wether if the origin is mutable.
+        o1: Origin for the first type.
+        o2: Origin for the second type.
+        t1: First type that conforms to `ImmCallableWithMessage`.
+        t2: Second type that conforms to `ImmCallableWithMessage`.
+
     ```mojo
     from move.task_groups.series.immutable import ImmSeriesMsgTaskPair
     from move.message import Message
@@ -262,8 +302,16 @@ struct ImmSeriesMsgTaskPair[
         This task will keep the internal order, but meanwhile the current one is running,
         the other one could run too.
 
+        Parameters:
+            s: Origin of self.
+            o: Origin of the other type.
+            t: Type that conforms to `ImmCallableWithMessage`.
+
         Args:
             other: The task to be executed at the same time than this group.
+
+        Returns:
+            A pair of references to self, and other task, to be ran on parallel.
         """
         return ImmParallelMsgTaskPair(self, other)
 
@@ -273,14 +321,25 @@ struct ImmSeriesMsgTaskPair[
         """Add another task to be executed after these two.
         It's like appending another task to a list of ordered tasks.
 
+        Parameters:
+            s: Origin of self.
+            o: Origin of the other type.
+            t: Type that conforms to `ImmCallableWithMessage`.
+
         Args:
             other: The task to be executed after this pair.
+
+        Returns:
+            A pair of references to self, and other task, to be ran on sequence.
         """
         return ImmSeriesMsgTaskPair(self, other)
 
 
 struct SeriesDefaultTask[*Ts: CallableDefaultable](CallableDefaultable):
     """Refers to a task that can be instanciated in the future, because it's defaultable.
+
+    Parameters:
+        Ts: Types that conforms to `CallableDefaultable`.
 
     ```mojo
     from move.task_groups.series.immutable import SeriesDefaultTask
@@ -315,5 +374,5 @@ struct SeriesDefaultTask[*Ts: CallableDefaultable](CallableDefaultable):
         pass
 
     fn __call__(self):
-        """Call the tasks based on the types."""
+        """Call the tasks based on the types on a sequence order."""
         series_runner[*Ts]()
