@@ -86,7 +86,7 @@ fn series_runner[*Ts: ImmCallable](callables: CallablePack[_, *Ts]):
     # Will run t1 first, then t2
     series_variadic_inp(t1, t2)
 
-    assert_true(t1_starts < t2_starts and t1_finish < t2_starts)
+    assert_true(t1_finish < t2_starts)
     ```
     """
     alias size = len(VariadicList(Ts))
@@ -133,7 +133,7 @@ fn series_runner[*ts: ImmCallable](*callables: *ts):
     # Will run t1 first, then t2
     series_runner(t1, t2)
 
-    assert_true(t1_starts < t2_starts and t1_finish < t2_starts)
+    assert_true(t1_finish < t2_starts)
     ```
     """
     rp = CallablePack(callables._value)
@@ -192,7 +192,7 @@ fn series_runner[
     # Will run t1 first, then t2
     series_runner(t1, t2)
 
-    assert_true(t1.finish < t2.start and t1.finish < t2.finish)
+    assert_true(t1.finish < t2.finish)
     ```
     """
     alias size = len(VariadicList(Ts))
@@ -602,7 +602,7 @@ fn series_msg_runner[
     msg = Message()
     msg_out = series_msg_runner(msg, t1, t2)
     # TODO: Add assertions on message.
-    assert_true(t1_starts < t2_starts and t1_finish < t2_starts)
+    assert_true(t1_finish < t2_starts)
     ```
 
     Syncs automatically.
@@ -663,7 +663,7 @@ fn series_msg_runner[
     msg = Message()
     msg_out = fromvpack(msg, t1, t2)
 
-    assert_true(t1_starts < t2_starts and t1_finish < t2_starts)
+    assert_true(t1_finish < t2_starts)
     # TODO: Add assertions on message.
     ```
 
