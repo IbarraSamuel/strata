@@ -130,7 +130,7 @@ trait ImmCallableWithMessage:
             pass
 
         fn __call__(self, owned msg: Message) -> Message:
-            nm = msg.get("name").value()
+            nm = msg.get("name", "Bob")
             msg["greet"] = String("Hello, ", nm, "!")
             return msg
 
