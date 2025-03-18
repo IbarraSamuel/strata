@@ -39,10 +39,6 @@ struct SyncPar:
     from algorithm import sync_parallelize, parallelize
     from testing import assert_true
 
-    var start0: UInt = 0
-    var start1: UInt = 0
-    var end0: UInt = 0
-    var end1: UInt = 0
     fn do_par(i: Int) capturing:
         init = perf_counter_ns()
         if i == 0:
@@ -51,7 +47,7 @@ struct SyncPar:
             start1 = init
 
         print("Running iteration", i)
-        sleep(0.1)
+        sleep(1.0)  # Increasing this numbeer helps!
         print("finish iteration", i)
 
         end = perf_counter_ns()
@@ -63,7 +59,7 @@ struct SyncPar:
     sync_parallelize[do_par](2)
 
     # Commented to not fail tests
-    # assert_true(start0 < end1 and start1 < end0)
+    # assert_true(False)
 
     ```
     """
