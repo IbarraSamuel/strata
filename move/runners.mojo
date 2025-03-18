@@ -220,7 +220,7 @@ fn parallel_runner[*Ts: CallableDefaultable]():
             pass
         fn __call__(self):
             print("running")
-            sleep(0.1)
+            sleep(1.0) # Less times didn't work well on doctests
             print("Done")
 
     alias t1 = Task
@@ -272,7 +272,7 @@ fn parallel_runner[*Ts: ImmCallable](callables: CallablePack[_, *Ts]):
             self.finish = Pointer.address_of(finish)
         fn __call__(self):
             self.start[] = perf_counter_ns()
-            sleep(0.1)
+            sleep(1.0) # Less times didn't work well on doctests
             self.finish[] = perf_counter_ns()
 
     t1 = Task(t1_starts, t1_finish)
@@ -284,8 +284,7 @@ fn parallel_runner[*Ts: ImmCallable](callables: CallablePack[_, *Ts]):
     # Will run t1 and t2 at the same time
     parallel_variadic_inp(t1, t2)
 
-    # TODO: Uncomment this when mojo supports threads in doctest
-    # assert_true(t2_starts < t1_finish and t1_starts < t2_finish)
+    assert_true(t2_starts < t1_finish and t1_starts < t2_finish)
     ```
     """
     alias size = len(VariadicList(Ts))
@@ -328,7 +327,7 @@ fn parallel_runner[*ts: ImmCallable](*callables: *ts):
             self.finish = Pointer.address_of(finish)
         fn __call__(self):
             self.start[] = perf_counter_ns()
-            sleep(0.1)
+            sleep(1.0) # Less times didn't work well on doctests
             self.finish[] = perf_counter_ns()
 
     t1 = Task(t1_starts, t1_finish)
@@ -337,8 +336,7 @@ fn parallel_runner[*ts: ImmCallable](*callables: *ts):
     # Will run t1 and t2 at the same time
     parallel_runner(t1, t2)
 
-    # TODO: Uncomment this when mojo supports threads in doctest
-    # assert_true(t2_starts < t1_finish and t1_starts < t2_finish)
+    assert_true(t2_starts < t1_finish and t1_starts < t2_finish)
     ```
     """
     rp = CallablePack(callables._value)
@@ -395,7 +393,7 @@ fn parallel_runner[
             self.finish = 0
         fn __call__(mut self):
             self.start = perf_counter_ns()
-            sleep(0.1)
+            sleep(1.0) # Less times didn't work well on doctests
             self.finish = perf_counter_ns()
 
     t1 = Task()
@@ -404,8 +402,7 @@ fn parallel_runner[
     # Will run t1 and t2 at the same time.
     parallel_runner(t1, t2)
 
-    # TODO: Uncomment this when mojo supports threads in doctest
-    # assert_true(t2.start < t1.finish and t1.start < t2.finish)
+    assert_true(t2.start < t1.finish and t1.start < t2.finish)
     ```
     """
     alias size = len(VariadicList(Ts))
@@ -459,7 +456,7 @@ fn parallel_msg_runner[
             self.finish = Pointer.address_of(finish)
         fn __call__(self, owned msg: Message) -> Message:
             self.start[] = perf_counter_ns()
-            sleep(0.1)
+            sleep(1.0) # Less times didn't work well on doctests
             self.finish[] = perf_counter_ns()
             return msg
 
@@ -471,8 +468,7 @@ fn parallel_msg_runner[
     msg_out = parallel_msg_runner(msg, t1, t2)
 
     # TODO: Add assertions on message.
-    # TODO: Uncomment this when mojo supports threads in doctest
-    # assert_true(t2_starts < t1_finish and t1_starts < t2_finish)
+    assert_true(t2_starts < t1_finish and t1_starts < t2_finish)
     ```
 
     Syncs automatically.
@@ -518,7 +514,7 @@ fn parallel_msg_runner[
             self.finish = Pointer.address_of(finish)
         fn __call__(self, owned msg: Message) -> Message:
             self.start[] = perf_counter_ns()
-            sleep(0.1)
+            sleep(1.0) # Less times didn't work well on doctests
             self.finish[] = perf_counter_ns()
             return msg
 
@@ -534,8 +530,7 @@ fn parallel_msg_runner[
     msg_out = fromvpack(msg, t1, t2)
 
     # TODO: Add assertions on message.
-    # TODO: Uncomment this when mojo supports threads in doctest
-    # assert_true(t2_starts < t1_finish and t1_starts < t2_finish)
+    assert_true(t2_starts < t1_finish and t1_starts < t2_finish)
     ```
 
     Syncs automatically.
