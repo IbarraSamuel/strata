@@ -20,7 +20,6 @@ struct ImmSeriesTask[origin: ImmutableOrigin, *Ts: ImmCallable](ImmCallable):
     """Collection of immutable tasks to run in Series.
 
     Parameters:
-        is_mutable: Wether if the origin of `VariadicPack` is mutable or not.
         origin: The origin of the `VariadicPack` values.
         Ts: ImmutableCallable types that conforms to `ImmCallable`.
 
@@ -74,11 +73,10 @@ struct ImmSeriesTaskPair[
     """Collects a pair of immutable tasks pointers.
 
     Parameters:
-        is_mutable: Wether if the origin is mutable or not.
-        o1: Origin for the first type.
-        o2: Origin for the second type.
-        t1: Type that conforms to `ImmCallable`.
-        t2: Type that conforms to `ImmCallable`.
+        T1: Type that conforms to `ImmCallable`.
+        T2: Type that conforms to `ImmCallable`.
+        origin_1: Origin for the first type.
+        origin_2: Origin for the second type.
 
     ```mojo
     from move.task_groups.series.immutable import ImmSeriesTaskPair
@@ -136,9 +134,9 @@ struct ImmSeriesTaskPair[
         the other one could run too.
 
         Parameters:
+            t: Type that conforms to `ImmCallable`.
             s: Origin of self.
             o: Origin of the other type.
-            t: Type that conforms to `ImmCallable`.
 
         Args:
             other: The task to be executed at the same time than this group.
@@ -155,9 +153,9 @@ struct ImmSeriesTaskPair[
         It's like appending another task to a list of ordered tasks.
 
         Parameters:
+            t: Type that conforms to `ImmCallable`.
             s: Origin of self.
             o: Origin of the other type.
-            t: Type that conforms to `ImmCallable`.
 
         Args:
             other: The task to be executed after this pair.
