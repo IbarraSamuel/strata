@@ -1,54 +1,21 @@
-struct MutableTask:
-    var value: Int
-
-    fn __init__(out self):
-        self.value = 0
-
-    fn mut_something(mut self):
-        self.value += 1
-
-
-# Nothing here is mutated, we only mutate via the pointer
+# Any struct
 @value
-struct ImmutableRefToMutTask[o: MutableOrigin]:
-    var value: Pointer[MutableTask, o]
-
-    fn __init__(out self, ref [o]mt: MutableTask):
-        self.value = Pointer(to=mt)
-
-    fn mut_inner(self):
-        self.value[].mut_something()
+struct Struct:
+    pass
 
 
+# Holds a Mutable and Immutable Origin. Only one is Mutable.
 @value
-struct ImmutableTask:
-    fn __init__(out self):
-        pass
-
-    fn run_something(self):
-        pass
-
-
-struct GroupTask[o: MutableOrigin]:
-    var imtask: ImmutableTask
-    var muttask: ImmutableRefToMutTask[o]
-
-    fn __init__(
-        out self,
-        owned imtask: ImmutableTask,
-        owned mutask: ImmutableRefToMutTask[o],
-    ):
-        self.imtask = imtask^
-        self.muttask = mutask^
-
-    fn mut_something(mut self):
-        self.imtask.run_something()
-        self.muttask.mut_inner()
+struct PointerPair[o: MutableOrigin, o2: ImmutableOrigin]:
+    var ref1: Pointer[Struct, o]
+    var ref2: Pointer[Struct, o2]
 
 
 fn main():
-    mt = MutableTask()
-    mtr = ImmutableRefToMutTask(mt)
-    it = ImmutableTask()
+    ms = Struct()
+    ms_ptr = Pointer(to=ms)
 
-    gt = GroupTask(it, mtr)
+    # Again, only one is mutable.
+    _ = PointerPair(ms_ptr, ms_ptr.get_immutable())  # fails with:
+    # argument of '__init__' call allows writing a memory location previously writable through another aliased argument
+    # pointers_issue.mojo(29, 20): 'ms' memory accessed through reference embedded in value of type 'Pointer[Struct, (muttoimm ms)]'

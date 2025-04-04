@@ -3,16 +3,19 @@ from move.callable import (
     CallableDefaultable,
     ImmCallableWithMessage,
     Callable,
+    ImmCallableMovable,
 )
 from move.task_groups.parallel.immutable import (
     ImmParallelTaskPair,
     ParallelDefaultTask,
     ImmParallelMsgTaskPair,
+    ParallelTaskPair,
 )
 from move.task_groups.series.immutable import (
     ImmSeriesTaskPair,
     SeriesDefaultTask,
     ImmSeriesMsgTaskPair,
+    SeriesTaskPair,
 )
 from move.message import Message
 
@@ -48,7 +51,7 @@ struct FnTask(ImmCallable):
         self.func()
 
 
-struct ImmTask[T: ImmCallable, origin: ImmutableOrigin](ImmCallable):
+struct ImmTask[T: ImmCallable, origin: ImmutableOrigin](ImmCallableMovable):
     """Refers to a task that cannot be mutated.
 
     Parameters:
@@ -98,15 +101,14 @@ struct ImmTask[T: ImmCallable, origin: ImmutableOrigin](ImmCallable):
         self.inner[]()
 
     fn __add__[
-        t: ImmCallable, s: ImmutableOrigin, o: ImmutableOrigin
-    ](ref [s]self, ref [o]other: t) -> ImmParallelTaskPair[Self, t, s, o]:
+        t: ImmCallable, o: ImmutableOrigin
+    ](owned self, ref [o]other: t) -> ParallelTaskPair[Self, t, o]:
         """Add this task pair with another task, to be executed in parallel.
         This task will keep the internal order, but meanwhile the current one is running,
         the other one could run too.
 
         Parameters:
             t: Type that conforms to `ImmCallable`.
-            s: Origin of self.
             o: Origin of the other type.
 
         Args:
@@ -115,17 +117,16 @@ struct ImmTask[T: ImmCallable, origin: ImmutableOrigin](ImmCallable):
         Returns:
             A pair of references to self, and other task, to be ran on parallel.
         """
-        return ImmParallelTaskPair(self, other)
+        return ParallelTaskPair(self^, other)
 
     fn __rshift__[
-        t: ImmCallable, s: ImmutableOrigin, o: ImmutableOrigin
-    ](ref [s]self, ref [o]other: t) -> ImmSeriesTaskPair[Self, t, s, o]:
+        t: ImmCallable, o: ImmutableOrigin
+    ](owned self, ref [o]other: t) -> SeriesTaskPair[Self, t, o]:
         """Add another task to be executed after these two.
         It's like appending another task to a list of ordered tasks.
 
         Parameters:
             t: Type that conforms to `ImmCallable`.
-            s: Origin of self.
             o: Origin of the other type.
 
         Args:
@@ -134,7 +135,7 @@ struct ImmTask[T: ImmCallable, origin: ImmutableOrigin](ImmCallable):
         Returns:
             A pair of references to self, and other task, to be ran on sequence.
         """
-        return ImmSeriesTaskPair(self, other)
+        return SeriesTaskPair(self^, other)
 
 
 struct MutTaskRef[T: Callable, origin: ImmutableOrigin](ImmCallable, Movable):
@@ -175,37 +176,21 @@ struct MutTaskRef[T: Callable, origin: ImmutableOrigin](ImmCallable, Movable):
     var inner: Pointer[T, origin]
     """Mutable Task Inside."""
 
-    # fn __init__(out self, task: Pointer[T, origin]):
-    #     """Create a new Ref using a Mutable task.
-
-    #     Args:
-    #         task: The mutable task to have interior mutability.
-    #     """
-    #     self.inner = task
-
     fn __init__[
         o: MutableOrigin
     ](
         out self: MutTaskRef[T, ImmutableOrigin.cast_from[o].result],
         ref [o]task: T,
     ):
-        """Create a new Ref using a Mutable task.
-
-        We cast the origin as immutable, but it's checked to be mutable at compile.
-        Then, we only mutate when calling the __call__ function.
-
-        Args:
-            task: The mutable task to have interior mutability.
-        """
         self.inner = Pointer(to=task).get_immutable()
 
     fn __moveinit__(out self, owned other: Self):
         self.inner = other.inner
 
     fn __call__(self):
-        ptr = rebind[Pointer[T, MutableOrigin.cast_from[origin].result]](
-            self.inner
-        )  # Make it mutable
+        # Make it mutable Again. Workarond for false positive.
+        alias Ptr = Pointer[T, MutableOrigin.cast_from[origin].result]
+        ptr = rebind[Ptr](self.inner)
         ptr[]()
 
 

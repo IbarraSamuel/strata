@@ -24,7 +24,7 @@ struct InitTask:
 
 
 # Just ensure your struct has fn __call__(mut self):
-struct MyTask[name: StringLiteral, t: TaskWithValue, o: Origin[False]]:
+struct MyTask[name: StringLiteral, t: TaskWithValue, o: ImmutableOrigin]:
     var task: Pointer[t, o]
     var value: Int
     var additional: Int
@@ -88,6 +88,7 @@ fn main():
     g2_1 = MutTaskRef(group2_1)
     g2_2 = MutTaskRef(group2_2)
     fin = MutTaskRef(final)
+
     mutable_graph = T(init) >> (T(g1_1) >> g1_2) + (T(g2_1) >> g2_2) >> fin
 
     # NOTE: Big graphs can crash the compiler with no aparent reason and no errors.

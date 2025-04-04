@@ -28,6 +28,10 @@ trait ImmCallable:
         ...
 
 
+trait ImmCallableMovable(Movable, ImmCallable):
+    ...
+
+
 trait Callable:
     """The struct should contain a fn __call__ method.
 

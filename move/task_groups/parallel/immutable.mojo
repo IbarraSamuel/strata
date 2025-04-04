@@ -1,5 +1,6 @@
 from move.callable import (
     ImmCallable,
+    ImmCallableMovable,
     CallablePack,
     CallableMsgPack,
     CallableDefaultable,
@@ -9,6 +10,7 @@ from move.runners import parallel_runner, parallel_msg_runner
 from move.task_groups.series.immutable import (
     ImmSeriesTaskPair,
     ImmSeriesMsgTaskPair,
+    SeriesTaskPair,
 )
 from move.message import Message
 
@@ -59,6 +61,114 @@ struct ImmParallelTask[origin: ImmutableOrigin, *Ts: ImmCallable](ImmCallable):
     fn __call__(self):
         """This function executes all tasks at the same time."""
         parallel_runner(self.callables)
+
+
+# Parallel Pair
+struct ParallelTaskPair[
+    T1: ImmCallableMovable,
+    T2: ImmCallable,
+    origin_t2: ImmutableOrigin,
+](ImmCallable):
+    """Collects a pair of immutable tasks pointers.
+
+    Parameters:
+        T1: Type that conforms to `ImmCallable`.
+        T2: Type that conforms to `ImmCallable`.
+        origin_t2: Origin for the second type.
+
+    ```mojo
+    from move.task_groups.parallel.immutable import ParallelTaskPair
+
+    struct ImmMovableTask(Movable):
+        fn __init__(out self):
+            pass
+
+        fn __moveinit__(out self, owned other: Self):
+            pass
+
+        fn __call__(self):
+            print("Working")
+
+    struct ImmTask:
+        fn __init__(out self):
+            pass
+
+        fn __call__(self):
+            print("Working")
+
+    t1 = ImmMovableTask()
+    t2 = ImmTask()
+    pair = ParallelTaskPair(t1^, t2)
+
+    # This will run both in parallel.
+    pair()
+    ```
+    """
+
+    var v1: T1
+    """First task."""
+    var v2: Pointer[T2, origin_t2]
+    """Second task."""
+
+    fn __init__(out self, owned v1: T1, ref [origin_t2]v2: T2):
+        """Initialize the task pair using pointers.
+
+        Args:
+            v1: First task to point to.
+            v2: Second task to point to.
+        """
+        self.v1 = v1^
+        self.v2 = Pointer(to=v2)
+
+    fn __moveinit__(out self, owned existing: Self):
+        """Move tasks from an existing task pair.
+
+        Args:
+            existing: The value to move from.
+        """
+        self.v1 = existing.v1^
+        self.v2 = existing.v2
+
+    fn __call__(self):
+        """Executes both tasks in parallel."""
+        parallel_runner(self.v1, self.v2[])
+
+    fn __add__[
+        t: ImmCallable, o: ImmutableOrigin
+    ](owned self, ref [o]other: t) -> ParallelTaskPair[Self, t, o]:
+        """Add this task pair with another task, to be executed in parallel.
+        This task will keep the internal order, but meanwhile the current one is running,
+        the other one could run too.
+
+        Parameters:
+            t: Type that conforms to `ImmCallable`.
+            o: Origin of the other type.
+
+        Args:
+            other: The task to be executed at the same time than this group.
+
+        Returns:
+            A pair of references to self, and other task, to be ran on parallel.
+        """
+        return ParallelTaskPair(self^, other)
+
+    fn __rshift__[
+        t: ImmCallable, o: ImmutableOrigin
+    ](owned self, ref [o]other: t) -> SeriesTaskPair[Self, t, o]:
+        """Add another task to be executed after these two.
+        It's like appending another task to a list of ordered tasks.
+
+        Parameters:
+            t: Type that conforms to `ImmCallable`.
+            o: Origin of the other type.
+
+        Args:
+            other: The task to be executed after this pair.
+
+        Returns:
+            A pair of references to self, and other task, to be ran on sequence.
+        """
+        return SeriesTaskPair(self^, other)
 
 
 # Parallel Pair
