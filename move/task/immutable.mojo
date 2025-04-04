@@ -51,6 +51,79 @@ struct FnTask(ImmCallable):
         self.func()
 
 
+struct DummyTask(ImmCallableMovable):
+    fn __init__(out self):
+        pass
+
+    fn __moveinit__(out self, owned other: Self):
+        pass
+
+    fn __call__(self):
+        pass
+
+
+struct Task[T: ImmCallableMovable](ImmCallableMovable):
+    var inner: T
+
+    # @implicit
+    # fn __init__[
+    #     t: ImmCallable, o: ImmutableOrigin
+    # ](out self: Task[ImmTask[t, o]], ref [o]inner: t):
+    #     self.inner = ImmTask(inner)
+
+    @implicit
+    fn __init__[
+        t: Callable, o: MutableOrigin
+    ](
+        out self: Task[MutTaskRef[t, ImmutableOrigin.cast_from[o].result]],
+        ref [o]inner: t,
+    ):
+        self.inner = MutTaskRef(inner)
+
+    fn __moveinit__(out self, owned other: Self):
+        self.inner = other.inner^
+
+    fn __call__(self):
+        self.inner()
+
+    fn __add__[
+        t: ImmCallable, o: ImmutableOrigin
+    ](owned self, ref [o]other: t) -> ParallelTaskPair[Self, t, o]:
+        """Add this task pair with another task, to be executed in parallel.
+        This task will keep the internal order, but meanwhile the current one is running,
+        the other one could run too.
+
+        Parameters:
+            t: Type that conforms to `ImmCallable`.
+            o: Origin of the other type.
+
+        Args:
+            other: The task to be executed at the same time than this group.
+
+        Returns:
+            A pair of references to self, and other task, to be ran on parallel.
+        """
+        return ParallelTaskPair(self^, other)
+
+    fn __rshift__[
+        t: ImmCallable, o: ImmutableOrigin
+    ](owned self, ref [o]other: t) -> SeriesTaskPair[Self, t, o]:
+        """Add another task to be executed after these two.
+        It's like appending another task to a list of ordered tasks.
+
+        Parameters:
+            t: Type that conforms to `ImmCallable`.
+            o: Origin of the other type.
+
+        Args:
+            other: The task to be executed after this pair.
+
+        Returns:
+            A pair of references to self, and other task, to be ran on sequence.
+        """
+        return SeriesTaskPair(self^, other)
+
+
 struct ImmTask[T: ImmCallable, origin: ImmutableOrigin](ImmCallableMovable):
     """Refers to a task that cannot be mutated.
 
@@ -100,42 +173,42 @@ struct ImmTask[T: ImmCallable, origin: ImmutableOrigin](ImmCallableMovable):
         """Invoke the inner value of the ImmutableTask."""
         self.inner[]()
 
-    fn __add__[
-        t: ImmCallable, o: ImmutableOrigin
-    ](owned self, ref [o]other: t) -> ParallelTaskPair[Self, t, o]:
-        """Add this task pair with another task, to be executed in parallel.
-        This task will keep the internal order, but meanwhile the current one is running,
-        the other one could run too.
+    # fn __add__[
+    #     t: ImmCallable, o: ImmutableOrigin
+    # ](owned self, ref [o]other: t) -> ParallelTaskPair[Self, t, o]:
+    #     """Add this task pair with another task, to be executed in parallel.
+    #     This task will keep the internal order, but meanwhile the current one is running,
+    #     the other one could run too.
 
-        Parameters:
-            t: Type that conforms to `ImmCallable`.
-            o: Origin of the other type.
+    #     Parameters:
+    #         t: Type that conforms to `ImmCallable`.
+    #         o: Origin of the other type.
 
-        Args:
-            other: The task to be executed at the same time than this group.
+    #     Args:
+    #         other: The task to be executed at the same time than this group.
 
-        Returns:
-            A pair of references to self, and other task, to be ran on parallel.
-        """
-        return ParallelTaskPair(self^, other)
+    #     Returns:
+    #         A pair of references to self, and other task, to be ran on parallel.
+    #     """
+    #     return ParallelTaskPair(self^, other)
 
-    fn __rshift__[
-        t: ImmCallable, o: ImmutableOrigin
-    ](owned self, ref [o]other: t) -> SeriesTaskPair[Self, t, o]:
-        """Add another task to be executed after these two.
-        It's like appending another task to a list of ordered tasks.
+    # fn __rshift__[
+    #     t: ImmCallable, o: ImmutableOrigin
+    # ](owned self, ref [o]other: t) -> SeriesTaskPair[Self, t, o]:
+    #     """Add another task to be executed after these two.
+    #     It's like appending another task to a list of ordered tasks.
 
-        Parameters:
-            t: Type that conforms to `ImmCallable`.
-            o: Origin of the other type.
+    #     Parameters:
+    #         t: Type that conforms to `ImmCallable`.
+    #         o: Origin of the other type.
 
-        Args:
-            other: The task to be executed after this pair.
+    #     Args:
+    #         other: The task to be executed after this pair.
 
-        Returns:
-            A pair of references to self, and other task, to be ran on sequence.
-        """
-        return SeriesTaskPair(self^, other)
+    #     Returns:
+    #         A pair of references to self, and other task, to be ran on sequence.
+    #     """
+    #     return SeriesTaskPair(self^, other)
 
 
 struct MutTaskRef[T: Callable, origin: ImmutableOrigin](ImmCallable, Movable):
@@ -176,6 +249,7 @@ struct MutTaskRef[T: Callable, origin: ImmutableOrigin](ImmCallable, Movable):
     var inner: Pointer[T, origin]
     """Mutable Task Inside."""
 
+    @implicit
     fn __init__[
         o: MutableOrigin
     ](
@@ -192,22 +266,6 @@ struct MutTaskRef[T: Callable, origin: ImmutableOrigin](ImmCallable, Movable):
         alias Ptr = Pointer[T, MutableOrigin.cast_from[origin].result]
         ptr = rebind[Ptr](self.inner)
         ptr[]()
-
-
-trait MovImmCallable(Movable, ImmCallable):
-    ...
-
-
-# struct MutTask[T: MovImmCallable](ImmCallable):
-#     var inner: T
-
-#     fn __init__[
-#         t: Callable, o: MutableOrigin
-#     ](out self: MutTask[MutTaskRef[t, o]], ref [o]task: t):
-#         self.inner = MutTaskRef(task)
-
-#     fn __call__(self):
-#         self.inner()
 
 
 struct MsgFnTask(ImmCallableWithMessage):

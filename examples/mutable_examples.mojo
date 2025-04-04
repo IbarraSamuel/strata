@@ -80,16 +80,22 @@ fn main():
 
     # Airflow Syntax. We solve all these problems.
     # You can just wrap the initial struct with a MutableTask and do operations.
-    from move.task.immutable import ImmTask as T, MutTaskRef
+    from move.task.immutable import Task as T, MutTaskRef
 
-    init = MutTaskRef(initial)
-    g1_1 = MutTaskRef(group1_1)
-    g1_2 = MutTaskRef(group1_2)
-    g2_1 = MutTaskRef(group2_1)
-    g2_2 = MutTaskRef(group2_2)
-    fin = MutTaskRef(final)
+    # init = T(initial)
+    # init = MutTaskRef(initial)
+    # g1_1 = MutTaskRef(group1_1)
+    # g1_2 = MutTaskRef(group1_2)
+    # g2_1 = MutTaskRef(group2_1)
+    # g2_2 = MutTaskRef(group2_2)
+    # fin = MutTaskRef(final)
 
-    mutable_graph = T(init) >> (T(g1_1) >> g1_2) + (T(g2_1) >> g2_2) >> fin
+    # mutable_graph = T(initial) >> (T(g1_1) >> g1_2) + (T(g2_1) >> g2_2) >> fin
+    mutable_graph = (
+        T(initial)
+        >> (T(group1_1) >> group1_2) + (T(group2_1) >> group2_2)
+        >> final
+    )
 
     # NOTE: Big graphs can crash the compiler with no aparent reason and no errors.
 

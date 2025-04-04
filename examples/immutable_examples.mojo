@@ -59,7 +59,7 @@ fn main():
     graph_1()
 
     # Airflow Syntax
-    from move.task.immutable import ImmTask as IT
+    from move.task.immutable import Task as IT
 
     graph_2 = (
         IT(init)
