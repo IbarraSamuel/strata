@@ -1,38 +1,54 @@
-struct Task1:
+struct MutableTask:
     var value: Int
 
     fn __init__(out self):
         self.value = 0
 
     fn mut_something(mut self):
+        self.value += 1
+
+
+# Nothing here is mutated, we only mutate via the pointer
+@value
+struct ImmutableRefToMutTask[o: MutableOrigin]:
+    var value: Pointer[MutableTask, o]
+
+    fn __init__(out self, ref [o]mt: MutableTask):
+        self.value = Pointer(to=mt)
+
+    fn mut_inner(self):
+        self.value[].mut_something()
+
+
+@value
+struct ImmutableTask:
+    fn __init__(out self):
+        pass
+
+    fn run_something(self):
         pass
 
 
-struct Task2[o: Origin[False]]:
-    var taskref: Pointer[Task1, o]
+struct GroupTask[o: MutableOrigin]:
+    var imtask: ImmutableTask
+    var muttask: ImmutableRefToMutTask[o]
 
-    fn __init__(out self, ref [o]task: Task1):
-        self.taskref = Pointer(to=task)
+    fn __init__(
+        out self,
+        owned imtask: ImmutableTask,
+        owned mutask: ImmutableRefToMutTask[o],
+    ):
+        self.imtask = imtask^
+        self.muttask = mutask^
 
     fn mut_something(mut self):
-        pass
-
-
-struct GroupTask[o: Origin[False], o2: Origin[False]]:
-    var task1: Pointer[Task1, o]
-    var task2: Pointer[Task2[o], o2]
-
-    fn __init__(out self, ref [o]task: Task1, ref [o2]task2: Task2[o]):
-        self.task1 = Pointer(to=task)
-        self.task2 = Pointer(to=task2)
-
-    fn mut_something(mut self):
-        pass
+        self.imtask.run_something()
+        self.muttask.mut_inner()
 
 
 fn main():
-    t1 = Task1()
-    t2 = Task2(t1)
-    tg = GroupTask(
-        t1, t2
-    )  # The error is fine, is showing a problem I can have in the future
+    mt = MutableTask()
+    mtr = ImmutableRefToMutTask(mt)
+    it = ImmutableTask()
+
+    gt = GroupTask(it, mtr)

@@ -1,7 +1,8 @@
 from time import sleep
+from move.callable import ImmCallable, Callable, CallableDefaultable
 
 
-struct MyDefaultTask[name: StringLiteral]:
+struct MyDefaultTask[name: StringLiteral](CallableDefaultable):
     fn __init__(out self):
         pass
 
@@ -10,7 +11,7 @@ struct MyDefaultTask[name: StringLiteral]:
         sleep(0.5)
 
 
-struct MyTask[job: StringLiteral]:
+struct MyTask[job: StringLiteral](ImmCallable):
     var some_data: String
 
     fn __init__(out self, owned some_data: StringLiteral):
@@ -21,7 +22,7 @@ struct MyTask[job: StringLiteral]:
         sleep(0.5)
 
 
-struct MutTask[name: StringLiteral]:
+struct MutTask[name: StringLiteral](Callable):
     var value: Int
 
     fn __init__(out self, value: Int):

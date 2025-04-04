@@ -48,13 +48,12 @@ struct FnTask(ImmCallable):
         self.func()
 
 
-struct ImmTask[origin: Origin, T: ImmCallable](ImmCallable):
+struct ImmTask[T: ImmCallable, origin: ImmutableOrigin](ImmCallable):
     """Refers to a task that cannot be mutated.
 
     Parameters:
-        is_mutable: Wether the task could be mutated.
-        origin: The source for the `Immcallable` Task.
         T: A type that conforms to `ImmCallable`.
+        origin: The source for the `Immcallable` Task.
 
     ```mojo
     from move.task.immutable import ImmTask, FnTask
@@ -99,34 +98,35 @@ struct ImmTask[origin: Origin, T: ImmCallable](ImmCallable):
         self.inner[]()
 
     fn __add__[
-        s: Origin, o: Origin, t: ImmCallable, //
-    ](ref [s]self, ref [o]other: t) -> ImmParallelTaskPair[s, o, Self, t]:
+        t: ImmCallable, s: ImmutableOrigin, o: ImmutableOrigin
+    ](ref [s]self, ref [o]other: t) -> ImmParallelTaskPair[Self, t, s, o]:
         """Add this task pair with another task, to be executed in parallel.
         This task will keep the internal order, but meanwhile the current one is running,
         the other one could run too.
 
         Parameters:
+            t: Type that conforms to `ImmCallable`.
             s: Origin of self.
             o: Origin of the other type.
-            t: Type that conforms to `ImmCallable`.
 
         Args:
             other: The task to be executed at the same time than this group.
 
         Returns:
             A pair of references to self, and other task, to be ran on parallel.
-        """        return ImmParallelTaskPair(self, other)
+        """
+        return ImmParallelTaskPair(self, other)
 
     fn __rshift__[
-        s: Origin, o: Origin, t: ImmCallable, //
-    ](ref [s]self, ref [o]other: t) -> ImmSeriesTaskPair[s, o, Self, t]:
+        t: ImmCallable, s: ImmutableOrigin, o: ImmutableOrigin
+    ](ref [s]self, ref [o]other: t) -> ImmSeriesTaskPair[Self, t, s, o]:
         """Add another task to be executed after these two.
         It's like appending another task to a list of ordered tasks.
 
         Parameters:
+            t: Type that conforms to `ImmCallable`.
             s: Origin of self.
             o: Origin of the other type.
-            t: Type that conforms to `ImmCallable`.
 
         Args:
             other: The task to be executed after this pair.
@@ -136,7 +136,8 @@ struct ImmTask[origin: Origin, T: ImmCallable](ImmCallable):
         """
         return ImmSeriesTaskPair(self, other)
 
-struct RefMutTask[T: Callable, origin: Origin[True]](ImmCallable):
+
+struct MutTaskRef[T: Callable, origin: ImmutableOrigin](ImmCallable, Movable):
     """Refers to a task that contains interior mutability for the pointer that he stores.
 
     Parameters:
@@ -144,23 +145,23 @@ struct RefMutTask[T: Callable, origin: Origin[True]](ImmCallable):
         origin: The source for the `Immcallable` Task.
 
     ```mojo
-    from move.task.immutable import RefMutTask
+    from move.task.immutable import MutTaskRef
     from move.callable import Callable
     from testing import assert_true
 
-    struct MutTask(Callable):
+    struct Task(Callable):
         var val: Int
         fn __init__(out self):
             self.val = 0
-        
+
         fn __call__(mut self):
             print("Running mutable task...")
             self.val += 1
 
-    task = MutTask()
-    task_wrapper = RefMutTask(task)
+    task = Task()
+
     # Create an Immutable Task
-    immutable = RefMutTask(task)
+    immutable = MutTaskRef(task)
 
     # Run the task
     immutable()
@@ -170,27 +171,59 @@ struct RefMutTask[T: Callable, origin: Origin[True]](ImmCallable):
     ```
 
     """
+
     var inner: Pointer[T, origin]
     """Mutable Task Inside."""
 
     # fn __init__(out self, task: Pointer[T, origin]):
     #     """Create a new Ref using a Mutable task.
-        
+
     #     Args:
     #         task: The mutable task to have interior mutability.
     #     """
     #     self.inner = task
 
-    fn __init__(out self, ref[origin] task: T):
+    fn __init__[
+        o: MutableOrigin
+    ](
+        out self: MutTaskRef[T, ImmutableOrigin.cast_from[o].result],
+        ref [o]task: T,
+    ):
         """Create a new Ref using a Mutable task.
-        
+
+        We cast the origin as immutable, but it's checked to be mutable at compile.
+        Then, we only mutate when calling the __call__ function.
+
         Args:
             task: The mutable task to have interior mutability.
         """
-        self.inner = Pointer(to=task)
-    
+        self.inner = Pointer(to=task).get_immutable()
+
+    fn __moveinit__(out self, owned other: Self):
+        self.inner = other.inner
+
     fn __call__(self):
-        self.inner[]()
+        ptr = rebind[Pointer[T, MutableOrigin.cast_from[origin].result]](
+            self.inner
+        )  # Make it mutable
+        ptr[]()
+
+
+trait MovImmCallable(Movable, ImmCallable):
+    ...
+
+
+# struct MutTask[T: MovImmCallable](ImmCallable):
+#     var inner: T
+
+#     fn __init__[
+#         t: Callable, o: MutableOrigin
+#     ](out self: MutTask[MutTaskRef[t, o]], ref [o]task: t):
+#         self.inner = MutTaskRef(task)
+
+#     fn __call__(self):
+#         self.inner()
+
 
 struct MsgFnTask(ImmCallableWithMessage):
     """This function takes any function with a signature: `fn(owned Message) -> Message`
@@ -213,9 +246,9 @@ struct MsgFnTask(ImmCallableWithMessage):
     assert_true(out_msg.get("greet", "none"), "Hello, Elio")
     ```
     """
+
     var func: fn (owned Message) -> Message
     """Pointer to the function to call."""
-
 
     fn __init__(out self, func: fn (owned Message) -> Message):
         """Takes a `fn() -> None` and wrap it.
@@ -354,12 +387,13 @@ struct DefaultTask[T: CallableDefaultable](CallableDefaultable):
 
         fn __call__(self):
             print("default task")
-    
+
     alias Task = DefaultTask[DefTask]
     task = Task()
     task()
     ```
     """
+
     fn __init__(out self):
         """Defualt initializer."""
         pass
@@ -367,7 +401,7 @@ struct DefaultTask[T: CallableDefaultable](CallableDefaultable):
     @implicit
     fn __init__(out self, val: T):
         """Initialize the DefaultTask from a runtime reference to a type.
-        
+
         Args:
             val: The defaultable task. It's just to take the type.
         """

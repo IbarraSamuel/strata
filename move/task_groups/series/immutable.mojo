@@ -16,7 +16,7 @@ from move.message import Message
 
 
 # Variadic Series
-struct ImmSeriesTask[origin: Origin, *Ts: ImmCallable](ImmCallable):
+struct ImmSeriesTask[origin: ImmutableOrigin, *Ts: ImmCallable](ImmCallable):
     """Collection of immutable tasks to run in Series.
 
     Parameters:
@@ -66,7 +66,10 @@ struct ImmSeriesTask[origin: Origin, *Ts: ImmCallable](ImmCallable):
 
 # Series Pair
 struct ImmSeriesTaskPair[
-    o1: Origin, o2: Origin, t1: ImmCallable, t2: ImmCallable
+    T1: ImmCallable,
+    T2: ImmCallable,
+    origin_1: ImmutableOrigin,
+    origin_2: ImmutableOrigin,
 ](ImmCallable, Movable):
     """Collects a pair of immutable tasks pointers.
 
@@ -79,29 +82,30 @@ struct ImmSeriesTaskPair[
 
     ```mojo
     from move.task_groups.series.immutable import ImmSeriesTaskPair
+    from move.callable import ImmCallable
 
-    struct ImmTask:
+    struct ImmTask(ImmCallable):
         fn __init__(out self):
             pass
 
         fn __call__(self):
             print("Working")
 
-    t1 = ImmTask()
-    t2 = ImmTask()
-    pair = ImmSeriesTaskPair(t1, t2)
+    task_1 = ImmTask()
+    task_2 = ImmTask()
+    pair = ImmSeriesTaskPair(task_1, task_2)
 
     # This will run both in a sequence.
     pair()
     ```
     """
 
-    var v1: Pointer[t1, o1]
+    var v1: Pointer[T1, origin_1]
     """First task."""
-    var v2: Pointer[t2, o2]
+    var v2: Pointer[T2, origin_2]
     """Second task."""
 
-    fn __init__(out self, ref [o1]v1: t1, ref [o2]v2: t2):
+    fn __init__(out self, ref [origin_1]v1: T1, ref [origin_2]v2: T2):
         """Initialize the task pair using pointers.
 
         Args:
@@ -125,8 +129,8 @@ struct ImmSeriesTaskPair[
         series_runner(self.v1[], self.v2[])
 
     fn __add__[
-        s: Origin, o: Origin, t: ImmCallable, //
-    ](ref [s]self, ref [o]other: t) -> ImmParallelTaskPair[s, o, Self, t]:
+        t: ImmCallable, s: ImmutableOrigin, o: ImmutableOrigin
+    ](ref [s]self, ref [o]other: t) -> ImmParallelTaskPair[Self, t, s, o]:
         """Add this task pair with another task, to be executed in parallel.
         This task will keep the internal order, but meanwhile the current one is running,
         the other one could run too.
@@ -145,8 +149,8 @@ struct ImmSeriesTaskPair[
         return ImmParallelTaskPair(self, other)
 
     fn __rshift__[
-        s: Origin, o: Origin, t: ImmCallable, //
-    ](ref [s]self, ref [o]other: t) -> ImmSeriesTaskPair[s, o, Self, t]:
+        t: ImmCallable, s: ImmutableOrigin, o: ImmutableOrigin
+    ](ref [s]self, ref [o]other: t) -> ImmSeriesTaskPair[Self, t, s, o]:
         """Add another task to be executed after these two.
         It's like appending another task to a list of ordered tasks.
 

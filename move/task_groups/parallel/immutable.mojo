@@ -14,11 +14,10 @@ from move.message import Message
 
 
 # Variadic Parallel
-struct ImmParallelTask[origin: Origin, *Ts: ImmCallable](ImmCallable):
+struct ImmParallelTask[origin: ImmutableOrigin, *Ts: ImmCallable](ImmCallable):
     """Collection of immutable tasks to run in Parallel.
 
     Parameters:
-        is_mutable: Wether if the origin of `VariadicPack` is mutable or not.
         origin: The origin of the `VariadicPack` values.
         Ts: ImmutableCallable types that conforms to `ImmCallable`.
 
@@ -64,16 +63,18 @@ struct ImmParallelTask[origin: Origin, *Ts: ImmCallable](ImmCallable):
 
 # Parallel Pair
 struct ImmParallelTaskPair[
-    o1: Origin, o2: Origin, t1: ImmCallable, t2: ImmCallable
+    T1: ImmCallable,
+    T2: ImmCallable,
+    origin_1: ImmutableOrigin,
+    origin_2: ImmutableOrigin,
 ](ImmCallable):
     """Collects a pair of immutable tasks pointers.
 
     Parameters:
-        is_mutable: Wether if the origin is mutable or not.
-        o1: Origin for the first type.
-        o2: Origin for the second type.
-        t1: Type that conforms to `ImmCallable`.
-        t2: Type that conforms to `ImmCallable`.
+        T1: Type that conforms to `ImmCallable`.
+        T2: Type that conforms to `ImmCallable`.
+        origin_1: Origin for the first type.
+        origin_2: Origin for the second type.
 
     ```mojo
     from move.task_groups.parallel.immutable import ImmParallelTaskPair
@@ -94,12 +95,12 @@ struct ImmParallelTaskPair[
     ```
     """
 
-    var v1: Pointer[t1, o1]
+    var v1: Pointer[T1, origin_1]
     """First task."""
-    var v2: Pointer[t2, o2]
+    var v2: Pointer[T2, origin_2]
     """Second task."""
 
-    fn __init__(out self, ref [o1]v1: t1, ref [o2]v2: t2):
+    fn __init__(out self, ref [origin_1]v1: T1, ref [origin_2]v2: T2):
         """Initialize the task pair using pointers.
 
         Args:
@@ -123,16 +124,16 @@ struct ImmParallelTaskPair[
         parallel_runner(self.v1[], self.v2[])
 
     fn __add__[
-        s: Origin, o: Origin, t: ImmCallable, //
-    ](ref [s]self, ref [o]other: t) -> ImmParallelTaskPair[s, o, Self, t]:
+        t: ImmCallable, s: ImmutableOrigin, o: ImmutableOrigin
+    ](ref [s]self, ref [o]other: t) -> ImmParallelTaskPair[Self, t, s, o]:
         """Add this task pair with another task, to be executed in parallel.
         This task will keep the internal order, but meanwhile the current one is running,
         the other one could run too.
 
         Parameters:
-            s: Origin of self.
-            o: Origin of the other type.
             t: Type that conforms to `ImmCallable`.
+            s: Self origin.
+            o: Origin of the other type.
 
         Args:
             other: The task to be executed at the same time than this group.
@@ -143,15 +144,15 @@ struct ImmParallelTaskPair[
         return ImmParallelTaskPair(self, other)
 
     fn __rshift__[
-        s: Origin, o: Origin, t: ImmCallable, //
-    ](ref [s]self, ref [o]other: t) -> ImmSeriesTaskPair[s, o, Self, t]:
+        t: ImmCallable, s: ImmutableOrigin, o: ImmutableOrigin
+    ](ref [s]self, ref [o]other: t) -> ImmSeriesTaskPair[Self, t, s, o]:
         """Add another task to be executed after these two.
         It's like appending another task to a list of ordered tasks.
 
         Parameters:
+            t: Type that conforms to `ImmCallable`.
             s: Origin of self.
             o: Origin of the other type.
-            t: Type that conforms to `ImmCallable`.
 
         Args:
             other: The task to be executed after this pair.
