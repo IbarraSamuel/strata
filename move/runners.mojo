@@ -70,8 +70,8 @@ fn series_runner[*Ts: ImmCallable](callables: CallablePack[_, *Ts]):
         var start: Pointer[UInt, o1]
         var finish: Pointer[UInt, o2]
         fn __init__(out self, ref[o1] start: UInt, ref[o2] finish: UInt):
-            self.start = Pointer.address_of(start)
-            self.finish = Pointer.address_of(finish)
+            self.start = Pointer(to=start)
+            self.finish = Pointer(to=finish)
         fn __call__(self):
             self.start[] = perf_counter_ns()
             sleep(0.1)
@@ -120,8 +120,8 @@ fn series_runner[*ts: ImmCallable](*callables: *ts):
         var start: Pointer[UInt, o1]
         var finish: Pointer[UInt, o2]
         fn __init__(out self, ref[o1] start: UInt, ref[o2] finish: UInt):
-            self.start = Pointer.address_of(start)
-            self.finish = Pointer.address_of(finish)
+            self.start = Pointer(to=start)
+            self.finish = Pointer(to=finish)
         fn __call__(self):
             self.start[] = perf_counter_ns()
             sleep(0.1)
@@ -268,8 +268,8 @@ fn parallel_runner[*Ts: ImmCallable](callables: CallablePack[_, *Ts]):
         var start: Pointer[UInt, o1]
         var finish: Pointer[UInt, o2]
         fn __init__(out self, ref[o1] start: UInt, ref[o2] finish: UInt):
-            self.start = Pointer.address_of(start)
-            self.finish = Pointer.address_of(finish)
+            self.start = Pointer(to=start)
+            self.finish = Pointer(to=finish)
         fn __call__(self):
             self.start[] = perf_counter_ns()
             sleep(1.0) # Less times didn't work well on doctests
@@ -323,8 +323,8 @@ fn parallel_runner[*ts: ImmCallable](*callables: *ts):
         var start: Pointer[UInt, o1]
         var finish: Pointer[UInt, o2]
         fn __init__(out self, ref[o1] start: UInt, ref[o2] finish: UInt):
-            self.start = Pointer.address_of(start)
-            self.finish = Pointer.address_of(finish)
+            self.start = Pointer(to=start)
+            self.finish = Pointer(to=finish)
         fn __call__(self):
             self.start[] = perf_counter_ns()
             sleep(1.0) # Less times didn't work well on doctests
@@ -452,8 +452,8 @@ fn parallel_msg_runner[
         var start: Pointer[UInt, o1]
         var finish: Pointer[UInt, o2]
         fn __init__(out self, ref[o1] start: UInt, ref[o2] finish: UInt):
-            self.start = Pointer.address_of(start)
-            self.finish = Pointer.address_of(finish)
+            self.start = Pointer(to=start)
+            self.finish = Pointer(to=finish)
         fn __call__(self, owned msg: Message) -> Message:
             self.start[] = perf_counter_ns()
             sleep(1.0) # Less times didn't work well on doctests
@@ -510,8 +510,8 @@ fn parallel_msg_runner[
         var start: Pointer[UInt, o1]
         var finish: Pointer[UInt, o2]
         fn __init__(out self, ref[o1] start: UInt, ref[o2] finish: UInt):
-            self.start = Pointer.address_of(start)
-            self.finish = Pointer.address_of(finish)
+            self.start = Pointer(to=start)
+            self.finish = Pointer(to=finish)
         fn __call__(self, owned msg: Message) -> Message:
             self.start[] = perf_counter_ns()
             sleep(1.0) # Less times didn't work well on doctests
@@ -582,8 +582,8 @@ fn series_msg_runner[
         var start: Pointer[UInt, o1]
         var finish: Pointer[UInt, o2]
         fn __init__(out self, ref[o1] start: UInt, ref[o2] finish: UInt):
-            self.start = Pointer.address_of(start)
-            self.finish = Pointer.address_of(finish)
+            self.start = Pointer(to=start)
+            self.finish = Pointer(to=finish)
         fn __call__(self, owned msg: Message) -> Message:
             self.start[] = perf_counter_ns()
             sleep(0.1)
@@ -639,8 +639,8 @@ fn series_msg_runner[
         var start: Pointer[UInt, o1]
         var finish: Pointer[UInt, o2]
         fn __init__(out self, ref[o1] start: UInt, ref[o2] finish: UInt):
-            self.start = Pointer.address_of(start)
-            self.finish = Pointer.address_of(finish)
+            self.start = Pointer(to=start)
+            self.finish = Pointer(to=finish)
         fn __call__(self, owned msg: Message) -> Message:
             self.start[] = perf_counter_ns()
             sleep(0.1)

@@ -108,8 +108,8 @@ struct ImmSeriesTaskPair[
             v1: First task to point to.
             v2: Second task to point to.
         """
-        self.v1 = Pointer.address_of(v1)
-        self.v2 = Pointer.address_of(v2)
+        self.v1 = Pointer(to=v1)
+        self.v2 = Pointer(to=v2)
 
     fn __moveinit__(out self, owned existing: Self):
         """Move tasks from an existing task pair.
@@ -281,8 +281,8 @@ struct ImmSeriesMsgTaskPair[
             v1: First message task.
             v2: Second message task.
         """
-        self.v1 = Pointer.address_of(v1)
-        self.v2 = Pointer.address_of(v2)
+        self.v1 = Pointer(to=v1)
+        self.v2 = Pointer(to=v2)
 
     fn __call__(self, owned message: Message) -> Message:
         """Call both message tasks in sequence.

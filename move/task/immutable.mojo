@@ -2,6 +2,7 @@ from move.callable import (
     ImmCallable,
     CallableDefaultable,
     ImmCallableWithMessage,
+    Callable,
 )
 from move.task_groups.parallel.immutable import (
     ImmParallelTaskPair,
@@ -83,7 +84,7 @@ struct ImmTask[origin: Origin, T: ImmCallable](ImmCallable):
         Args:
             inner: The ImmutableTask to be wrapped.
         """
-        self.inner = Pointer.address_of(inner)
+        self.inner = Pointer(to=inner)
 
     fn __moveinit__(out self, owned other: Self):
         """Move the pointer.
@@ -135,6 +136,61 @@ struct ImmTask[origin: Origin, T: ImmCallable](ImmCallable):
         """
         return ImmSeriesTaskPair(self, other)
 
+struct RefMutTask[T: Callable, origin: Origin[True]](ImmCallable):
+    """Refers to a task that contains interior mutability for the pointer that he stores.
+
+    Parameters:
+        T: A type that conforms to `ImmCallable`.
+        origin: The source for the `Immcallable` Task.
+
+    ```mojo
+    from move.task.immutable import RefMutTask
+    from move.callable import Callable
+    from testing import assert_true
+
+    struct MutTask(Callable):
+        var val: Int
+        fn __init__(out self):
+            self.val = 0
+        
+        fn __call__(mut self):
+            print("Running mutable task...")
+            self.val += 1
+
+    task = MutTask()
+    task_wrapper = RefMutTask(task)
+    # Create an Immutable Task
+    immutable = RefMutTask(task)
+
+    # Run the task
+    immutable()
+
+    # Check that it really mutates in the inside.
+    assert_true(task.val == 1)
+    ```
+
+    """
+    var inner: Pointer[T, origin]
+    """Mutable Task Inside."""
+
+    # fn __init__(out self, task: Pointer[T, origin]):
+    #     """Create a new Ref using a Mutable task.
+        
+    #     Args:
+    #         task: The mutable task to have interior mutability.
+    #     """
+    #     self.inner = task
+
+    fn __init__(out self, ref[origin] task: T):
+        """Create a new Ref using a Mutable task.
+        
+        Args:
+            task: The mutable task to have interior mutability.
+        """
+        self.inner = Pointer(to=task)
+    
+    fn __call__(self):
+        self.inner[]()
 
 struct MsgFnTask(ImmCallableWithMessage):
     """This function takes any function with a signature: `fn(owned Message) -> Message`
@@ -222,7 +278,7 @@ struct ImmMessageTask[origin: Origin, T: ImmCallableWithMessage](
         Args:
             inner: The ImmMessageTask to be wrapped.
         """
-        self.inner = Pointer.address_of(inner)
+        self.inner = Pointer(to=inner)
 
     fn __moveinit__(out self, owned other: Self):
         """Move the pointer.

@@ -199,9 +199,9 @@ struct TaskRef[origin: Origin[True], T: Callable](CallableMovable):
         Args:
             inner: The task that we will refer to.
         """
-        self.inner = Pointer.address_of(inner)
+        self.inner = Pointer(to=inner)
 
     @always_inline("nodebug")
-    fn __call__(mut self):
+    fn __call__(self):
         """Call the inner task, and mutate if needed."""
         self.inner[]()
