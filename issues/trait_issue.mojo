@@ -18,7 +18,8 @@ struct Bsingle[t: B]:
 
 # This fails. Should happen?
 struct Bmultiple[*Ts: B]:
-    var a_values: ASt[*Ts]  # ISSUE: Trait should be good
+    # var a_values: ASt[*Ts]  # ISSUE: Trait should be good
+    pass
 
 
 # Works again.
