@@ -1,37 +1,6 @@
 from move.message import Message
 
 
-trait ImmCallable:
-    """The struct should contain a fn __call__ method.
-
-    ```mojo
-    trait ImmCallable:
-        fn __call__(self):
-            ...
-
-    struct MyStruct(ImmCallable):
-        fn __init__(out self):
-            pass
-
-        fn __call__(self):
-            print("calling...")
-
-    inst = MyStruct()
-
-    # Calling the instance.
-    inst()
-    ```
-    """
-
-    fn __call__(self):
-        """Run a task in an immutable way. (No attributes will be affected)."""
-        ...
-
-
-trait ImmCallableMovable(Movable, ImmCallable):
-    ...
-
-
 trait Callable:
     """The struct should contain a fn __call__ method.
 
@@ -91,7 +60,7 @@ trait CallableMovable(Callable, Movable):
     ...
 
 
-trait CallableDefaultable(ImmCallable, Defaultable):
+trait CallableDefaultable(Callable, Defaultable):
     """A `Callable` + `Defaultable`.
 
     ```mojo
@@ -119,17 +88,17 @@ trait CallableDefaultable(ImmCallable, Defaultable):
     ...
 
 
-trait ImmCallableWithMessage:
+trait CallableWithMessage:
     """A `ImmCallable` with a Message to pass to the next task.
 
     ```mojo
     from move.message import Message
 
-    trait ImmCallableWithMessage:
-        fn __call__(self, owned msg: Message) -> Message:
+    trait CallableWithMessage:
+        fn __call__(mut self, owned msg: Message) -> Message:
             ...
 
-    struct MyStruct(ImmCallableWithMessage):
+    struct MyStruct(CallableWithMessage):
         fn __init__(out self):
             pass
 
@@ -181,9 +150,9 @@ struct GenericCallablePack[origin: Origin, tr: __type_of(AnyType), *Ts: tr](
         Ts: Types meeting the tr criteria.
 
     ```mojo
-    from move.callable import GenericCallablePack, ImmCallable
+    from move.callable import GenericCallablePack, Callable
 
-    struct MyTask(ImmCallable):
+    struct MyTask(Callable):
         fn __init__(out self):
             pass
 
@@ -191,8 +160,8 @@ struct GenericCallablePack[origin: Origin, tr: __type_of(AnyType), *Ts: tr](
             print("Running my call...")
 
     # hack to point to the _value lifetime instead of the args lifetime.
-    fn store_value[*Ts: ImmCallable](*args: *Ts) -> GenericCallablePack[__origin_of(args._value), ImmCallable, *Ts]:
-        return rebind[GenericCallablePack[__origin_of(args._value), ImmCallable, *Ts]](GenericCallablePack(args._value))
+    fn store_value[*Ts: Callable](*args: *Ts) -> GenericCallablePack[__origin_of(args._value), Callable, *Ts]:
+        return rebind[GenericCallablePack[__origin_of(args._value), Callable, *Ts]](GenericCallablePack(args._value))
 
 
     task = MyTask()
@@ -240,5 +209,5 @@ struct GenericCallablePack[origin: Origin, tr: __type_of(AnyType), *Ts: tr](
         return __get_litref_as_mvalue(value)
 
 
-alias CallablePack = GenericCallablePack[tr=ImmCallable]
-alias CallableMsgPack = GenericCallablePack[tr=ImmCallableWithMessage]
+alias CallablePack = GenericCallablePack[tr=Callable]
+alias CallableMsgPack = GenericCallablePack[tr=CallableWithMessage]
