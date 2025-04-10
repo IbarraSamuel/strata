@@ -7,17 +7,17 @@ trait TaskWithValue(MutableCallable):
         ...
 
 
-struct InitTask(TaskWithValue):
+struct InitTask[name: String = "Init"](TaskWithValue):
     var value: Int
 
-    fn __init__(out self):
-        self.value = 0
+    fn __init__(out self, value: Int):
+        self.value = value
 
     fn __call__(mut self):
-        print("Starting [Init Task]: Setting up time!...")
+        print("Starting [", name, "Task]: Setting up time!...")
         self.value = 0
         sleep(0.5)
-        print("Finishing [Init Task]: The value is:", self.value)
+        print("Finishing [", name, "Task]: The value is:", self.value)
 
     fn get_value(self) -> Int:
         return self.value
@@ -42,24 +42,37 @@ struct MyTask[name: StringLiteral, t: TaskWithValue, o: ImmutableOrigin](
         )
         self.value = self.task[].get_value() + 1
         sleep(0.5)
-        print(
-            "Finishing [", name, "]: Now the value is", self.task[].get_value()
-        )
+        print("Finishing [", name, "]: Now the value is", self.value)
 
     fn get_value(self) -> Int:
         return self.value
 
 
+struct CollectResults[
+    t1: TaskWithValue,
+    t2: TaskWithValue,
+    o1: ImmutableOrigin,
+    o2: ImmutableOrigin,
+](MutableCallable):
+    var result_1: Pointer[t1, o1]
+    var result_2: Pointer[t2, o2]
+    var value: Int
+
+    fn __init__(out self, ref [o1]r1: t1, ref [o2]r2: t2):
+        self.result_1 = Pointer(to=r1)
+        self.result_2 = Pointer(to=r2)
+        self.value = 0
+
+    fn __call__(mut self):
+        r1 = self.result_1[].get_value()
+        r2 = self.result_2[].get_value()
+        print("Collecting results:", r1, "from group_1 and", r2, "from group_2")
+        self.value = r1 * r2
+        sleep(0.5)
+        print("Final value is:", self.value)
+
+
 fn main():
-    print("\n\nHey! Running Mutable Examples...")
-
-    initial = InitTask()
-    group1_1 = MyTask["Group 1 First"](initial, 10)
-    group1_2 = MyTask["Group 1 Second"](group1_1, 11)
-    group2_1 = MyTask["Group 2 First"](initial, 20)
-    group2_2 = MyTask["Group 2 Second"](group2_1, 21)
-    final = MyTask["Final"](group1_2, 3)
-
     # Type syntax. Not so flexible because we cannot mix owned / mut refs in Variadic Inputs.
     # * Some need to be owned because those groups will not have origin.
     # * Some need to be mutrefs because we just want to run the function, but not transfer anything.
@@ -84,40 +97,36 @@ fn main():
     # You can just wrap the initial struct with a MutableTask and do operations.
 
     # For tasks with independent values:
-    from move.task import Task as T
+    from move.task import TaskRef as T
 
-    task1 = InitTask()
-    task2 = InitTask()
-    task3 = InitTask()
-    task4 = InitTask()
+    task1 = InitTask["first"](0)
+    task2 = InitTask["second parallel 1"](0)
+    task3 = InitTask["second parallel 2"](0)
+    task4 = InitTask["last"](0)
 
-    # grp = (T(task2) >> task3) + task4
-    # grp()
-    t1 = T(task1)
-    grp = T(task2) + task3
-    (T(task1) >> grp) >> task4
-    graph = T(task1) >> (T(task2) + task3) >> task4
+    print()
+    graph = T(task1) >> T(task2) + task3 >> task4
+    print("\n\nHey! Running Mutable Examples (No cross Reference)...")
     graph()
 
-    from move.task import UnsafeTask as UT
+    # Task with cross reference (one refers to other) needs to be unsafe.
 
-    init = UT(initial)
-    g1_1 = UT(group1_1)
-    g1_2 = UT(group1_2)
-    g2_1 = UT(group2_1)
-    g2_2 = UT(group2_2)
-    fin = UT(final)
+    initial = InitTask(0)
+    group1_1 = MyTask["Group 1 First"](initial, 10)
+    group1_2 = MyTask["Group 1 Second"](group1_1, 11)
+    group2_1 = MyTask["Group 2 First"](initial, 20)
+    group2_2 = MyTask["Group 2 Second"](group2_1, 21)
+    final = CollectResults(group1_2, group2_2)
 
-    # grp = init >> g1_1 >> g1_2
+    from move.task import UnsafeTaskRef as UT
 
-    mutable_graph = init >> (g1_1 >> g1_2) + (g2_1 >> g2_2) >> fin
-    # mutable_graph = (
-    #     T(initial)
-    #     >> (T(group1_1) >> group1_2) + (T(group2_1) >> group2_2)
-    #     >> final
-    # )
+    mutable_graph = (
+        UT(initial)
+        >> (UT(group1_1) >> group1_2) + (UT(group2_1) >> group2_2)
+        >> final
+    )
 
     # NOTE: Big graphs can crash the compiler with no aparent reason and no errors.
-
+    print("\n\nHey! Running Mutable Examples (With cross Reference)...")
     mutable_graph()
     print("The final value for final is:", final.value)
