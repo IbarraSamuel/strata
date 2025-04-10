@@ -1,6 +1,5 @@
 from time import sleep
-from move.message import Message
-from move.callable import ImmCallableWithMessage
+from move.message import Message, CallableWithMessage
 
 
 fn str_to_int(str: String) -> Int:
@@ -16,7 +15,7 @@ fn str_to_int(str: String) -> Int:
     return Int(v)
 
 
-struct Init(ImmCallableWithMessage):
+struct Init(CallableWithMessage):
     var count: Int
 
     fn __init__(out self, count: Int):
@@ -29,7 +28,7 @@ struct Init(ImmCallableWithMessage):
         return msg
 
 
-struct Par1(ImmCallableWithMessage):
+struct Par1(CallableWithMessage):
     fn __init__(out self):
         pass
 
@@ -44,7 +43,7 @@ struct Par1(ImmCallableWithMessage):
 
 
 @value
-struct Par2(ImmCallableWithMessage):
+struct Par2(CallableWithMessage):
     fn __init__(out self):
         pass
 
@@ -58,7 +57,7 @@ struct Par2(ImmCallableWithMessage):
         return msg
 
 
-struct Final(ImmCallableWithMessage):
+struct Final(CallableWithMessage):
     fn __init__(out self):
         pass
 
@@ -75,8 +74,8 @@ struct Final(ImmCallableWithMessage):
 
 fn main() raises:
     print("\n\nHey! Running Message Examples...")
-    from move.task_groups.series.immutable import ImmSeriesMsgTask as S
-    from move.task_groups.parallel.immutable import ImmParallelMsgTask as P
+    from move.message import ImmSeriesMsgTask as S
+    from move.message import ImmParallelMsgTask as P
 
     init = Init(12)
     calc1 = Par1()
@@ -91,7 +90,7 @@ fn main() raises:
     print("final value is:", value)
 
     # Airflow Syntax
-    from move.task.immutable import ImmMessageTask as T
+    from move.message import ImmMessageTask as T
 
     graph_2 = T(init) >> T(calc1) + calc2 >> final
     print("[GRAPH 2]...")
@@ -129,7 +128,7 @@ fn main() raises:
         msg["calc2"] = String(no)
         return msg
 
-    from move.task.immutable import MsgFnTask as Fn
+    from move.message import MsgFnTask as Fn
 
     ft = Fn(first_task)
     p1 = Fn(parallel1)

@@ -1,13 +1,13 @@
 from time import sleep
-from move.callable import Callable
+from move.callable import Callable, MutableCallable
 
 
-trait TaskWithValue(Callable):
+trait TaskWithValue(MutableCallable):
     fn get_value(self) -> Int:
         ...
 
 
-struct InitTask:
+struct InitTask(TaskWithValue):
     var value: Int
 
     fn __init__(out self):
@@ -24,7 +24,9 @@ struct InitTask:
 
 
 # Just ensure your struct has fn __call__(mut self):
-struct MyTask[name: StringLiteral, t: TaskWithValue, o: ImmutableOrigin]:
+struct MyTask[name: StringLiteral, t: TaskWithValue, o: ImmutableOrigin](
+    MutableCallable
+):
     var task: Pointer[t, o]
     var value: Int
     var additional: Int
@@ -80,22 +82,40 @@ fn main():
 
     # Airflow Syntax. We solve all these problems.
     # You can just wrap the initial struct with a MutableTask and do operations.
-    from move.task.immutable import Task as T, MutTaskRef
 
-    # init = T(initial)
-    # init = MutTaskRef(initial)
-    # g1_1 = MutTaskRef(group1_1)
-    # g1_2 = MutTaskRef(group1_2)
-    # g2_1 = MutTaskRef(group2_1)
-    # g2_2 = MutTaskRef(group2_2)
-    # fin = MutTaskRef(final)
+    # For tasks with independent values:
+    from move.task import Task as T
 
-    # mutable_graph = T(initial) >> (T(g1_1) >> g1_2) + (T(g2_1) >> g2_2) >> fin
-    mutable_graph = (
-        T(initial)
-        >> (T(group1_1) >> group1_2) + (T(group2_1) >> group2_2)
-        >> final
-    )
+    task1 = InitTask()
+    task2 = InitTask()
+    task3 = InitTask()
+    task4 = InitTask()
+
+    # grp = (T(task2) >> task3) + task4
+    # grp()
+    t1 = T(task1)
+    grp = T(task2) + task3
+    (T(task1) >> grp) >> task4
+    graph = T(task1) >> (T(task2) + task3) >> task4
+    graph()
+
+    from move.task import UnsafeTask as UT
+
+    init = UT(initial)
+    g1_1 = UT(group1_1)
+    g1_2 = UT(group1_2)
+    g2_1 = UT(group2_1)
+    g2_2 = UT(group2_2)
+    fin = UT(final)
+
+    # grp = init >> g1_1 >> g1_2
+
+    mutable_graph = init >> (g1_1 >> g1_2) + (g2_1 >> g2_2) >> fin
+    # mutable_graph = (
+    #     T(initial)
+    #     >> (T(group1_1) >> group1_2) + (T(group2_1) >> group2_2)
+    #     >> final
+    # )
 
     # NOTE: Big graphs can crash the compiler with no aparent reason and no errors.
 

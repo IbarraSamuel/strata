@@ -23,9 +23,14 @@ trait Callable:
     ```
     """
 
-    fn __call__(mut self):
+    fn __call__(self):
         """Run a task with the possibility to mutate internal state."""
         ...
+
+
+trait MutableCallable:
+    fn __call__(mut self):
+        pass
 
 
 trait CallableMovable(Callable, Movable):
@@ -58,77 +63,6 @@ trait CallableMovable(Callable, Movable):
     """
 
     ...
-
-
-trait CallableDefaultable(Callable, Defaultable):
-    """A `Callable` + `Defaultable`.
-
-    ```mojo
-    trait CallableDefaultable:
-        fn __init__(out self):
-            ...
-
-        fn __call__(self):
-            ...
-
-    struct MyStruct(CallableDefaultable):
-        fn __init__(out self):
-            pass
-
-        fn __call__(self):
-            print("calling...")
-
-    default = MyStruct()
-
-    # Calling the instance.
-    default()
-    ```
-    """
-
-    ...
-
-
-trait CallableWithMessage:
-    """A `ImmCallable` with a Message to pass to the next task.
-
-    ```mojo
-    from move.message import Message
-
-    trait CallableWithMessage:
-        fn __call__(mut self, owned msg: Message) -> Message:
-            ...
-
-    struct MyStruct(CallableWithMessage):
-        fn __init__(out self):
-            pass
-
-        fn __call__(self, owned msg: Message) -> Message:
-            nm = msg.get("name", "Bob")
-            msg["greet"] = String("Hello, ", nm, "!")
-            return msg
-
-    tsk = MyStruct()
-
-    # Calling the instance.
-    msg = Message()
-    msg["name"] = "Samuel"
-    res = tsk(msg)
-    print(res["greet"])
-
-    ```
-    """
-
-    fn __call__(self, owned msg: Message) -> Message:
-        """Run a task using a `Message` (Alias for `Dict[String, String]` for now).
-        You should return a message back.
-
-        Args:
-            msg: The information to be readed.
-
-        Returns:
-            The result of running this task.
-        """
-        ...
 
 
 struct GenericCallablePack[origin: Origin, tr: __type_of(AnyType), *Ts: tr](
@@ -210,4 +144,4 @@ struct GenericCallablePack[origin: Origin, tr: __type_of(AnyType), *Ts: tr](
 
 
 alias CallablePack = GenericCallablePack[tr=Callable]
-alias CallableMsgPack = GenericCallablePack[tr=CallableWithMessage]
+# alias MutableCallablePack = GenericCallablePack[tr=MutableCallable]

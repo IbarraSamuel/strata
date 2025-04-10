@@ -1,17 +1,8 @@
 from time import sleep
-from move.callable import ImmCallable, Callable, CallableDefaultable
+from move.callable import Callable
 
 
-struct MyDefaultTask[name: StringLiteral](CallableDefaultable):
-    fn __init__(out self):
-        pass
-
-    fn __call__(self):
-        print("Task [", name, "] Running...")
-        sleep(0.5)
-
-
-struct MyTask[job: StringLiteral](ImmCallable):
+struct MyTask[job: StringLiteral](Callable):
     var some_data: String
 
     fn __init__(out self, owned some_data: StringLiteral):
@@ -22,23 +13,23 @@ struct MyTask[job: StringLiteral](ImmCallable):
         sleep(0.5)
 
 
-struct MutTask[name: StringLiteral](Callable):
-    var value: Int
+# struct MutTask[name: StringLiteral](Callable):
+#     var value: Int
 
-    fn __init__(out self, value: Int):
-        self.value = value
+#     fn __init__(out self, value: Int):
+#         self.value = value
 
-    fn __call__(mut self):
-        print("Running [", name, "]: Incrementing value", self.value)
-        sleep(0.5)
-        self.value += 1
-        print("Finish [", name, "]: Value incremented. Now it's", self.value)
+#     fn __call__(mut self):
+#         print("Running [", name, "]: Incrementing value", self.value)
+#         sleep(0.5)
+#         self.value += 1
+#         print("Finish [", name, "]: Value incremented. Now it's", self.value)
 
 
 fn main():
     print("\n\nHey! Running Immutable Examples...")
-    from move.task_groups.series.immutable import ImmSeriesTask as IS
-    from move.task_groups.parallel.immutable import ImmParallelTask as IP
+    from move.immutable import SeriesTask as IS
+    from move.immutable import ParallelTask as IP
 
     init = MyTask["Initialize"]("Setting up...")
     load = MyTask["Load Data"]("Reading from some place...")
@@ -59,7 +50,7 @@ fn main():
     graph_1()
 
     # Airflow Syntax
-    from move.task.immutable import Task as IT
+    from move.immutable import ImmTaskRef as IT
 
     graph_2 = (
         IT(init)
@@ -95,7 +86,7 @@ fn main():
     # don't want to do it right now. It will require to duplicate a lot of functions and
     # structs. But this is how I did for Mutable ones.
 
-    from move.task.immutable import FnTask as Fn
+    from move.immutable import FnTask as Fn
 
     ft = Fn(first_task)
     p1 = Fn(parallel1)
