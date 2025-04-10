@@ -103,12 +103,12 @@ fn series_runner[*ts: Callable](*callables: *ts):
     assert_true(t1_finish < t2_starts)
     ```
     """
-    rp = CallablePack(callables._value)
-    series_runner(rp)
+    series_runner(CallablePack(callables._value))
 
 
-# This could be Variadic but I don't want this overhead now, because we don't have a struct collection for MutableCallables.
-# fn series_runner[t1: Callable, t2: Callable](c1: t1, c2: t2):
+# fn series_runner[
+#     t1: MutableCallable, t2: MutableCallable
+# ](mut c1: t1, mut c2: t2):
 #     """Run a pair of `RunnableMutable` structs in sequence.
 
 #     Parameters:
@@ -123,97 +123,50 @@ fn series_runner[*ts: Callable](*callables: *ts):
 #     c2()
 
 
-fn series_runner[
-    t1: MutableCallable, t2: MutableCallable
-](mut c1: t1, mut c2: t2):
-    """Run a pair of `RunnableMutable` structs in sequence.
-
-    Parameters:
-        t1: Task type to be grouped.
-        t2: Task type to be grouped.
-
-    Args:
-        c1: Callable 1 from t1.
-        c2: Callable 2 from t2.
-    """
-    c1()
-    c2()
-
-
-# fn series_runner[t1: Callable, t2: MutableCallable](c1: t1, mut c2: t2):
-#     """Run a pair of `RunnableMutable` structs in sequence.
+# fn series_runner[
+#     o: MutableOrigin, *Ts: MutableCallable
+# ](callables: VariadicPack[o, MutableCallable, *Ts]):
+#     """Run Runnable structs in sequence.
 
 #     Parameters:
-#         t1: Task type to be grouped.
-#         t2: Task type to be grouped.
+#         o: Origin of the VariadicPack.
+#         Ts: Variadic `Callable` types.
 
 #     Args:
-#         c1: Callable 1 from t1.
-#         c2: Callable 2 from t2.
+#         callables: A `VariadicPack` collection of types.
+
+#     ```mojo
+#     from move.runners import series_runner
+#     from move.callable import MutableCallable
+#     from time import perf_counter_ns, sleep
+#     from memory import Pointer
+#     from testing import assert_true
+
+#     struct Task(MutableCallable):
+#         var start: UInt
+#         var finish: UInt
+#         fn __init__(out self):
+#             self.start = 0
+#             self.finish = 0
+#         fn __call__(mut self):
+#             self.start = perf_counter_ns()
+#             sleep(0.1)
+#             self.finish = perf_counter_ns()
+
+#     t1 = Task()
+#     t2 = Task()
+
+#     # Will run t1 first, then t2
+#     series_runner(t1, t2)
+
+#     assert_true(t1.finish < t2.finish)
+#     ```
 #     """
-#     c1()
-#     c2()
+#     alias size = len(VariadicList(Ts))
 
-
-# fn series_runner[t1: MutableCallable, t2: Callable](mut c1: t1, c2: t2):
-#     """Run a pair of `RunnableMutable` structs in sequence.
-
-#     Parameters:
-#         t1: Task type to be grouped.
-#         t2: Task type to be grouped.
-
-#     Args:
-#         c1: Callable 1 from t1.
-#         c2: Callable 2 from t2.
-#     """
-#     c1()
-#     c2()
-
-
-fn series_runner[
-    o: Origin[True], *Ts: MutableCallable
-](callables: VariadicPack[o, MutableCallable, *Ts]):
-    """Run Runnable structs in sequence.
-
-    Parameters:
-        o: Origin of the VariadicPack.
-        Ts: Variadic `Callable` types.
-
-    Args:
-        callables: A `VariadicPack` collection of types.
-
-    ```mojo
-    from move.runners import series_runner
-    from move.callable import MutableCallable
-    from time import perf_counter_ns, sleep
-    from memory import Pointer
-    from testing import assert_true
-
-    struct Task(MutableCallable):
-        var start: UInt
-        var finish: UInt
-        fn __init__(out self):
-            self.start = 0
-            self.finish = 0
-        fn __call__(mut self):
-            self.start = perf_counter_ns()
-            sleep(0.1)
-            self.finish = perf_counter_ns()
-
-    t1 = Task()
-    t2 = Task()
-
-    # Will run t1 first, then t2
-    series_runner(t1, t2)
-
-    assert_true(t1.finish < t2.finish)
-    ```
-    """
-    alias size = len(VariadicList(Ts))
-
-    @parameter
-    for i in range(size):
-        callables[i]()
+#     @parameter
+#     for i in range(size):
+#         callables[i]()
 
 
 # Execute tasks in parallel
@@ -319,31 +272,9 @@ fn parallel_runner[*ts: Callable](*callables: *ts):
 
 
 # This could be Variadic but I don't want this overhead now, because we don't have a struct collection for MutableCallables.
-fn parallel_runner[
-    t1: MutableCallable, t2: MutableCallable
-](mut c1: t1, mut c2: t2):
-    """Run a pair of `RunnableMutable` structs in parallel.
-
-    Parameters:
-        t1: Task type to be grouped.
-        t2: Task type to be grouped.
-
-    Args:
-        c1: Callable 1 from t1.
-        c2: Callable 2 from t2.
-    """
-
-    @parameter
-    fn exec(i: Int):
-        if i == 1:
-            c1()
-        else:
-            c2()
-
-    sync_parallelize[exec](2)
-
-
-# fn parallel_runner[t1: Callable, t2: MutableCallable](c1: t1, mut c2: t2):
+# fn parallel_runner[
+#     t1: MutableCallable, t2: MutableCallable
+# ](mut c1: t1, mut c2: t2):
 #     """Run a pair of `RunnableMutable` structs in parallel.
 
 #     Parameters:
@@ -365,99 +296,55 @@ fn parallel_runner[
 #     sync_parallelize[exec](2)
 
 
-# fn parallel_runner[t1: MutableCallable, t2: Callable](mut c1: t1, c2: t2):
-#     """Run a pair of `RunnableMutable` structs in parallel.
+# fn parallel_runner[
+#     o: MutableOrigin, *Ts: MutableCallable
+# ](callables: VariadicPack[o, MutableCallable, *Ts]):
+#     """Run Runnable structs in parallel.
 
 #     Parameters:
-#         t1: Task type to be grouped.
-#         t2: Task type to be grouped.
+#         o: Origin of the VariadicPack.
+#         Ts: Variadic `Callable` types.
 
 #     Args:
-#         c1: Callable 1 from t1.
-#         c2: Callable 2 from t2.
+#         callables: A `VariadicPack` collection of types.
+
+#     ```mojo
+#     from move.runners import parallel_runner
+#     from move.callable import MutableCallable
+#     from time import perf_counter_ns, sleep
+#     from memory import Pointer
+#     from testing import assert_true
+
+#     struct Task(MutableCallable):
+#         var start: UInt
+#         var finish: UInt
+#         fn __init__(out self):
+#             self.start = 0
+#             self.finish = 0
+#         fn __call__(mut self):
+#             self.start = perf_counter_ns()
+#             sleep(1.0) # Less times didn't work well on doctests
+#             self.finish = perf_counter_ns()
+
+#     t1 = Task()
+#     t2 = Task()
+
+#     # Will run t1 and t2 at the same time.
+#     parallel_runner(t1, t2)
+
+#     assert_true(t2.start < t1.finish and t1.start < t2.finish)
+#     ```
 #     """
+#     alias size = len(VariadicList(Ts))
 
 #     @parameter
 #     fn exec(i: Int):
-#         if i == 1:
-#             c1()
-#         else:
-#             c2()
+#         @parameter
+#         for ti in range(size):
+#             if ti == i:
+#                 callables[ti]()
 
-#     sync_parallelize[exec](2)
-
-
-# fn parallel_runner[t1: Callable, t2: Callable](c1: t1, c2: t2):
-#     """Run a pair of `RunnableMutable` structs in parallel.
-
-#     Parameters:
-#         t1: Task type to be grouped.
-#         t2: Task type to be grouped.
-
-#     Args:
-#         c1: Callable 1 from t1.
-#         c2: Callable 2 from t2.
-#     """
-
-#     @parameter
-#     fn exec(i: Int):
-#         if i == 1:
-#             c1()
-#         else:
-#             c2()
-
-#     sync_parallelize[exec](2)
-
-
-fn parallel_runner[
-    o: Origin[True], *Ts: MutableCallable
-](callables: VariadicPack[o, MutableCallable, *Ts]):
-    """Run Runnable structs in parallel.
-
-    Parameters:
-        o: Origin of the VariadicPack.
-        Ts: Variadic `Callable` types.
-
-    Args:
-        callables: A `VariadicPack` collection of types.
-
-    ```mojo
-    from move.runners import parallel_runner
-    from move.callable import MutableCallable
-    from time import perf_counter_ns, sleep
-    from memory import Pointer
-    from testing import assert_true
-
-    struct Task(MutableCallable):
-        var start: UInt
-        var finish: UInt
-        fn __init__(out self):
-            self.start = 0
-            self.finish = 0
-        fn __call__(mut self):
-            self.start = perf_counter_ns()
-            sleep(1.0) # Less times didn't work well on doctests
-            self.finish = perf_counter_ns()
-
-    t1 = Task()
-    t2 = Task()
-
-    # Will run t1 and t2 at the same time.
-    parallel_runner(t1, t2)
-
-    assert_true(t2.start < t1.finish and t1.start < t2.finish)
-    ```
-    """
-    alias size = len(VariadicList(Ts))
-
-    @parameter
-    fn exec(i: Int):
-        @parameter
-        for ti in range(size):
-            if ti == i:
-                callables[ti]()
-
-    sync_parallelize[exec](size)
+#     sync_parallelize[exec](size)
 
 
 # ----------------- MESSAGE RUNNERS --------------------
