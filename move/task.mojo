@@ -1,9 +1,17 @@
-from move.callable import (
-    MutableCallable,
-    MutableCallableMovable,
-    GenericCallablePack,
-)
+from move.callable import GenericPack
 from algorithm import sync_parallelize
+
+
+trait MutableCallable:
+    fn __call__(mut self):
+        ...
+
+
+trait MutableCallableMovable(MutableCallable, Movable):
+    ...
+
+
+alias MutableCallablePack = GenericPack[tr=MutableCallable]
 
 # from move.runners import series_runner, parallel_runner
 
@@ -12,7 +20,7 @@ from algorithm import sync_parallelize
 
 fn series_runner[
     o: MutableOrigin, *ts: MutableCallable
-](callables: GenericCallablePack[o, MutableCallable, *ts]):
+](callables: MutableCallablePack[o, *ts]):
     alias size = len(VariadicList(ts))
 
     @parameter
@@ -31,7 +39,7 @@ fn series_runner[*ts: MutableCallable](mut*callables: *ts):
 
     ```mojo
     from move.task import series_runner
-    from move.callable import Callable, CallablePack
+    from move.task import MutableCallable, MutableCallablePack
     from time import perf_counter_ns, sleep
     from memory import Pointer
     from testing import assert_true
@@ -41,13 +49,13 @@ fn series_runner[*ts: MutableCallable](mut*callables: *ts):
     t2_starts = UInt(0)
     t2_finish = UInt(0)
 
-    struct Task[o1: Origin[True], o2: Origin[True]](Callable):
+    struct Task[o1: Origin[True], o2: Origin[True]](MutableCallable):
         var start: Pointer[UInt, o1]
         var finish: Pointer[UInt, o2]
         fn __init__(out self, ref[o1] start: UInt, ref[o2] finish: UInt):
             self.start = Pointer(to=start)
             self.finish = Pointer(to=finish)
-        fn __call__(self):
+        fn __call__(mut self):
             self.start[] = perf_counter_ns()
             sleep(0.1)
             self.finish[] = perf_counter_ns()
@@ -69,7 +77,7 @@ fn series_runner[*ts: MutableCallable](mut*callables: *ts):
 
 fn parallel_runner[
     o: MutableOrigin, *ts: MutableCallable
-](callables: GenericCallablePack[o, MutableCallable, *ts]):
+](callables: MutableCallablePack[o, *ts]):
     alias size = len(VariadicList(ts))
 
     @parameter
@@ -93,7 +101,7 @@ fn parallel_runner[*ts: MutableCallable](mut*callables: *ts):
 
     ```mojo
     from move.task import parallel_runner
-    from move.callable import MutableCallable
+    from move.task import MutableCallable
     from time import perf_counter_ns, sleep
     from memory import Pointer
     from testing import assert_true
@@ -131,7 +139,7 @@ fn parallel_runner[*ts: MutableCallable](mut*callables: *ts):
 
 
 struct SeriesTask[o: MutableOrigin, *ts: MutableCallable](MutableCallable):
-    var storage: GenericCallablePack[o, MutableCallable, *ts]
+    var storage: MutableCallablePack[o, *ts]
 
     fn __init__(
         out self: SeriesTask[
@@ -140,7 +148,7 @@ struct SeriesTask[o: MutableOrigin, *ts: MutableCallable](MutableCallable):
         mut*args: *ts,
     ):
         self.storage = rebind[__type_of(self.storage)](
-            GenericCallablePack(args._value)
+            MutableCallablePack(args._value)
         )
 
     # fn __moveinit__(out self, owned other: Self):
@@ -151,7 +159,7 @@ struct SeriesTask[o: MutableOrigin, *ts: MutableCallable](MutableCallable):
 
 
 struct ParallelTask[o: MutableOrigin, *ts: MutableCallable](MutableCallable):
-    var storage: GenericCallablePack[o, MutableCallable, *ts]
+    var storage: MutableCallablePack[o, *ts]
 
     fn __init__(
         out self: ParallelTask[
@@ -160,7 +168,7 @@ struct ParallelTask[o: MutableOrigin, *ts: MutableCallable](MutableCallable):
         mut*args: *ts,
     ):
         self.storage = rebind[__type_of(self.storage)](
-            GenericCallablePack(args._value)
+            MutableCallablePack(args._value)
         )
 
     # fn __moveinit__(out self, owned other: Self):
@@ -168,6 +176,14 @@ struct ParallelTask[o: MutableOrigin, *ts: MutableCallable](MutableCallable):
 
     fn __call__(mut self):
         parallel_runner(self.storage)
+
+
+# AIRFLOW SYNTAX
+# WHY WE NEED OVERLOAD FOR __rshift__ and __add__?
+# Because a value that should be mutated, needs to have a origin,
+# and seems like the origin cannot be anonymous. In that case,
+# to chain correctly these two concepts, we need to own the object.
+# And have a case for owned values, another for existing values.
 
 
 struct SerTaskPair[T1: MutableCallableMovable, T2: MutableCallableMovable](

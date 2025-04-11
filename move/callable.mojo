@@ -1,73 +1,7 @@
 from move.message import Message
 
 
-trait Callable:
-    """The struct should contain a fn __call__ method.
-
-    ```mojo
-    trait Callable:
-        fn __call__(mut self):
-            ...
-
-    struct MyStruct(Callable):
-        fn __init__(out self):
-            pass
-
-        fn __call__(mut self):
-            print("calling...")
-
-    inst = MyStruct()
-
-    # Calling the instance.
-    inst()
-    ```
-    """
-
-    fn __call__(self):
-        """Run a task with the possibility to mutate internal state."""
-        ...
-
-
-trait MutableCallable:
-    fn __call__(mut self):
-        pass
-
-
-trait CallableMovable(Callable, Movable):
-    """A `Callable` + `Movable`.
-
-    ```mojo
-    trait CallableMovable:
-        fn __moveinit__(out self, owned existing: Self):
-            ...
-
-        fn __call__(mut self):
-            ...
-
-    struct MyStruct(CallableMovable):
-        fn __init__(out self):
-            pass
-
-        fn __moveinit__(out self, owned existing: Self):
-            pass
-
-        fn __call__(mut self):
-            print("calling...")
-
-    inst = MyStruct()
-
-    # Calling the instance.
-    # moved = inst^
-    inst()
-    ```
-    """
-
-    ...
-
-
-struct GenericCallablePack[origin: Origin, tr: __type_of(AnyType), *Ts: tr](
-    Copyable
-):
+struct GenericPack[origin: Origin, tr: __type_of(AnyType), *Ts: tr](Copyable):
     # struct CallablePack[origin: Origin, *Ts: ImmCallable](Copyable):
     """Stores a reference variadic pack of (read only) `Callable` structs.
 
@@ -84,26 +18,31 @@ struct GenericCallablePack[origin: Origin, tr: __type_of(AnyType), *Ts: tr](
         Ts: Types meeting the tr criteria.
 
     ```mojo
-    from move.callable import GenericCallablePack, Callable
+    from move.callable import GenericPack
+    from testing import assert_true
 
-    struct MyTask(Callable):
+    trait HasGetter:
+        fn get(self) -> Int:
+            ...
+
+    struct MyTask(HasGetter):
         fn __init__(out self):
             pass
 
-        fn __call__(self):
-            print("Running my call...")
+        fn get(self) -> Int:
+            return 1
 
     # hack to point to the _value lifetime instead of the args lifetime.
-    fn store_value[*Ts: Callable](*args: *Ts) -> GenericCallablePack[__origin_of(args._value), Callable, *Ts]:
-        return rebind[GenericCallablePack[__origin_of(args._value), Callable, *Ts]](GenericCallablePack(args._value))
+    fn store_value[*Ts: HasGetter](*args: *Ts) -> GenericPack[__origin_of(args._value), HasGetter, *Ts]:
+        return rebind[GenericPack[__origin_of(args._value), HasGetter, *Ts]](GenericPack(args._value))
 
 
     task = MyTask()
     cpacks = store_value(task)
 
     # Use the task here
-    cpacks[0]()
-
+    val = cpacks[0].get()
+    assert_true(val == 1)
     ```
     """
 
@@ -141,7 +80,3 @@ struct GenericCallablePack[origin: Origin, tr: __type_of(AnyType), *Ts: tr](
         """
         value = __mlir_op.`lit.ref.pack.extract`[index = i.value](self.storage)
         return __get_litref_as_mvalue(value)
-
-
-alias CallablePack = GenericCallablePack[tr=Callable]
-# alias MutableCallablePack = GenericCallablePack[tr=MutableCallable]

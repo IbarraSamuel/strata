@@ -1,6 +1,6 @@
 from algorithm import sync_parallelize
 
-from move.callable import Callable
+from move.immutable import Callable
 
 
 trait CallableDefaultable(Callable, Defaultable):

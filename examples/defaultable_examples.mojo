@@ -1,7 +1,8 @@
 from time import sleep
+from move.defaultable import CallableDefaultable
 
 
-struct MyDefaultTask[name: StringLiteral]:
+struct MyDefaultTask[name: StringLiteral](CallableDefaultable):
     fn __init__(out self):
         pass
 

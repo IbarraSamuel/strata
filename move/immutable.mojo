@@ -1,5 +1,260 @@
-from move.callable import Callable, CallableMovable, CallablePack
-from move.runners import series_runner, parallel_runner
+from move.callable import GenericPack
+from algorithm import sync_parallelize
+
+alias CallablePack = GenericPack[tr=Callable]
+
+
+trait Callable:
+    """The struct should contain a fn __call__ method.
+
+    ```mojo
+    trait Callable:
+        fn __call__(mut self):
+            ...
+
+    struct MyStruct(Callable):
+        fn __init__(out self):
+            pass
+
+        fn __call__(mut self):
+            print("calling...")
+
+    inst = MyStruct()
+
+    # Calling the instance.
+    inst()
+    ```
+    """
+
+    fn __call__(self):
+        """Run a task with the possibility to mutate internal state."""
+        ...
+
+
+trait CallableMovable(Callable, Movable):
+    """A `Callable` + `Movable`.
+
+    ```mojo
+    trait CallableMovable:
+        fn __moveinit__(out self, owned existing: Self):
+            ...
+
+        fn __call__(mut self):
+            ...
+
+    struct MyStruct(CallableMovable):
+        fn __init__(out self):
+            pass
+
+        fn __moveinit__(out self, owned existing: Self):
+            pass
+
+        fn __call__(mut self):
+            print("calling...")
+
+    inst = MyStruct()
+
+    # Calling the instance.
+    # moved = inst^
+    inst()
+    ```
+    """
+
+    ...
+
+
+fn series_runner[*Ts: Callable](callables: CallablePack[_, *Ts]):
+    """Run Runnable structs in sequence.
+
+    Parameters:
+        Ts: Variadic `ImmCallable` types.
+
+    Args:
+        callables: A `CallablePack` collection of types.
+
+    ```mojo
+    from move.immutable import series_runner, Callable, CallablePack
+    from time import perf_counter_ns, sleep
+    from memory import Pointer
+    from testing import assert_true
+
+    t1_starts = UInt(0)
+    t1_finish = UInt(0)
+    t2_starts = UInt(0)
+    t2_finish = UInt(0)
+
+    struct Task[o1: Origin[True], o2: Origin[True]](Callable):
+        var start: Pointer[UInt, o1]
+        var finish: Pointer[UInt, o2]
+        fn __init__(out self, ref[o1] start: UInt, ref[o2] finish: UInt):
+            self.start = Pointer(to=start)
+            self.finish = Pointer(to=finish)
+        fn __call__(self):
+            self.start[] = perf_counter_ns()
+            sleep(0.1)
+            self.finish[] = perf_counter_ns()
+
+    t1 = Task(t1_starts, t1_finish)
+    t2 = Task(t2_starts, t2_finish)
+
+    fn series_variadic_inp[*ts: Callable](*args: *ts):
+        cp = CallablePack(args._value)
+        series_runner(cp)
+    # Will run t1 first, then t2
+    series_variadic_inp(t1, t2)
+
+    assert_true(t1_finish < t2_starts)
+    ```
+    """
+    alias size = len(VariadicList(Ts))
+
+    @parameter
+    for i in range(size):
+        callables[i]()
+
+
+fn series_runner[*ts: Callable](*callables: *ts):
+    """Run Runnable structs in sequence.
+
+    Parameters:
+        ts: Variadic `ImmCallable` types.
+
+    Args:
+        callables: A collection of `ImmCallable` types.
+
+    ```mojo
+    from move.immutable import series_runner
+    from time import perf_counter_ns, sleep
+    from memory import Pointer
+    from testing import assert_true
+
+    t1_starts = UInt(0)
+    t1_finish = UInt(0)
+    t2_starts = UInt(0)
+    t2_finish = UInt(0)
+
+    struct Task[o1: Origin[True], o2: Origin[True]]:
+        var start: Pointer[UInt, o1]
+        var finish: Pointer[UInt, o2]
+        fn __init__(out self, ref[o1] start: UInt, ref[o2] finish: UInt):
+            self.start = Pointer(to=start)
+            self.finish = Pointer(to=finish)
+        fn __call__(self):
+            self.start[] = perf_counter_ns()
+            sleep(0.1)
+            self.finish[] = perf_counter_ns()
+
+    t1 = Task(t1_starts, t1_finish)
+    t2 = Task(t2_starts, t2_finish)
+
+    # Will run t1 first, then t2
+    series_runner(t1, t2)
+
+    assert_true(t1_finish < t2_starts)
+    ```
+    """
+    series_runner(CallablePack(callables._value))
+
+
+# Execute tasks in parallel
+
+
+fn parallel_runner[*Ts: Callable](callables: CallablePack[_, *Ts]):
+    """Run Runnable structs in parallel.
+
+    Parameters:
+        Ts: Variadic `ImmCallable` types.
+
+    Args:
+        callables: A `CallablePack` collection of types.
+
+    ```mojo
+    from move.immutable import parallel_runner,Callable, CallablePack
+    from time import perf_counter_ns, sleep
+    from memory import Pointer
+    from testing import assert_true
+
+    t1_starts = UInt(0)
+    t1_finish = UInt(0)
+    t2_starts = UInt(0)
+    t2_finish = UInt(0)
+
+    struct Task[o1: Origin[True], o2: Origin[True]]:
+        var start: Pointer[UInt, o1]
+        var finish: Pointer[UInt, o2]
+        fn __init__(out self, ref[o1] start: UInt, ref[o2] finish: UInt):
+            self.start = Pointer(to=start)
+            self.finish = Pointer(to=finish)
+        fn __call__(self):
+            self.start[] = perf_counter_ns()
+            sleep(1.0) # Less times didn't work well on doctests
+            self.finish[] = perf_counter_ns()
+
+    t1 = Task(t1_starts, t1_finish)
+    t2 = Task(t2_starts, t2_finish)
+
+    fn parallel_variadic_inp[*ts: Callable](*args: *ts):
+        cp = CallablePack(args._value)
+        parallel_runner(cp)
+    # Will run t1 and t2 at the same time
+    parallel_variadic_inp(t1, t2)
+
+    assert_true(t2_starts < t1_finish and t1_starts < t2_finish)
+    ```
+    """
+    alias size = len(VariadicList(Ts))
+
+    @parameter
+    fn exec(i: Int):
+        @parameter
+        for ti in range(size):
+            if ti == i:
+                callables[ti]()
+
+    sync_parallelize[exec](size)
+
+
+fn parallel_runner[*ts: Callable](*callables: *ts):
+    """Run Runnable structs in parallel.
+
+    Parameters:
+        ts: Variadic `ImmCallable` types.
+
+    Args:
+        callables: A collection of `ImmCallable` types.
+
+    ```mojo
+    from move.immutable import parallel_runner
+    from time import perf_counter_ns, sleep
+    from memory import Pointer
+    from testing import assert_true
+
+    t1_starts = UInt(0)
+    t1_finish = UInt(0)
+    t2_starts = UInt(0)
+    t2_finish = UInt(0)
+
+    struct Task[o1: Origin[True], o2: Origin[True]]:
+        var start: Pointer[UInt, o1]
+        var finish: Pointer[UInt, o2]
+        fn __init__(out self, ref[o1] start: UInt, ref[o2] finish: UInt):
+            self.start = Pointer(to=start)
+            self.finish = Pointer(to=finish)
+        fn __call__(self):
+            self.start[] = perf_counter_ns()
+            sleep(1.0) # Less times didn't work well on doctests
+            self.finish[] = perf_counter_ns()
+
+    t1 = Task(t1_starts, t1_finish)
+    t2 = Task(t2_starts, t2_finish)
+
+    # Will run t1 and t2 at the same time
+    parallel_runner(t1, t2)
+
+    assert_true(t2_starts < t1_finish and t1_starts < t2_finish)
+    ```
+    """
+    parallel_runner(CallablePack(callables._value))
 
 
 struct FnTask(Callable):

@@ -1,11 +1,11 @@
 from collections import Dict
-from move.callable import GenericCallablePack
+from move.callable import GenericPack
 from algorithm import sync_parallelize
 
 alias Message = Dict[String, String]
 """A message to be readed and produced by tasks."""
 
-alias CallableMsgPack = GenericCallablePack[tr=CallableWithMessage]
+alias CallableMsgPack = GenericPack[tr=CallableWithMessage]
 
 
 fn parallel_msg_runner[

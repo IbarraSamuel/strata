@@ -1,5 +1,5 @@
 from time import sleep
-from move.callable import Callable
+from move.immutable import Callable
 
 
 struct MyTask[job: StringLiteral](Callable):
