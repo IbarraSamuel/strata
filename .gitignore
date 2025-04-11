@@ -14,5 +14,5 @@ wheels/
 # magic environments
 .magic
 
-# Bin to ignore
-.examples
+# Package to ignore
+move.mojopkg
