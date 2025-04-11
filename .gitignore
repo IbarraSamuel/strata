@@ -15,4 +15,4 @@ wheels/
 .magic
 
 # Package to ignore
-move.mojopkg
+package/*
