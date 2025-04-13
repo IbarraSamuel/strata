@@ -102,7 +102,7 @@ fn main():
     from move.immutable import SeriesTask as S, ParallelTask as P
 
     print("Type graph...")
-    imm_type_graph = S(i, P(g11, g12), P(g21, g22), f)
+    imm_type_graph = S(i, P(S(g11, g12), S(g21, g22)), f)
     imm_type_graph()
 
     # Using Immutable Ref for airflow Syntax
@@ -130,6 +130,4 @@ fn main():
     )
 
     # # NOTE: Big graphs can crash the compiler with no aparent reason and no errors.
-    print("\n\nHey! Running Mutable Examples (With cross Reference)...")
     mutable_graph()
-    print("The final value for final is:", final.value)
