@@ -1,7 +1,7 @@
 from pathlib import _dir_of_current_file, Path
 import subprocess
 
-alias CMD = "magic run mojo doc --diagnose-missing-doc-strings --validate-doc-strings {}"
+alias CMD: StaticString = "magic run mojo doc --diagnose-missing-doc-strings --validate-doc-strings {}"
 
 
 fn test_docs_completeness() raises:
