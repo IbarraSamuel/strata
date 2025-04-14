@@ -1,5 +1,5 @@
 from move.immutable import series_runner, parallel_runner, CallableMovable
-from move.task import MutableCallable
+from move.mutable import MutableCallable
 
 
 struct UnsafeSerTaskPair[T1: CallableMovable, T2: CallableMovable](

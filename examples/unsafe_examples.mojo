@@ -1,4 +1,4 @@
-from move.task import MutableCallable
+from move.unsafe import MutableCallable
 from time import sleep
 
 
