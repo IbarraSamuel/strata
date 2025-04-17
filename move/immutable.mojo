@@ -31,38 +31,6 @@ trait Callable:
         ...
 
 
-trait CallableMovable(Callable, Movable):
-    """A `Callable` + `Movable`.
-
-    ```mojo
-    trait CallableMovable:
-        fn __moveinit__(out self, owned existing: Self):
-            ...
-
-        fn __call__(mut self):
-            ...
-
-    struct MyStruct(CallableMovable):
-        fn __init__(out self):
-            pass
-
-        fn __moveinit__(out self, owned existing: Self):
-            pass
-
-        fn __call__(mut self):
-            print("calling...")
-
-    inst = MyStruct()
-
-    # Calling the instance.
-    # moved = inst^
-    inst()
-    ```
-    """
-
-    ...
-
-
 fn series_runner[*Ts: Callable](callables: CallablePack[_, *Ts]):
     """Run Runnable structs in sequence.
 
@@ -98,7 +66,7 @@ fn series_runner[*Ts: Callable](callables: CallablePack[_, *Ts]):
     t2 = Task(t2_starts, t2_finish)
 
     fn series_variadic_inp[*ts: Callable](*args: *ts):
-        cp = CallablePack(args._value)
+        var cp = CallablePack(args._value)
         series_runner(cp)
     # Will run t1 first, then t2
     series_variadic_inp(t1, t2)
@@ -194,7 +162,7 @@ fn parallel_runner[*Ts: Callable](callables: CallablePack[_, *Ts]):
     t2 = Task(t2_starts, t2_finish)
 
     fn parallel_variadic_inp[*ts: Callable](*args: *ts):
-        cp = CallablePack(args._value)
+        var cp = CallablePack(args._value)
         parallel_runner(cp)
     # Will run t1 and t2 at the same time
     parallel_variadic_inp(t1, t2)
@@ -289,7 +257,7 @@ struct FnTask(Callable):
 
 
 struct SerTaskPairRef[T1: Callable, T2: Callable, o1: Origin, o2: Origin](
-    CallableMovable
+    Callable, Movable
 ):
     var t1: Pointer[T1, o1]
     var t2: Pointer[T2, o2]
@@ -317,7 +285,7 @@ struct SerTaskPairRef[T1: Callable, T2: Callable, o1: Origin, o2: Origin](
 
 
 struct ParTaskPairRef[T1: Callable, T2: Callable, o1: Origin, o2: Origin](
-    CallableMovable
+    Callable, Movable
 ):
     var t1: Pointer[T1, o1]
     var t2: Pointer[T2, o2]
@@ -344,7 +312,7 @@ struct ParTaskPairRef[T1: Callable, T2: Callable, o1: Origin, o2: Origin](
         return SerTaskPairRef(self, other)
 
 
-struct ImmTaskRef[T: Callable, origin: Origin](CallableMovable):
+struct ImmTaskRef[T: Callable, origin: Origin](Callable, Movable):
     var inner: Pointer[T, origin]
 
     fn __init__(out self, ref [origin]value: T):

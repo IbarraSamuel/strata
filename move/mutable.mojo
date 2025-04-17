@@ -2,16 +2,16 @@ from move.callable import GenericPack
 from algorithm import sync_parallelize
 
 
-trait MutableCallable:
+trait MutCallable:
     fn __call__(mut self):
         ...
 
 
-trait MutableCallableMovable(MutableCallable, Movable):
-    ...
+# trait MutableCallableMovable(MutableCallable, Movable):
+#     ...
 
 
-alias MutableCallablePack = GenericPack[tr=MutableCallable]
+alias MutCallablePack = GenericPack[tr=MutCallable]
 
 # from move.runners import series_runner, parallel_runner
 
@@ -19,8 +19,8 @@ alias MutableCallablePack = GenericPack[tr=MutableCallable]
 
 
 fn series_runner[
-    o: MutableOrigin, *ts: MutableCallable
-](callables: MutableCallablePack[o, *ts]):
+    o: MutableOrigin, *ts: MutCallable
+](callables: MutCallablePack[o, *ts]):
     alias size = len(VariadicList(ts))
 
     @parameter
@@ -28,7 +28,7 @@ fn series_runner[
         callables[i]()
 
 
-fn series_runner[*ts: MutableCallable](mut*callables: *ts):
+fn series_runner[*ts: MutCallable](mut*callables: *ts):
     """Run Runnable structs in sequence.
 
     Parameters:
@@ -38,8 +38,8 @@ fn series_runner[*ts: MutableCallable](mut*callables: *ts):
         callables: A `CallablePack` collection of types.
 
     ```mojo
-    from move.task import series_runner
-    from move.task import MutableCallable, MutableCallablePack
+    from move.mutable import series_runner
+    from move.mutable import MutCallable, MutCallablePack
     from time import perf_counter_ns, sleep
     from memory import Pointer
     from testing import assert_true
@@ -49,7 +49,7 @@ fn series_runner[*ts: MutableCallable](mut*callables: *ts):
     t2_starts = UInt(0)
     t2_finish = UInt(0)
 
-    struct Task[o1: Origin[True], o2: Origin[True]](MutableCallable):
+    struct Task[o1: Origin[True], o2: Origin[True]](MutCallable):
         var start: Pointer[UInt, o1]
         var finish: Pointer[UInt, o2]
         fn __init__(out self, ref[o1] start: UInt, ref[o2] finish: UInt):
@@ -76,8 +76,8 @@ fn series_runner[*ts: MutableCallable](mut*callables: *ts):
 
 
 fn parallel_runner[
-    o: MutableOrigin, *ts: MutableCallable
-](callables: MutableCallablePack[o, *ts]):
+    o: MutableOrigin, *ts: MutCallable
+](callables: MutCallablePack[o, *ts]):
     alias size = len(VariadicList(ts))
 
     @parameter
@@ -90,7 +90,7 @@ fn parallel_runner[
     sync_parallelize[exec](size)
 
 
-fn parallel_runner[*ts: MutableCallable](mut*callables: *ts):
+fn parallel_runner[*ts: MutCallable](mut*callables: *ts):
     """Run Runnable structs in parallel.
 
     Parameters:
@@ -100,13 +100,13 @@ fn parallel_runner[*ts: MutableCallable](mut*callables: *ts):
         callables: A `VariadicPack` collection of types.
 
     ```mojo
-    from move.task import parallel_runner
-    from move.task import MutableCallable
+    from move.mutable import parallel_runner
+    from move.mutable import MutCallable
     from time import perf_counter_ns, sleep
     from memory import Pointer
     from testing import assert_true
 
-    struct Task(MutableCallable):
+    struct Task(MutCallable):
         var start: UInt
         var finish: UInt
         fn __init__(out self):
@@ -138,8 +138,8 @@ fn parallel_runner[*ts: MutableCallable](mut*callables: *ts):
     sync_parallelize[exec](size)
 
 
-struct SeriesTask[o: MutableOrigin, *ts: MutableCallable](MutableCallable):
-    var storage: MutableCallablePack[o, *ts]
+struct SeriesTask[o: MutableOrigin, *ts: MutCallable](MutCallable):
+    var storage: MutCallablePack[o, *ts]
 
     fn __init__(
         out self: SeriesTask[
@@ -148,7 +148,7 @@ struct SeriesTask[o: MutableOrigin, *ts: MutableCallable](MutableCallable):
         mut*args: *ts,
     ):
         self.storage = rebind[__type_of(self.storage)](
-            MutableCallablePack(args._value)
+            MutCallablePack(args._value)
         )
 
     # fn __moveinit__(out self, owned other: Self):
@@ -158,8 +158,8 @@ struct SeriesTask[o: MutableOrigin, *ts: MutableCallable](MutableCallable):
         series_runner(self.storage)
 
 
-struct ParallelTask[o: MutableOrigin, *ts: MutableCallable](MutableCallable):
-    var storage: MutableCallablePack[o, *ts]
+struct ParallelTask[o: MutableOrigin, *ts: MutCallable](MutCallable):
+    var storage: MutCallablePack[o, *ts]
 
     fn __init__(
         out self: ParallelTask[
@@ -168,7 +168,7 @@ struct ParallelTask[o: MutableOrigin, *ts: MutableCallable](MutableCallable):
         mut*args: *ts,
     ):
         self.storage = rebind[__type_of(self.storage)](
-            MutableCallablePack(args._value)
+            MutCallablePack(args._value)
         )
 
     # fn __moveinit__(out self, owned other: Self):
@@ -186,8 +186,8 @@ struct ParallelTask[o: MutableOrigin, *ts: MutableCallable](MutableCallable):
 # And have a case for owned values, another for existing values.
 
 
-struct SerTaskPair[T1: MutableCallableMovable, T2: MutableCallableMovable](
-    MutableCallableMovable
+struct SerTaskPair[T1: MutCallable & Movable, T2: MutCallable & Movable](
+    MutCallable, Movable
 ):
     var t1: T1
     var t2: T2
@@ -205,29 +205,29 @@ struct SerTaskPair[T1: MutableCallableMovable, T2: MutableCallableMovable](
 
     # ---- FOR MUTABLE VERSIONS -----
     fn __add__[
-        t: MutableCallable, o: MutableOrigin
+        t: MutCallable, o: MutableOrigin
     ](owned self, ref [o]other: t) -> ParTaskPair[Self, TaskRef[t, o]]:
         return ParTaskPair(self^, TaskRef(other))
 
     fn __rshift__[
-        t: MutableCallable, o: MutableOrigin
+        t: MutCallable, o: MutableOrigin
     ](owned self, ref [o]other: t) -> SerTaskPair[Self, TaskRef[t, o]]:
         return SerTaskPair(self^, TaskRef(other))
 
     # ---- FOR MUTABLE MOVABLE VERSIONS -----
     fn __add__[
-        t: MutableCallableMovable
+        t: MutCallable & Movable
     ](owned self, owned other: t) -> ParTaskPair[Self, t]:
         return ParTaskPair(self^, other^)
 
     fn __rshift__[
-        t: MutableCallableMovable
+        t: MutCallable & Movable
     ](owned self, owned other: t) -> SerTaskPair[Self, t]:
         return SerTaskPair(self^, other^)
 
 
-struct ParTaskPair[T1: MutableCallableMovable, T2: MutableCallableMovable](
-    MutableCallableMovable
+struct ParTaskPair[T1: MutCallable & Movable, T2: MutCallable & Movable](
+    MutCallable, Movable
 ):
     var t1: T1
     var t2: T2
@@ -245,30 +245,28 @@ struct ParTaskPair[T1: MutableCallableMovable, T2: MutableCallableMovable](
 
     # ---- FOR MUTABLE VERSIONS -----
     fn __add__[
-        t: MutableCallable, o: MutableOrigin
+        t: MutCallable, o: MutableOrigin
     ](owned self, ref [o]other: t) -> ParTaskPair[Self, TaskRef[t, o]]:
         return ParTaskPair(self^, TaskRef(other))
 
     fn __rshift__[
-        t: MutableCallable, o: MutableOrigin
+        t: MutCallable, o: MutableOrigin
     ](owned self, ref [o]other: t) -> SerTaskPair[Self, TaskRef[t, o]]:
         return SerTaskPair(self^, TaskRef(other))
 
     # ---- FOR MUTABLE MOVABLE VERSIONS -----
     fn __add__[
-        t: MutableCallableMovable
+        t: MutCallable & Movable
     ](owned self, owned other: t) -> ParTaskPair[Self, t]:
         return ParTaskPair(self^, other^)
 
     fn __rshift__[
-        t: MutableCallableMovable
+        t: MutCallable & Movable
     ](owned self, owned other: t) -> SerTaskPair[Self, t]:
         return SerTaskPair(self^, other^)
 
 
-struct TaskRef[T: MutableCallable, origin: MutableOrigin](
-    MutableCallableMovable
-):
+struct TaskRef[T: MutCallable, origin: MutableOrigin](MutCallable, Movable):
     var inner: Pointer[T, origin]
 
     fn __init__(out self, ref [origin]inner: T):
@@ -285,22 +283,22 @@ struct TaskRef[T: MutableCallable, origin: MutableOrigin](
 
     # ---- FOR MUTABLE VERSIONS -----
     fn __add__[
-        t: MutableCallable, o: MutableOrigin
+        t: MutCallable, o: MutableOrigin
     ](owned self, ref [o]other: t) -> ParTaskPair[Self, TaskRef[t, o]]:
         return ParTaskPair(self^, TaskRef(other))
 
     fn __rshift__[
-        t: MutableCallable, o: MutableOrigin
+        t: MutCallable, o: MutableOrigin
     ](owned self, ref [o]other: t) -> SerTaskPair[Self, TaskRef[t, o]]:
         return SerTaskPair(self^, TaskRef(other))
 
     # ---- FOR MUTABLE MOVABLE VERSIONS -----
     fn __add__[
-        t: MutableCallableMovable
+        t: MutCallable & Movable
     ](owned self, owned other: t) -> ParTaskPair[Self, t]:
         return ParTaskPair(self^, other^)
 
     fn __rshift__[
-        t: MutableCallableMovable
+        t: MutCallable & Movable
     ](owned self, owned other: t) -> SerTaskPair[Self, t]:
         return SerTaskPair(self^, other^)

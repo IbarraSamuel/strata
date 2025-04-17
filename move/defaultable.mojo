@@ -3,6 +3,7 @@ from algorithm import sync_parallelize
 from move.immutable import Callable
 
 
+# TODO: Replace with Callable & Defaultable when this is fixed.
 trait CallableDefaultable(Callable, Defaultable):
     """A `Callable` + `Defaultable`.
 

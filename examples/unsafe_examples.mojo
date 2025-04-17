@@ -1,10 +1,10 @@
-from move.unsafe import MutableCallable
+from move.unsafe import MutCallable
 from time import sleep
 
 alias time = 0.1
 
 
-trait TaskWithValue(MutableCallable):
+trait TaskWithValue(MutCallable):
     fn get_value(self) -> Int:
         ...
 
@@ -27,7 +27,7 @@ struct InitTask[name: String = "Init"](TaskWithValue):
 
 # Just ensure your struct has fn __call__(mut self):
 struct MyTask[name: StringLiteral, t: TaskWithValue, o: ImmutableOrigin](
-    MutableCallable
+    MutCallable
 ):
     var task: Pointer[t, o]
     var value: Int
@@ -55,7 +55,7 @@ struct CollectResults[
     t2: TaskWithValue,
     o1: ImmutableOrigin,
     o2: ImmutableOrigin,
-](MutableCallable):
+](MutCallable):
     var result_1: Pointer[t1, o1]
     var result_2: Pointer[t2, o2]
     var value: Int

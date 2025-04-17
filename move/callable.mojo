@@ -46,7 +46,7 @@ struct GenericPack[origin: Origin, tr: __type_of(AnyType), *Ts: tr](Copyable):
     ```
     """
 
-    alias Storage = VariadicPack[origin, tr, *Ts]._mlir_type
+    alias Storage = VariadicPack[False, origin, tr, *Ts]._mlir_type
     """The underlying _value storage for a VariadicPack. It's just a collection of pointers."""
 
     var storage: Self.Storage

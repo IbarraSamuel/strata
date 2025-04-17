@@ -1,9 +1,10 @@
-from move.immutable import series_runner, parallel_runner, CallableMovable
-from move.mutable import MutableCallable
+from move.immutable import series_runner, parallel_runner
+from move.mutable import MutCallable
+from move.immutable import Callable
 
 
-struct UnsafeSerTaskPair[T1: CallableMovable, T2: CallableMovable](
-    CallableMovable
+struct UnsafeSerTaskPair[T1: Callable & Movable, T2: Callable & Movable](
+    Callable, Movable
 ):
     var t1: T1
     var t2: T2
@@ -21,7 +22,7 @@ struct UnsafeSerTaskPair[T1: CallableMovable, T2: CallableMovable](
 
     # ---- FOR MUTABLE VERSIONS -----
     fn __add__[
-        t: MutableCallable, o: MutableOrigin
+        t: MutCallable, o: MutableOrigin
     ](owned self, ref [o]other: t) -> UnsafeParTaskPair[
         Self, UnsafeTaskRef[t, ImmutableOrigin.cast_from[o].result]
     ]:
@@ -30,7 +31,7 @@ struct UnsafeSerTaskPair[T1: CallableMovable, T2: CallableMovable](
         )
 
     fn __rshift__[
-        t: MutableCallable, o: MutableOrigin
+        t: MutCallable, o: MutableOrigin
     ](owned self, ref [o]other: t) -> UnsafeSerTaskPair[
         Self, UnsafeTaskRef[t, ImmutableOrigin.cast_from[o].result]
     ]:
@@ -40,18 +41,18 @@ struct UnsafeSerTaskPair[T1: CallableMovable, T2: CallableMovable](
 
     # ---- FOR IMMUTABLE VERSIONS -----
     fn __add__[
-        t: CallableMovable
+        t: Callable & Movable
     ](owned self, owned other: t) -> UnsafeParTaskPair[Self, t]:
         return UnsafeParTaskPair(self^, other^)
 
     fn __rshift__[
-        t: CallableMovable
+        t: Callable & Movable
     ](owned self, owned other: t) -> UnsafeSerTaskPair[Self, t]:
         return UnsafeSerTaskPair(self^, other^)
 
 
-struct UnsafeParTaskPair[T1: CallableMovable, T2: CallableMovable](
-    CallableMovable
+struct UnsafeParTaskPair[T1: Callable & Movable, T2: Callable & Movable](
+    Callable, Movable
 ):
     var t1: T1
     var t2: T2
@@ -69,7 +70,7 @@ struct UnsafeParTaskPair[T1: CallableMovable, T2: CallableMovable](
 
     # ---- FOR MUTABLE VERSIONS -----
     fn __add__[
-        t: MutableCallable, o: MutableOrigin
+        t: MutCallable, o: MutableOrigin
     ](owned self, ref [o]other: t) -> UnsafeParTaskPair[
         Self, UnsafeTaskRef[t, ImmutableOrigin.cast_from[o].result]
     ]:
@@ -78,7 +79,7 @@ struct UnsafeParTaskPair[T1: CallableMovable, T2: CallableMovable](
         )
 
     fn __rshift__[
-        t: MutableCallable, o: MutableOrigin
+        t: MutCallable, o: MutableOrigin
     ](owned self, ref [o]other: t) -> UnsafeSerTaskPair[
         Self, UnsafeTaskRef[t, ImmutableOrigin.cast_from[o].result]
     ]:
@@ -88,19 +89,19 @@ struct UnsafeParTaskPair[T1: CallableMovable, T2: CallableMovable](
 
     # ---- FOR IMMUTABLE VERSIONS -----
     fn __add__[
-        t: CallableMovable
+        t: Callable & Movable
     ](owned self, owned other: t) -> UnsafeParTaskPair[Self, t]:
         return UnsafeParTaskPair(self^, other^)
 
     fn __rshift__[
-        t: CallableMovable
+        t: Callable & Movable
     ](owned self, owned other: t) -> UnsafeSerTaskPair[Self, t]:
         return UnsafeSerTaskPair(self^, other^)
 
 
 # THIS ALLOW US TO CREATE
-struct UnsafeTaskRef[T: MutableCallable, origin: ImmutableOrigin](
-    CallableMovable
+struct UnsafeTaskRef[T: MutCallable, origin: ImmutableOrigin](
+    Callable & Movable
 ):
     """This structure will treat MutableCallables as Immutable Callables.
     Is a way of casting a MutableCallable into a Callable.
@@ -133,7 +134,7 @@ struct UnsafeTaskRef[T: MutableCallable, origin: ImmutableOrigin](
 
     # ---- FOR MUTABLE VERSIONS -----
     fn __add__[
-        t: MutableCallable, o: MutableOrigin
+        t: MutCallable, o: MutableOrigin
     ](owned self, ref [o]other: t) -> UnsafeParTaskPair[
         Self, UnsafeTaskRef[t, ImmutableOrigin.cast_from[o].result]
     ]:
@@ -142,7 +143,7 @@ struct UnsafeTaskRef[T: MutableCallable, origin: ImmutableOrigin](
         )
 
     fn __rshift__[
-        t: MutableCallable, o: MutableOrigin
+        t: MutCallable, o: MutableOrigin
     ](owned self, ref [o]other: t) -> UnsafeSerTaskPair[
         Self, UnsafeTaskRef[t, ImmutableOrigin.cast_from[o].result]
     ]:
@@ -152,11 +153,11 @@ struct UnsafeTaskRef[T: MutableCallable, origin: ImmutableOrigin](
 
     # ---- FOR IMMUTABLE VERSIONS -----
     fn __add__[
-        t: CallableMovable
+        t: Callable & Movable
     ](owned self, owned other: t) -> UnsafeParTaskPair[Self, t]:
         return UnsafeParTaskPair(self^, other^)
 
     fn __rshift__[
-        t: CallableMovable
+        t: Callable & Movable
     ](owned self, owned other: t) -> UnsafeSerTaskPair[Self, t]:
         return UnsafeSerTaskPair(self^, other^)

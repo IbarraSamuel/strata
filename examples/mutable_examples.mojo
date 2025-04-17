@@ -1,10 +1,10 @@
 from time import sleep
-from move.mutable import MutableCallable
+from move.mutable import MutCallable
 
 alias time = 0.1
 
 
-struct InitTask[name: String = "Init"](MutableCallable):
+struct InitTask[name: String = "Init"](MutCallable):
     var value: Int
 
     fn __init__(out self, value: Int):
