@@ -1,6 +1,8 @@
 from time import sleep
 from move.immutable import Callable
 
+alias time = 0.1
+
 
 struct MyTask[job: StringLiteral](Callable):
     var some_data: String
@@ -10,7 +12,7 @@ struct MyTask[job: StringLiteral](Callable):
 
     fn __call__(self):
         print("Running [", job, "]:", self.some_data)
-        sleep(0.5)
+        sleep(time)
 
 
 # struct MutTask[name: StringLiteral](Callable):
@@ -21,7 +23,7 @@ struct MyTask[job: StringLiteral](Callable):
 
 #     fn __call__(mut self):
 #         print("Running [", name, "]: Incrementing value", self.value)
-#         sleep(0.5)
+#         sleep(time)
 #         self.value += 1
 #         print("Finish [", name, "]: Value incremented. Now it's", self.value)
 
@@ -67,19 +69,19 @@ fn main():
 
     fn first_task():
         print("Initialize everything...")
-        sleep(0.5)
+        sleep(time)
 
     fn last_task():
         print("Finalize everything...")
-        sleep(0.5)
+        sleep(time)
 
     fn parallel1():
         print("Parallel 1...")
-        sleep(0.5)
+        sleep(time)
 
     fn parallel2():
         print("Parallel 2...")
-        sleep(0.5)
+        sleep(time)
 
     # NOTE: You need to do it here, because we need to have an Origin to be able to
     # use a reference to this functions. We can do it also by passing ownership, but I

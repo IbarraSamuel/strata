@@ -1,6 +1,8 @@
 from time import sleep
 from move.message import Message, CallableWithMessage
 
+alias time = 0.1
+
 
 fn str_to_int(str: String) -> Int:
     """This is unsafe."""
@@ -23,6 +25,7 @@ struct Init(CallableWithMessage):
 
     fn __call__(self, owned msg: Message) -> Message:
         print("Running [Init]:", msg.__str__())
+        sleep(time)
 
         msg["init"] = String(self.count)
         return msg
@@ -36,6 +39,7 @@ struct Par1(CallableWithMessage):
         print("Running [par1]...", msg.__str__())
         init = msg.pop("init", "0")
         no = str_to_int(init)
+        sleep(time)
 
         no += 1
         msg["calc1"] = String(no)
@@ -51,6 +55,7 @@ struct Par2(CallableWithMessage):
         print("Running [par2]...", msg.__str__())
         init = msg.pop("init", "0")
         no = str_to_int(init)
+        sleep(time)
 
         no *= 10
         msg["calc2"] = String(no)
@@ -66,6 +71,7 @@ struct Final(CallableWithMessage):
         calc1 = str_to_int(msg.pop("calc1", "0"))
         calc2 = str_to_int(msg.pop("calc2", "0"))
         final = calc1 * calc2 + calc2
+        sleep(time)
 
         msg["final"] = String(final)
         print("Finalized with Message:", msg.__str__())
@@ -102,6 +108,7 @@ fn main() raises:
 
     fn first_task(owned msg: Message) -> Message:
         print("Running [First Task]:", msg.__str__())
+        sleep(time)
         msg["init"] = String(12)
         return msg
 
@@ -111,6 +118,7 @@ fn main() raises:
         cal2 = str_to_int(msg.pop("calc2", "0"))
         f = cal1 * cal2 + cal2
         msg["final"] = String(f)
+        sleep(time)
         print("Finalized with Message:", msg.__str__())
         return msg
 
@@ -119,6 +127,7 @@ fn main() raises:
         no = str_to_int(i)
         no += 1
         msg["calc1"] = String(no)
+        sleep(time)
         return msg
 
     fn parallel2(owned msg: Message) -> Message:
@@ -126,6 +135,7 @@ fn main() raises:
         no = str_to_int(i)
         no *= 10
         msg["calc2"] = String(no)
+        sleep(time)
         return msg
 
     from move.message import MsgFnTask as Fn

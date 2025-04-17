@@ -1,6 +1,8 @@
 from move.unsafe import MutableCallable
 from time import sleep
 
+alias time = 0.1
+
 
 trait TaskWithValue(MutableCallable):
     fn get_value(self) -> Int:
@@ -16,7 +18,7 @@ struct InitTask[name: String = "Init"](TaskWithValue):
     fn __call__(mut self):
         print("Starting [", name, "Task]: Setting up time!...")
         self.value = 0  # reset to zero if the graph is ran again
-        sleep(0.5)
+        sleep(time)
         print("Finishing [", name, "Task]: The value is:", self.value)
 
     fn get_value(self) -> Int:
@@ -41,7 +43,7 @@ struct MyTask[name: StringLiteral, t: TaskWithValue, o: ImmutableOrigin](
             "Starting [", name, "]: Now the value is", self.task[].get_value()
         )
         self.value = self.task[].get_value() + 1
-        sleep(0.5)
+        sleep(time)
         print("Finishing [", name, "]: Now the value is", self.value)
 
     fn get_value(self) -> Int:
@@ -68,7 +70,7 @@ struct CollectResults[
         r2 = self.result_2[].get_value()
         print("Collecting results:", r1, "from group_1 and", r2, "from group_2")
         self.value = r1 * r2
-        sleep(0.5)
+        sleep(time)
         print("Final value is:", self.value)
 
 

@@ -1,6 +1,8 @@
 from time import sleep
 from move.mutable import MutableCallable
 
+alias time = 0.1
+
 
 struct InitTask[name: String = "Init"](MutableCallable):
     var value: Int
@@ -11,7 +13,7 @@ struct InitTask[name: String = "Init"](MutableCallable):
     fn __call__(mut self):
         print("Starting [", name, "Task]: Value is", self.value, "...")
         self.value += 1
-        sleep(0.5)
+        sleep(time)
         print("Finishing [", name, "Task]: The value is:", self.value)
 
 

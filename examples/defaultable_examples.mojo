@@ -1,6 +1,8 @@
 from time import sleep
 from move.defaultable import CallableDefaultable
 
+alias time = 0.1
+
 
 struct MyDefaultTask[name: StringLiteral](CallableDefaultable):
     fn __init__(out self):
@@ -8,7 +10,7 @@ struct MyDefaultTask[name: StringLiteral](CallableDefaultable):
 
     fn __call__(self):
         print("Task [", name, "] Running...")
-        sleep(0.5)
+        sleep(time)
 
 
 fn main():
