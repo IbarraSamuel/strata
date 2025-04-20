@@ -3,36 +3,7 @@ from algorithm import sync_parallelize
 from move.immutable import Callable
 
 
-# TODO: Replace with Callable & Defaultable when this is fixed.
-trait CallableDefaultable(Callable, Defaultable):
-    """A `Callable` + `Defaultable`.
-
-    ```mojo
-    trait CallableDefaultable:
-        fn __init__(out self):
-            ...
-
-        fn __call__(self):
-            ...
-
-    struct MyStruct(CallableDefaultable):
-        fn __init__(out self):
-            pass
-
-        fn __call__(self):
-            print("calling...")
-
-    default = MyStruct()
-
-    # Calling the instance.
-    default()
-    ```
-    """
-
-    ...
-
-
-fn parallel_runner[*Ts: CallableDefaultable]():
+fn parallel_runner[*Ts: Callable & Defaultable]():
     """Run Runnable structs in parallel.
 
     Parameters:
@@ -70,7 +41,7 @@ fn parallel_runner[*Ts: CallableDefaultable]():
     sync_parallelize[exec](size)
 
 
-fn series_runner[*Ts: CallableDefaultable]():
+fn series_runner[*Ts: Callable & Defaultable]():
     """Run Runnable structs in sequence.
 
     Parameters:
@@ -100,7 +71,7 @@ fn series_runner[*Ts: CallableDefaultable]():
         Ts[i]()()
 
 
-struct DefaultTask[T: CallableDefaultable](CallableDefaultable):
+struct DefaultTask[T: Callable & Defaultable](Callable, Defaultable):
     """Refers to a task that can be instanciated in the future, because it's defaultable.
 
     Parameters:
@@ -141,7 +112,7 @@ struct DefaultTask[T: CallableDefaultable](CallableDefaultable):
         t()
 
     fn __add__[
-        t: CallableDefaultable
+        t: Callable & Defaultable
     ](self, other: t) -> DefaultTask[ParallelDefaultTask[Self.T, t]]:
         """Add this task pair with another task, to be executed in parallel.
         This task will keep the internal order, but meanwhile the current one is running,
@@ -159,7 +130,7 @@ struct DefaultTask[T: CallableDefaultable](CallableDefaultable):
         return DefaultTask[ParallelDefaultTask[Self.T, t]]()
 
     fn __rshift__[
-        t: CallableDefaultable
+        t: Callable & Defaultable
     ](self, other: t) -> DefaultTask[SeriesDefaultTask[Self.T, t]]:
         """Add this task pair with another task, to be executed in sequence.
         This task will keep the internal order, but meanwhile the current one is running,
@@ -177,7 +148,7 @@ struct DefaultTask[T: CallableDefaultable](CallableDefaultable):
         return DefaultTask[SeriesDefaultTask[Self.T, t]]()
 
 
-struct ParallelDefaultTask[*Ts: CallableDefaultable](CallableDefaultable):
+struct ParallelDefaultTask[*Ts: Callable & Defaultable](Callable, Defaultable):
     """Refers to a task that can be instanciated in the future, because it's defaultable.
 
     Parameters:
@@ -221,7 +192,7 @@ struct ParallelDefaultTask[*Ts: CallableDefaultable](CallableDefaultable):
         parallel_runner[*Ts]()
 
 
-struct SeriesDefaultTask[*Ts: CallableDefaultable](CallableDefaultable):
+struct SeriesDefaultTask[*Ts: Callable & Defaultable](Callable, Defaultable):
     """Refers to a task that can be instanciated in the future, because it's defaultable.
 
     Parameters:
