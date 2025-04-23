@@ -1,10 +1,10 @@
 from time import sleep
-from move.defaultable import CallableDefaultable
+from move.immutable import Callable
 
 alias time = 0.1
 
 
-struct MyDefaultTask[name: StringLiteral](CallableDefaultable):
+struct MyDefaultTask[name: StringLiteral](Callable, Defaultable):
     fn __init__(out self):
         pass
 
