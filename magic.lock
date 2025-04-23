@@ -50,7 +50,7 @@ environments:
       - conda: https://repo.prefix.dev/conda-forge/linux-64/ncurses-6.5-h2d0b736_3.conda
       - conda: https://repo.prefix.dev/conda-forge/linux-64/numpy-1.26.4-py312heda63a1_0.conda
       - conda: https://repo.prefix.dev/conda-forge/linux-64/openssl-3.5.0-h7b32b05_0.conda
-      - conda: https://repo.prefix.dev/conda-forge/noarch/packaging-25.0-pyhd8ed1ab_0.conda
+      - conda: https://repo.prefix.dev/conda-forge/noarch/packaging-25.0-pyh29332c3_1.conda
       - conda: https://repo.prefix.dev/conda-forge/noarch/pathspec-0.12.1-pyhd8ed1ab_1.conda
       - conda: https://repo.prefix.dev/conda-forge/noarch/platformdirs-4.3.7-pyh29332c3_0.conda
       - conda: https://repo.prefix.dev/conda-forge/linux-64/python-3.12.10-h9e4cc4f_0_cpython.conda
@@ -100,7 +100,7 @@ environments:
       - conda: https://repo.prefix.dev/conda-forge/osx-arm64/ncurses-6.5-h5e97a16_3.conda
       - conda: https://repo.prefix.dev/conda-forge/osx-arm64/numpy-1.26.4-py312h8442bc7_0.conda
       - conda: https://repo.prefix.dev/conda-forge/osx-arm64/openssl-3.5.0-h81ee809_0.conda
-      - conda: https://repo.prefix.dev/conda-forge/noarch/packaging-25.0-pyhd8ed1ab_0.conda
+      - conda: https://repo.prefix.dev/conda-forge/noarch/packaging-25.0-pyh29332c3_1.conda
       - conda: https://repo.prefix.dev/conda-forge/noarch/pathspec-0.12.1-pyhd8ed1ab_1.conda
       - conda: https://repo.prefix.dev/conda-forge/noarch/platformdirs-4.3.7-pyh29332c3_0.conda
       - conda: https://repo.prefix.dev/conda-forge/osx-arm64/python-3.12.10-hc22306f_0_cpython.conda
@@ -904,14 +904,15 @@ packages:
   license_family: Apache
   size: 3067649
   timestamp: 1744132084304
-- conda: https://repo.prefix.dev/conda-forge/noarch/packaging-25.0-pyhd8ed1ab_0.conda
-  sha256: f759df4f492ae481505dcceb3d4485a120ee798af26711c92de20944a1185621
-  md5: 4088c0d078e2f5092ddf824495186229
+- conda: https://repo.prefix.dev/conda-forge/noarch/packaging-25.0-pyh29332c3_1.conda
+  sha256: 289861ed0c13a15d7bbb408796af4de72c2fe67e2bcb0de98f4c3fce259d7991
+  md5: 58335b26c38bf4a20f399384c33cbcf9
   depends:
   - python >=3.8
+  - python
   license: Apache-2.0
-  size: 61525
-  timestamp: 1745075800980
+  size: 62477
+  timestamp: 1745345660407
 - conda: https://repo.prefix.dev/conda-forge/noarch/pathspec-0.12.1-pyhd8ed1ab_1.conda
   sha256: 9f64009cdf5b8e529995f18e03665b03f5d07c0b17445b8badef45bde76249ee
   md5: 617f15191456cc6a13db418a275435e5
