@@ -1,7 +1,7 @@
 from pathlib import _dir_of_current_file, Path
 import subprocess
 
-alias CMD: StaticString = "magic run mojo doc --diagnose-missing-doc-strings --validate-doc-strings {}"
+alias CMD = "magic run mojo doc --diagnose-missing-doc-strings --validate-doc-strings {}"
 
 
 fn test_docs_completeness() raises:
@@ -11,7 +11,7 @@ fn test_docs_completeness() raises:
 
     for file in files:
         path = String(file[])
-        cmd = CMD.format(path)
+        cmd = StaticString(CMD).format(path)
         res = subprocess.run(cmd)
         if not ('"decl":' in res and '"version":' in res):
             raise Error(res)

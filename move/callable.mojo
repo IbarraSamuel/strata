@@ -12,7 +12,7 @@ struct GenericPack[origin: Origin, tr: __type_of(AnyType), *Ts: tr](Copyable):
     hack to point to the _value lifetime instead of the args lifetime.
 
     Parameters:
-        is_mutable: Defines if the Origin is mutable or not.
+        mut: Defines if the Origin is mutable or not.
         origin: The Origin of the Variadic Arguments.
         tr: Trait to use to filter possible values from the Pack.
         Ts: Types meeting the tr criteria.

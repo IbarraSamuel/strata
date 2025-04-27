@@ -340,7 +340,7 @@ struct ParallelTask[origin: Origin, *Ts: Callable](Callable):
     """Collection of immutable tasks to run in Parallel.
 
     Parameters:
-        is_mutable: If we can mutate the elements.
+        mut: If we can mutate the elements.
         origin: The origin of the `VariadicPack` values.
         Ts: ImmutableCallable types that conforms to `ImmCallable`.
 
@@ -389,7 +389,7 @@ struct SeriesTask[origin: Origin, *Ts: Callable](Callable):
     """Collection of immutable tasks to run in Series.
 
     Parameters:
-        is_mutable: If the elements could be mutated.
+        mut: If the elements could be mutated.
         origin: The origin of the `VariadicPack` values.
         Ts: ImmutableCallable types that conforms to `Callable`.
 

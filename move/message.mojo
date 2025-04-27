@@ -348,7 +348,7 @@ struct ImmMessageTask[origin: Origin, T: CallableWithMessage](
     to give back a `Message` as output.
 
     Parameters:
-        is_mutable: Wether if the task is mutable or not.
+        mut: Wether if the task is mutable or not.
         origin: The source of the task.
         T: It's a task that conforms to `ImmCallableWithMessage`.
 
@@ -453,7 +453,7 @@ struct ImmParallelMsgTaskPair[
     """A pair of Message Immutable Tasks.
 
     Parameters:
-        is_mutable: Wether if the origin is mutable.
+        mut: Wether if the origin is mutable.
         o1: Origin for the first type.
         o2: Origin for the second type.
         t1: First type that conforms to `ImmCallableWithMessage`.
@@ -555,7 +555,7 @@ struct ImmParallelMsgTask[origin: Origin, *Ts: CallableWithMessage](
     """Immutable tasks that will use a message in, message out.
 
     Parameters:
-        is_mutable: Wether if the origin of `VariadicPack` is mutable or not.
+        mut: Wether if the origin of `VariadicPack` is mutable or not.
         origin: The origin of the `VariadicPack` values.
         Ts: ImmutableCallableWithMessage types that conforms to `ImmCallableWithMessage`.
 
@@ -621,7 +621,7 @@ struct ImmSeriesMsgTask[origin: Origin, *Ts: CallableWithMessage](
     """Immutable tasks that will use a message in, message out.
 
     Parameters:
-        is_mutable: Wether if the origin of `VariadicPack` is mutable or not.
+        mut: Wether if the origin of `VariadicPack` is mutable or not.
         origin: The origin of the `VariadicPack` values.
         Ts: ImmutableCallableWithMessage types that conforms to `ImmCallableWithMessage`.
 
@@ -689,7 +689,7 @@ struct ImmSeriesMsgTaskPair[
     """A pair of Message Immutalbe Tasks.
 
     Parameters:
-        is_mutable: Wether if the origin is mutable.
+        mut: Wether if the origin is mutable.
         o1: Origin for the first type.
         o2: Origin for the second type.
         t1: First type that conforms to `ImmCallableWithMessage`.
