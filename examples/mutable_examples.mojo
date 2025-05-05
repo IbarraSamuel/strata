@@ -21,7 +21,7 @@ fn main():
     print("\n\nHey! Running Mutable Examples (No cross Reference)...")
     # Type syntax. Not so flexible because we cannot mix owned / mut refs in Variadic Inputs.
     # * Some need to be owned because those groups will not have origin.
-    # * Some need to be mutrefs because we just want to run the function, but not transfer anything.
+    # * Some need to be mutrefs because we want to point to the original struct without using a wrapper to then transfer the wrapper.
     # It needs to be one or the other.
     # To solve it, we can:
     # * Declare a groups of Mut Ref structs into a variable.
