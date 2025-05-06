@@ -27,7 +27,7 @@ struct InitTask[name: String = "Init"](TaskWithValue):
 
 # Just ensure your struct has fn __call__(mut self):
 struct MyTask[name: StringLiteral, t: TaskWithValue, o: ImmutableOrigin](
-    MutCallable
+    TaskWithValue
 ):
     var task: Pointer[t, o]
     var value: Int
@@ -109,7 +109,7 @@ fn main():
 
     # Using Immutable Ref for airflow Syntax
     # NOTE: This one could cause confution because the UnsafeTaskRef itself contains
-    # it's own airflow syntax, and could be mixed up with the Immutable airflow syntax
+    # it's own airflow syntax, and could be mixed up by mistake with the Immutable airflow syntax
     # if you don't properly type the graph
     from move.immutable import ImmTaskRef as IT
 
@@ -130,6 +130,4 @@ fn main():
         >> (UT(group1_1) >> group1_2) + (UT(group2_1) >> group2_2)
         >> final
     )
-
-    # # NOTE: Big graphs can crash the compiler with no aparent reason and no errors.
     mutable_graph()

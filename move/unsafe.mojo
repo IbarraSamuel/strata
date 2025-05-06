@@ -4,7 +4,7 @@ from move.immutable import Callable
 
 
 struct UnsafeSerTaskPair[T1: Callable & Movable, T2: Callable & Movable](
-    Callable, Movable
+    Callable, MutCallable, Movable
 ):
     var t1: T1
     var t2: T2
@@ -52,7 +52,7 @@ struct UnsafeSerTaskPair[T1: Callable & Movable, T2: Callable & Movable](
 
 
 struct UnsafeParTaskPair[T1: Callable & Movable, T2: Callable & Movable](
-    Callable, Movable
+    Callable, MutCallable, Movable
 ):
     var t1: T1
     var t2: T2
@@ -101,7 +101,7 @@ struct UnsafeParTaskPair[T1: Callable & Movable, T2: Callable & Movable](
 
 # THIS ALLOW US TO CREATE
 struct UnsafeTaskRef[T: MutCallable, origin: ImmutableOrigin](
-    Callable & Movable
+    Callable, MutCallable, Movable
 ):
     """This structure will treat MutableCallables as Immutable Callables.
     Is a way of casting a MutableCallable into a Callable.
