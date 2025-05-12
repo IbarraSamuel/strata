@@ -10,10 +10,10 @@ fn parallel_runner[*Ts: Callable & Defaultable]():
         Ts: Variadic `CallableDefaltable` types.
 
     ```mojo
-    from move.defaultable import parallel_runner
+    from move.defaultable import parallel_runner, Callable
     from time import sleep
 
-    struct Task:
+    struct Task(Callable, Defaultable):
         fn __init__(out self):
             pass
         fn __call__(self):
@@ -48,9 +48,9 @@ fn series_runner[*Ts: Callable & Defaultable]():
         Ts: Variadic `CallableDefaltable` types.
 
     ```mojo
-    from move.defaultable import series_runner
+    from move.defaultable import series_runner, Callable
 
-    struct Task:
+    struct Task(Callable, Defaultable):
         fn __init__(out self):
             pass
         fn __call__(self):
@@ -78,9 +78,9 @@ struct DefaultTask[T: Callable & Defaultable](Callable, Defaultable):
         T: Type that conforms to `CallableDefaultable`.
 
     ```mojo
-    from move.defaultable import DefaultTask
+    from move.defaultable import DefaultTask, Callable
 
-    struct DefTask:
+    struct DefTask(Callable, Defaultable):
         fn __init__(out self):
             pass
 
@@ -155,16 +155,16 @@ struct ParallelDefaultTask[*Ts: Callable & Defaultable](Callable, Defaultable):
         Ts: Types that conforms to `CallableDefaultable`.
 
     ```mojo
-    from move.defaultable import ParallelDefaultTask
+    from move.defaultable import ParallelDefaultTask, Callable
 
-    struct DefTask:
+    struct DefTask(Callable, Defaultable):
         fn __init__(out self):
             pass
 
         fn __call__(self):
             print("Running...")
 
-    struct DefTask2:
+    struct DefTask2(Callable, Defaultable):
         fn __init__(out self):
             pass
 
@@ -199,16 +199,16 @@ struct SeriesDefaultTask[*Ts: Callable & Defaultable](Callable, Defaultable):
         Ts: Types that conforms to `CallableDefaultable`.
 
     ```mojo
-    from move.defaultable import SeriesDefaultTask
+    from move.defaultable import SeriesDefaultTask, Callable
 
-    struct DefTask:
+    struct DefTask(Callable, Defaultable):
         fn __init__(out self):
             pass
 
         fn __call__(self):
             print("Running...")
 
-    struct DefTask2:
+    struct DefTask2(Callable, Defaultable):
         fn __init__(out self):
             pass
 

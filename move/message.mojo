@@ -461,9 +461,9 @@ struct ImmParallelMsgTaskPair[
 
     ```mojo
     from move.message import ImmParallelMsgTaskPair
-    from move.message import Message
+    from move.message import Message, CallableWithMessage
 
-    struct MsgTask:
+    struct MsgTask(CallableWithMessage):
         fn __init__(out self):
             pass
 
@@ -561,9 +561,9 @@ struct ImmParallelMsgTask[origin: Origin, *Ts: CallableWithMessage](
 
     ```mojo
     from move.message import ImmParallelMsgTask
-    from move.message import Message
+    from move.message import Message, CallableWithMessage
 
-    struct MsgTask:
+    struct MsgTask(CallableWithMessage):
         fn __init__(out self):
             pass
 
@@ -626,9 +626,9 @@ struct ImmSeriesMsgTask[origin: Origin, *Ts: CallableWithMessage](
         Ts: ImmutableCallableWithMessage types that conforms to `ImmCallableWithMessage`.
 
     ```mojo
-    from move.message import Message, ImmSeriesMsgTask
+    from move.message import Message, ImmSeriesMsgTask, CallableWithMessage
 
-    struct MsgTask:
+    struct MsgTask(CallableWithMessage):
         fn __init__(out self):
             pass
 
@@ -696,9 +696,9 @@ struct ImmSeriesMsgTaskPair[
         t2: Second type that conforms to `ImmCallableWithMessage`.
 
     ```mojo
-    from move.message import Message, ImmSeriesMsgTaskPair
+    from move.message import Message, ImmSeriesMsgTaskPair, CallableWithMessage
 
-    struct MsgTask:
+    struct MsgTask(CallableWithMessage):
         fn __init__(out self):
             pass
 

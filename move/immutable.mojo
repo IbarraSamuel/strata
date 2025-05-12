@@ -91,7 +91,7 @@ fn series_runner[*ts: Callable](*callables: *ts):
         callables: A collection of `ImmCallable` types.
 
     ```mojo
-    from move.immutable import series_runner
+    from move.immutable import series_runner, Callable
     from time import perf_counter_ns, sleep
     from memory import Pointer
     from testing import assert_true
@@ -101,7 +101,7 @@ fn series_runner[*ts: Callable](*callables: *ts):
     t2_starts = UInt(0)
     t2_finish = UInt(0)
 
-    struct Task[o1: Origin[True], o2: Origin[True]]:
+    struct Task[o1: Origin[True], o2: Origin[True]](Callable):
         var start: Pointer[UInt, o1]
         var finish: Pointer[UInt, o2]
         fn __init__(out self, ref[o1] start: UInt, ref[o2] finish: UInt):
@@ -137,7 +137,7 @@ fn parallel_runner[*Ts: Callable](callables: CallablePack[_, *Ts]):
         callables: A `CallablePack` collection of types.
 
     ```mojo
-    from move.immutable import parallel_runner,Callable, CallablePack
+    from move.immutable import parallel_runner, Callable, CallablePack
     from time import perf_counter_ns, sleep
     from memory import Pointer
     from testing import assert_true
@@ -147,7 +147,7 @@ fn parallel_runner[*Ts: Callable](callables: CallablePack[_, *Ts]):
     t2_starts = UInt(0)
     t2_finish = UInt(0)
 
-    struct Task[o1: Origin[True], o2: Origin[True]]:
+    struct Task[o1: Origin[True], o2: Origin[True]](Callable):
         var start: Pointer[UInt, o1]
         var finish: Pointer[UInt, o2]
         fn __init__(out self, ref[o1] start: UInt, ref[o2] finish: UInt):
@@ -192,7 +192,7 @@ fn parallel_runner[*ts: Callable](*callables: *ts):
         callables: A collection of `ImmCallable` types.
 
     ```mojo
-    from move.immutable import parallel_runner
+    from move.immutable import parallel_runner, Callable
     from time import perf_counter_ns, sleep
     from memory import Pointer
     from testing import assert_true
@@ -202,7 +202,7 @@ fn parallel_runner[*ts: Callable](*callables: *ts):
     t2_starts = UInt(0)
     t2_finish = UInt(0)
 
-    struct Task[o1: Origin[True], o2: Origin[True]]:
+    struct Task[o1: Origin[True], o2: Origin[True]](Callable):
         var start: Pointer[UInt, o1]
         var finish: Pointer[UInt, o2]
         fn __init__(out self, ref[o1] start: UInt, ref[o2] finish: UInt):
@@ -345,9 +345,9 @@ struct ParallelTask[origin: Origin, *Ts: Callable](Callable):
         Ts: ImmutableCallable types that conforms to `ImmCallable`.
 
     ```mojo
-    from move.immutable import ParallelTask
+    from move.immutable import ParallelTask, Callable
 
-    struct ImmTask:
+    struct ImmTask(Callable):
         fn __init__(out self):
             pass
 
@@ -394,9 +394,9 @@ struct SeriesTask[origin: Origin, *Ts: Callable](Callable):
         Ts: ImmutableCallable types that conforms to `Callable`.
 
     ```mojo
-    from move.immutable import SeriesTask
+    from move.immutable import SeriesTask, Callable
 
-    struct ImmTask:
+    struct ImmTask(Callable):
         fn __init__(out self):
             pass
 
