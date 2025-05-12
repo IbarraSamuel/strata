@@ -1,4 +1,4 @@
-from move.callable import GenericPack
+from move.generic_pack import GenericPack
 from algorithm import sync_parallelize
 
 alias CallablePack = GenericPack[tr=Callable]

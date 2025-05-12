@@ -1,11 +1,54 @@
 from collections import Dict
-from move.callable import GenericPack
+from move.generic_pack import GenericPack
 from algorithm import sync_parallelize
 
 alias Message = Dict[String, String]
 """A message to be readed and produced by tasks."""
 
 alias CallableMsgPack = GenericPack[tr=CallableWithMessage]
+
+
+trait CallableWithMessage:
+    """A `ImmCallable` with a Message to pass to the next task.
+
+    ```mojo
+    from move.message import Message
+
+    trait CallableWithMessage:
+        fn __call__(mut self, owned msg: Message) -> Message:
+            ...
+
+    struct MyStruct(CallableWithMessage):
+        fn __init__(out self):
+            pass
+
+        fn __call__(self, owned msg: Message) -> Message:
+            nm = msg.get("name", "Bob")
+            msg["greet"] = String("Hello, ", nm, "!")
+            return msg
+
+    tsk = MyStruct()
+
+    # Calling the instance.
+    msg = Message()
+    msg["name"] = "Samuel"
+    res = tsk(msg)
+    print(res["greet"])
+
+    ```
+    """
+
+    fn __call__(self, owned msg: Message) -> Message:
+        """Run a task using a `Message` (Alias for `Dict[String, String]` for now).
+        You should return a message back.
+
+        Args:
+            msg: The information to be readed.
+
+        Returns:
+            The result of running this task.
+        """
+        ...
 
 
 fn parallel_msg_runner[
@@ -251,49 +294,6 @@ fn series_msg_runner[
         msg = callables[i](msg^)
 
     return msg
-
-
-trait CallableWithMessage:
-    """A `ImmCallable` with a Message to pass to the next task.
-
-    ```mojo
-    from move.message import Message
-
-    trait CallableWithMessage:
-        fn __call__(mut self, owned msg: Message) -> Message:
-            ...
-
-    struct MyStruct(CallableWithMessage):
-        fn __init__(out self):
-            pass
-
-        fn __call__(self, owned msg: Message) -> Message:
-            nm = msg.get("name", "Bob")
-            msg["greet"] = String("Hello, ", nm, "!")
-            return msg
-
-    tsk = MyStruct()
-
-    # Calling the instance.
-    msg = Message()
-    msg["name"] = "Samuel"
-    res = tsk(msg)
-    print(res["greet"])
-
-    ```
-    """
-
-    fn __call__(self, owned msg: Message) -> Message:
-        """Run a task using a `Message` (Alias for `Dict[String, String]` for now).
-        You should return a message back.
-
-        Args:
-            msg: The information to be readed.
-
-        Returns:
-            The result of running this task.
-        """
-        ...
 
 
 struct MsgFnTask(CallableWithMessage):

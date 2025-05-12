@@ -1,6 +1,3 @@
-from move.message import Message
-
-
 struct GenericPack[origin: Origin, tr: __type_of(AnyType), *Ts: tr](Copyable):
     # struct CallablePack[origin: Origin, *Ts: ImmCallable](Copyable):
     """Stores a reference variadic pack of (read only) `Callable` structs.
@@ -18,7 +15,7 @@ struct GenericPack[origin: Origin, tr: __type_of(AnyType), *Ts: tr](Copyable):
         Ts: Types meeting the tr criteria.
 
     ```mojo
-    from move.callable import GenericPack
+    from move.generic_pack import GenericPack
     from testing import assert_true
 
     trait HasGetter:

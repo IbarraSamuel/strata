@@ -21,7 +21,7 @@ Let's create a couple tasks, one that conforms to `Callable`, another one that c
 from time import sleep
 
 # CallableDefaultable
-struct MyDefaultTask[name: StringLiteral]:
+struct MyTypeTask[name: StringLiteral]:
     fn __init__(out self):
         pass
 
@@ -33,22 +33,22 @@ struct MyDefaultTask[name: StringLiteral]:
 ### Defaultable Examples.
 Since structs that conform to `Defaultable` doesn't need arguments to be instanciated, you can instanciate them just before running the `__call__()` method.
 
-Also, we can build our graph in a `lazy` way, just by setting up the types needed as Variadic Parameters in `SeriesDefaultTask` and `ParallelDefaultTask`.
+Also, we can build our graph in a `lazy` way, just by setting up the types needed as Variadic Parameters in `SeriesTypeTask` and `ParallelTypeTask`.
 
 ```mojo
 from move.task.model import (
-    ParallelDefaultTask as PD,
-    SeriesDefaultTask as SD,
-    DefaultTask as DT,
+    ParallelTypeTask as PD,
+    SeriesTypeTask as SD,
+    TypeTask as DT,
 )
 
-alias Initialize = MyDefaultTask["Initialize"]
-alias LoadData = MyDefaultTask["LoadData"]
-alias FindMin = MyDefaultTask["FindMin"]
-alias FindMax = MyDefaultTask["FindMax"]
-alias FindMean = MyDefaultTask["FindMean"]
-alias FindMedian = MyDefaultTask["FindMedian"]
-alias MergeResults = MyDefaultTask["MergeResults"]
+alias Initialize = MyTypeTask["Initialize"]
+alias LoadData = MyTypeTask["LoadData"]
+alias FindMin = MyTypeTask["FindMin"]
+alias FindMax = MyTypeTask["FindMax"]
+alias FindMean = MyTypeTask["FindMean"]
+alias FindMedian = MyTypeTask["FindMedian"]
+alias MergeResults = MyTypeTask["MergeResults"]
 
 alias TypesGraph = SD[
     Initialize,
@@ -130,11 +130,11 @@ print("[GRAPH 2]...")
 graph_2()
 ```
 
-### Why needs to use `Task` and `DefaultTask` in Airflow Syntax?
+### Why needs to use `Task` and `TypeTask` in Airflow Syntax?
 In airflow syntax you can see some `T(task)` on non-defaultables and `DT(task)` for defaultables.
 
 The reason is because airflow syntax relies on the `__add__` and `__rshift__` and since those Callable struct didn't implement the operator, we need to
-wrap those tasks into a `Task` or `DefaultTask` to be able to do these two operations.
+wrap those tasks into a `Task` or `TypeTask` to be able to do these two operations.
 
 If the first task of the group is converted to a `Task`, the rest can be combined.
 

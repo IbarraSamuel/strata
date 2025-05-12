@@ -1,6 +1,11 @@
 [project]
 authors = ["Samuel Ibarra <Samuel.E.Ibarra@dell.com>"]
-channels = ["https://conda.modular.com/max-nightly", "https://conda.modular.com/max", "https://repo.prefix.dev/modular-community", "https://repo.prefix.dev/conda-forge"]
+channels = [
+    "https://conda.modular.com/max-nightly",
+    "https://conda.modular.com/max",
+    "https://repo.prefix.dev/modular-community",
+    "https://repo.prefix.dev/conda-forge",
+]
 description = "Series/Parallel Runner"
 name = "move"
 platforms = ["linux-64", "osx-arm64"]
@@ -8,15 +13,25 @@ version = "0.2.0"
 
 [tasks]
 # Examples
-examples = { depends-on = ["defaultable_examples", "immutable_examples", "message_examples", "mutable_examples", "unsafe_examples"] }
+examples = { depends-on = [
+    "type_examples",
+    "immutable_examples",
+    "message_examples",
+    "mutable_examples",
+    "unsafe_examples",
+] }
 mutable_examples = "mojo examples/mutable_examples.mojo"
 unsafe_examples = "mojo examples/unsafe_examples.mojo"
 immutable_examples = "mojo examples/immutable_examples.mojo"
-defaultable_examples = "mojo examples/defaultable_examples.mojo"
+type_examples = "mojo examples/type_examples.mojo"
 message_examples = "mojo examples/message_examples.mojo"
 
 # Build
-package = { depends-on = ["remove_package_folder", "create_package_folder", "build_package"]}
+package = { depends-on = [
+    "remove_package_folder",
+    "create_package_folder",
+    "build_package",
+] }
 remove_package_folder = "rm -rf package/"
 create_package_folder = "mkdir package/"
 build_package = "mojo package move -o package/move.mojopkg"
