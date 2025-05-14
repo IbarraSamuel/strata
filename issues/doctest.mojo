@@ -8,7 +8,7 @@ struct Foo:
     fn func[*Ts: AnyType](owned *args: *Ts): pass
 
     b = Bar()
-    # func(b^)  # This errors the code.
+    func(b^)  # This errors the code.
     ```
     """
 
@@ -24,7 +24,7 @@ struct Bar:
         fn __moveinit__(out self, owned o: Self): pass
 
     a = Baz()
-    # b = a^ # This triggers the error.
+    b = a^ # This triggers the error.
     ```
     """
 
@@ -39,6 +39,9 @@ struct SyncPar:
     from algorithm import sync_parallelize, parallelize
     from testing import assert_true
 
+    start0, start1 = 0, 0
+    end0, end1 = 0, 0
+
     fn do_par(i: Int) capturing:
         init = perf_counter_ns()
         if i == 0:
@@ -48,6 +51,7 @@ struct SyncPar:
 
         print("Running iteration", i)
         sleep(1.0)  # Increasing this numbeer helps!
+        # Seems like there is some slowness on the sync_par launch?
         print("finish iteration", i)
 
         end = perf_counter_ns()
@@ -59,7 +63,7 @@ struct SyncPar:
     sync_parallelize[do_par](2)
 
     # Commented to not fail tests
-    # assert_true(False)
+    assert_true(False)
 
     ```
     """
