@@ -120,9 +120,6 @@ struct UnsafeTaskRef[T: MutCallable, origin: ImmutableOrigin](
     fn __init__(out self, ref [origin]inner: T):
         self.inner = Pointer(to=inner)
 
-    fn __moveinit__(out self, owned other: Self):
-        self.inner = other.inner
-
     fn __call__(self):
         # Fake it as mutable.
         # SAFETY: This only allows to modify the inner value.

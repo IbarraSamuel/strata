@@ -1,7 +1,7 @@
 from move.generic_pack import GenericPack
 from algorithm import sync_parallelize
 
-alias CallablePack = GenericPack[tr=Callable]
+alias CallablePack = GenericPack[is_owned=False, tr=Callable]
 
 
 trait Callable:
@@ -66,8 +66,7 @@ fn series_runner[*Ts: Callable](callables: CallablePack[_, *Ts]):
     t2 = Task(t2_starts, t2_finish)
 
     fn series_variadic_inp[*ts: Callable](*args: *ts):
-        var cp = CallablePack(args._value)
-        series_runner(cp)
+        series_runner(args)
     # Will run t1 first, then t2
     series_variadic_inp(t1, t2)
 
@@ -121,7 +120,7 @@ fn series_runner[*ts: Callable](*callables: *ts):
     assert_true(t1_finish < t2_starts)
     ```
     """
-    series_runner(CallablePack(callables._value))
+    series_runner(callables)
 
 
 # Execute tasks in parallel
@@ -162,8 +161,7 @@ fn parallel_runner[*Ts: Callable](callables: CallablePack[_, *Ts]):
     t2 = Task(t2_starts, t2_finish)
 
     fn parallel_variadic_inp[*ts: Callable](*args: *ts):
-        var cp = CallablePack(args._value)
-        parallel_runner(cp)
+        parallel_runner(args)
     # Will run t1 and t2 at the same time
     parallel_variadic_inp(t1, t2)
 
@@ -222,9 +220,10 @@ fn parallel_runner[*ts: Callable](*callables: *ts):
     assert_true(t2_starts < t1_finish and t1_starts < t2_finish)
     ```
     """
-    parallel_runner(CallablePack(callables._value))
+    parallel_runner(callables)
 
 
+@fieldwise_init
 struct FnTask(Callable):
     """This function takes any function with a signature: `fn() -> None`
      and hold it to later call it using `__call__()`.
@@ -243,21 +242,13 @@ struct FnTask(Callable):
     var func: fn ()
     """Pointer to the function to call."""
 
-    fn __init__(out self, func: fn ()):
-        """Takes a `fn() -> None` and wrap it.
-
-        Args:
-            func: The function to be wraped.
-        """
-        self.func = func
-
     fn __call__(self):
         """Call the inner function."""
         self.func()
 
 
 struct SerTaskPairRef[T1: Callable, T2: Callable, o1: Origin, o2: Origin](
-    Callable, Movable
+    Callable
 ):
     var t1: Pointer[T1, o1]
     var t2: Pointer[T2, o2]
@@ -265,10 +256,6 @@ struct SerTaskPairRef[T1: Callable, T2: Callable, o1: Origin, o2: Origin](
     fn __init__(out self, ref [o1]t1: T1, ref [o2]t2: T2):
         self.t1 = Pointer(to=t1)
         self.t2 = Pointer(to=t2)
-
-    fn __moveinit__(out self, owned other: Self):
-        self.t1 = other.t1
-        self.t2 = other.t2
 
     fn __call__(self):
         series_runner(self.t1[], self.t2[])
@@ -285,7 +272,7 @@ struct SerTaskPairRef[T1: Callable, T2: Callable, o1: Origin, o2: Origin](
 
 
 struct ParTaskPairRef[T1: Callable, T2: Callable, o1: Origin, o2: Origin](
-    Callable, Movable
+    Callable
 ):
     var t1: Pointer[T1, o1]
     var t2: Pointer[T2, o2]
@@ -293,10 +280,6 @@ struct ParTaskPairRef[T1: Callable, T2: Callable, o1: Origin, o2: Origin](
     fn __init__(out self, ref [o1]t1: T1, ref [o2]t2: T2):
         self.t1 = Pointer(to=t1)
         self.t2 = Pointer(to=t2)
-
-    fn __moveinit__(out self, owned other: Self):
-        self.t1 = other.t1
-        self.t2 = other.t2
 
     fn __call__(self):
         parallel_runner(self.t1[], self.t2[])
@@ -367,17 +350,13 @@ struct ParallelTask[origin: Origin, *Ts: Callable](Callable):
     var callables: CallablePack[origin, *Ts]
     """Underlying storage for tasks pointers."""
 
-    fn __init__(
-        out self: ParallelTask[__origin_of(args._value), *Ts], *args: *Ts
-    ):
+    fn __init__(out self: ParallelTask[args.origin, *Ts], *args: *Ts):
         """Create a Parallel group, using the args provided. Origin need to be casted.
 
         Args:
             args: All tasks to be executed in parallel.
         """
-        self.callables = rebind[CallablePack[__origin_of(args._value), *Ts]](
-            CallablePack(args._value)
-        )
+        self.callables = args
 
     fn __call__(self):
         """This function executes all tasks at the same time."""
@@ -416,17 +395,13 @@ struct SeriesTask[origin: Origin, *Ts: Callable](Callable):
     var callables: CallablePack[origin, *Ts]
     """Underlying storage for tasks pointers."""
 
-    fn __init__(
-        out self: SeriesTask[__origin_of(args._value), *Ts], *args: *Ts
-    ):
+    fn __init__(out self: SeriesTask[args.origin, *Ts], *args: *Ts):
         """Create a Series group, using the args provided. Origin need to be casted.
 
         Args:
             args: All tasks to be executed in series.
         """
-        self.callables = rebind[CallablePack[__origin_of(args._value), *Ts]](
-            CallablePack(args._value)
-        )
+        self.callables = args
 
     fn __call__(self):
         """This function executes all tasks in ordered sequence."""

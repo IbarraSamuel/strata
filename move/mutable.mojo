@@ -11,7 +11,7 @@ trait MutCallable:
 #     ...
 
 
-alias MutCallablePack = GenericPack[tr=MutCallable]
+alias MutCallablePack = GenericPack[is_owned=False, tr=MutCallable]
 
 # from move.runners import series_runner, parallel_runner
 
@@ -141,18 +141,8 @@ fn parallel_runner[*ts: MutCallable](mut*callables: *ts):
 struct SeriesTask[o: MutableOrigin, *ts: MutCallable](MutCallable):
     var storage: MutCallablePack[o, *ts]
 
-    fn __init__(
-        out self: SeriesTask[
-            MutableOrigin.cast_from[__origin_of(args._value)].result, *ts
-        ],
-        mut*args: *ts,
-    ):
-        self.storage = rebind[__type_of(self.storage)](
-            MutCallablePack(args._value)
-        )
-
-    # fn __moveinit__(out self, owned other: Self):
-    #     self.storage = other.storage
+    fn __init__(out self: SeriesTask[args.origin, *ts], mut*args: *ts):
+        self.storage = args
 
     fn __call__(mut self):
         series_runner(self.storage)
@@ -161,18 +151,8 @@ struct SeriesTask[o: MutableOrigin, *ts: MutCallable](MutCallable):
 struct ParallelTask[o: MutableOrigin, *ts: MutCallable](MutCallable):
     var storage: MutCallablePack[o, *ts]
 
-    fn __init__(
-        out self: ParallelTask[
-            MutableOrigin.cast_from[__origin_of(args._value)].result, *ts
-        ],
-        mut*args: *ts,
-    ):
-        self.storage = rebind[__type_of(self.storage)](
-            MutCallablePack(args._value)
-        )
-
-    # fn __moveinit__(out self, owned other: Self):
-    #     self.storage = other.storage
+    fn __init__(out self: ParallelTask[args.origin, *ts], mut*args: *ts):
+        self.storage = args
 
     fn __call__(mut self):
         parallel_runner(self.storage)
@@ -271,12 +251,6 @@ struct TaskRef[T: MutCallable, origin: MutableOrigin](MutCallable, Movable):
 
     fn __init__(out self, ref [origin]inner: T):
         self.inner = Pointer(to=inner)
-
-    fn __moveinit__(out self, owned other: Self):
-        self.inner = other.inner
-
-    fn __copyinit__(out self, other: Self):
-        self.inner = other.inner
 
     fn __call__(mut self):
         self.inner[]()

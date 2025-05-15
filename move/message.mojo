@@ -5,7 +5,7 @@ from algorithm import sync_parallelize
 alias Message = Dict[String, String]
 """A message to be readed and produced by tasks."""
 
-alias CallableMsgPack = GenericPack[tr=CallableWithMessage]
+alias CallableMsgPack = GenericPack[is_owned=False, tr=CallableWithMessage]
 
 
 trait CallableWithMessage:
@@ -102,8 +102,7 @@ fn parallel_msg_runner[
 
     Syncs automatically.
     """
-    cmp = CallableMsgPack(callables._value)
-    return parallel_msg_runner(msg, cmp)
+    return parallel_msg_runner(msg, callables)
 
 
 fn parallel_msg_runner[
@@ -146,8 +145,7 @@ fn parallel_msg_runner[
             return msg
 
     fn fromvpack[*ts: CallableWithMessage](msg: Message, *args: *ts) -> Message:
-        cmp = CallableMsgPack(args._value)
-        return parallel_msg_runner(msg, cmp)
+        return parallel_msg_runner(msg, args)
 
     t1 = Task(t1_starts, t1_finish)
     t2 = Task(t2_starts, t2_finish)
@@ -227,8 +225,7 @@ fn series_msg_runner[
 
     Syncs automatically.
     """
-    cmp = CallableMsgPack(callables._value)
-    return series_msg_runner(msg, cmp)
+    return series_msg_runner(msg, callables)
 
 
 fn series_msg_runner[
@@ -271,8 +268,7 @@ fn series_msg_runner[
             return msg
 
     fn fromvpack[*ts: CallableWithMessage](msg: Message, *args: *ts) -> Message:
-        cmp = CallableMsgPack(args._value)
-        return series_msg_runner(msg, cmp)
+        return series_msg_runner(msg, args)
 
     t1 = Task(t1_starts, t1_finish)
     t2 = Task(t2_starts, t2_finish)
@@ -296,6 +292,7 @@ fn series_msg_runner[
     return msg
 
 
+@fieldwise_init("implicit")
 struct MsgFnTask(CallableWithMessage):
     """This function takes any function with a signature: `fn(owned Message) -> Message`
     and hold it to later call it using `__call__()`.
@@ -320,14 +317,6 @@ struct MsgFnTask(CallableWithMessage):
 
     var func: fn (owned Message) -> Message
     """Pointer to the function to call."""
-
-    fn __init__(out self, func: fn (owned Message) -> Message):
-        """Takes a `fn() -> None` and wrap it.
-
-        Args:
-            func: The function to be wraped.
-        """
-        self.func = func
 
     fn __call__(self, owned msg: Message) -> Message:
         """Call the inner function.
@@ -375,7 +364,6 @@ struct ImmMessageTask[origin: Origin, T: CallableWithMessage](
     var inner: Pointer[T, origin]
     """Pointer to the Task."""
 
-    @implicit
     fn __init__(out self, ref [origin]inner: T):
         """Create a wrapper to a ImmMessageTask using a pointer.
 
@@ -383,14 +371,6 @@ struct ImmMessageTask[origin: Origin, T: CallableWithMessage](
             inner: The ImmMessageTask to be wrapped.
         """
         self.inner = Pointer(to=inner)
-
-    fn __moveinit__(out self, owned other: Self):
-        """Move the pointer.
-
-        Args:
-            other: The value to move the pointer from.
-        """
-        self.inner = other.inner
 
     fn __call__(self, owned msg: Message) -> Message:
         """Call the inner function.
@@ -445,10 +425,7 @@ struct ImmMessageTask[origin: Origin, T: CallableWithMessage](
 
 # Parallel Pair
 struct ImmParallelMsgTaskPair[
-    o1: Origin,
-    o2: Origin,
-    t1: CallableWithMessage,
-    t2: CallableWithMessage,
+    o1: Origin, o2: Origin, t1: CallableWithMessage, t2: CallableWithMessage
 ](CallableWithMessage):
     """A pair of Message Immutable Tasks.
 
@@ -589,17 +566,13 @@ struct ImmParallelMsgTask[origin: Origin, *Ts: CallableWithMessage](
     var callables: CallableMsgPack[origin, *Ts]
     """The underlying storage for message pointers."""
 
-    fn __init__(
-        out self: ImmParallelMsgTask[__origin_of(args._value), *Ts], *args: *Ts
-    ):
+    fn __init__(out self: ImmParallelMsgTask[args.origin, *Ts], *args: *Ts):
         """Create a group of msg tasks.
 
         Args:
             args: The msg tasks to be included in the group.
         """
-        self.callables = rebind[CallableMsgPack[__origin_of(args._value), *Ts]](
-            CallableMsgPack(args._value)
-        )
+        self.callables = args
 
     fn __call__(self, owned msg: Message) -> Message:
         """This will run the underlying tasks using the message.
@@ -654,17 +627,13 @@ struct ImmSeriesMsgTask[origin: Origin, *Ts: CallableWithMessage](
     var callables: CallableMsgPack[origin, *Ts]
     """The underlying storage for message pointers."""
 
-    fn __init__(
-        out self: ImmSeriesMsgTask[__origin_of(args._value), *Ts], *args: *Ts
-    ):
+    fn __init__(out self: ImmSeriesMsgTask[args.origin, *Ts], *args: *Ts):
         """Create a group of msg tasks.
 
         Args:
             args: The msg tasks to be included in the group.
         """
-        self.callables = rebind[CallableMsgPack[__origin_of(args._value), *Ts]](
-            CallableMsgPack(args._value)
-        )
+        self.callables = args
 
     fn __call__(self, owned msg: Message) -> Message:
         """This will run the underlying tasks using the message,

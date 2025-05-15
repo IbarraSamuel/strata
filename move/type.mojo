@@ -73,6 +73,7 @@ fn series_runner[*Ts: TypeCallable]():
         Ts[i].__call__()
 
 
+@fieldwise_init
 struct TypeTask[T: TypeCallable](TypeCallable):
     """Refers to a task that can be instanciated in the future, because it's defaultable.
 
@@ -95,13 +96,6 @@ struct TypeTask[T: TypeCallable](TypeCallable):
     ```
     """
 
-    fn __init__(out self):
-        pass
-
-    @implicit
-    fn __init__(out self, v: ()):
-        pass
-
     @staticmethod
     fn __call__():
         """Call the task."""
@@ -110,55 +104,46 @@ struct TypeTask[T: TypeCallable](TypeCallable):
     fn __add__[
         t: TypeCallable
     ](owned self, owned other: t) -> ParallelTypeTask[T, t]:
-        return ()
+        """Add this task pair with another task, to be executed in parallel.
+        This task will keep the internal order, but meanwhile the current one is running,
+        the other one could run too.
+
+        Parameters:
+            t: Type that conforms to `TypeCallable`.
+
+        Args:
+            other: The task to be executed at the same time than this group.
+
+        Returns:
+            A pair of references to self, and other task, to be ran on parallel.
+        """
+        return ParallelTypeTask[T, t]()
 
     fn __rshift__[
         t: TypeCallable
     ](owned self, owned other: t) -> SeriesTypeTask[T, t]:
-        return ()
+        """Add this task pair with another task, to be executed in sequence.
+        This task will keep the internal order, but meanwhile the current one is running,
+        the other one could run too.
 
-    # fn __add__[
-    #     t: TypeCallable
-    # ](self, other: t, out o: TypeTask[ParallelTypeTask[T, t]]):
-    #     """Add this task pair with another task, to be executed in parallel.
-    #     This task will keep the internal order, but meanwhile the current one is running,
-    #     the other one could run too.
+        Parameters:
+            t: Type that conforms to `TypeCallable`.
 
-    #     Parameters:
-    #         t: Type that conforms to `CallableDefaultable`.
+        Args:
+            other: The task to be executed fater this group.
 
-    #     Args:
-    #         other: The task to be executed at the same time than this group.
-
-    #     Returns:
-    #         A pair of references to self, and other task, to be ran on parallel.
-    #     """
-    #     return ()
-
-    # fn __rshift__[
-    #     t: TypeCallable
-    # ](self, other: t) -> TypeTask[SeriesTypeTask[T, t]]:
-    #     """Add this task pair with another task, to be executed in sequence.
-    #     This task will keep the internal order, but meanwhile the current one is running,
-    #     the other one could run too.
-
-    #     Parameters:
-    #         t: Type that conforms to `CallableDefaultable`.
-
-    #     Args:
-    #         other: The task to be executed fater this group.
-
-    #     Returns:
-    #         A pair of references to self, and other task, to be ran on sequence.
-    #     """
-    #     return ()
+        Returns:
+            A pair of references to self, and other task, to be ran on sequence.
+        """
+        return SeriesTypeTask[T, t]()
 
 
+@fieldwise_init
 struct ParallelTypeTask[*Ts: TypeCallable](TypeCallable):
     """Refers to a task that can be instanciated in the future, because it's defaultable.
 
     Parameters:
-        Ts: Types that conforms to `CallableDefaultable`.
+        Ts: Types that conforms to `TypeCallable`.
 
     ```mojo
     from move.type import ParallelTypeTask, TypeCallable
@@ -182,10 +167,6 @@ struct ParallelTypeTask[*Ts: TypeCallable](TypeCallable):
     ```
     """
 
-    @implicit
-    fn __init__(out self, v: ()):
-        pass
-
     @staticmethod
     fn __call__():
         """Call the tasks based on the types in a parallel order."""
@@ -194,19 +175,20 @@ struct ParallelTypeTask[*Ts: TypeCallable](TypeCallable):
     fn __add__[
         t: TypeCallable
     ](owned self, owned other: t) -> ParallelTypeTask[Self, t]:
-        return ()
+        return ParallelTypeTask[Self, t]()
 
     fn __rshift__[
         t: TypeCallable
     ](owned self, owned other: t) -> SeriesTypeTask[Self, t]:
-        return ()
+        return SeriesTypeTask[Self, t]()
 
 
+@fieldwise_init
 struct SeriesTypeTask[*Ts: TypeCallable](TypeCallable):
     """Refers to a task that can be instanciated in the future, because it's defaultable.
 
     Parameters:
-        Ts: Types that conforms to `CallableDefaultable`.
+        Ts: Types that conforms to `TypeCallable`.
 
     ```mojo
     from move.type import SeriesTypeTask, TypeCallable
@@ -230,10 +212,6 @@ struct SeriesTypeTask[*Ts: TypeCallable](TypeCallable):
     ```
     """
 
-    @implicit
-    fn __init__(out self, v: ()):
-        pass
-
     @staticmethod
     fn __call__():
         """Call the tasks based on the types on a sequence order."""
@@ -242,9 +220,9 @@ struct SeriesTypeTask[*Ts: TypeCallable](TypeCallable):
     fn __add__[
         t: TypeCallable
     ](owned self, owned other: t) -> ParallelTypeTask[Self, t]:
-        return ()
+        return ParallelTypeTask[Self, t]()
 
     fn __rshift__[
         t: TypeCallable
     ](owned self, owned other: t) -> SeriesTypeTask[Self, t]:
-        return ()
+        return SeriesTypeTask[Self, t]()

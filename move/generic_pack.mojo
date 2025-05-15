@@ -1,4 +1,6 @@
-struct GenericPack[origin: Origin, tr: __type_of(AnyType), *Ts: tr](Copyable):
+struct GenericPack[
+    is_owned: Bool, origin: Origin, tr: __type_of(AnyType), *Ts: tr
+]:
     # struct CallablePack[origin: Origin, *Ts: ImmCallable](Copyable):
     """Stores a reference variadic pack of (read only) `Callable` structs.
 
@@ -10,6 +12,7 @@ struct GenericPack[origin: Origin, tr: __type_of(AnyType), *Ts: tr](Copyable):
 
     Parameters:
         mut: Defines if the Origin is mutable or not.
+        is_owned: If the arguments are owned by the pack or not.
         origin: The Origin of the Variadic Arguments.
         tr: Trait to use to filter possible values from the Pack.
         Ts: Types meeting the tr criteria.
@@ -30,8 +33,8 @@ struct GenericPack[origin: Origin, tr: __type_of(AnyType), *Ts: tr](Copyable):
             return 1
 
     # hack to point to the _value lifetime instead of the args lifetime.
-    fn store_value[*Ts: HasGetter](*args: *Ts) -> GenericPack[__origin_of(args._value), HasGetter, *Ts]:
-        return rebind[GenericPack[__origin_of(args._value), HasGetter, *Ts]](GenericPack(args._value))
+    fn store_value[*Ts: HasGetter](*args: *Ts) -> GenericPack[args.is_owned, args.origin, HasGetter, *Ts]:
+        return GenericPack(args)
 
 
     task = MyTask()
@@ -42,29 +45,31 @@ struct GenericPack[origin: Origin, tr: __type_of(AnyType), *Ts: tr](Copyable):
     assert_true(val == 1)
     ```
     """
-
-    alias Storage = VariadicPack[False, origin, tr, *Ts]._mlir_type
-    """The underlying _value storage for a VariadicPack. It's just a collection of pointers."""
-
-    var storage: Self.Storage
+    var storage: VariadicPack[is_owned, origin, tr, *Ts]
     """The storage of pointers to each object."""
 
     @implicit
-    fn __init__(out self, storage: Self.Storage):
-        """Initialize a CallablePack using a storage from a VariadicPack.
+    fn __init__(
+        out self: GenericPack[False, origin, tr, *Ts],
+        pack: VariadicPack[False, origin, tr, *Ts],
+    ):
+        self.storage = VariadicPack[False, origin, tr, *Ts](pack._value)
 
-        Args:
-            storage: The VariadicPack value to store.
-        """
-        self.storage = storage
+    @implicit
+    fn __init__(
+        out self: GenericPack[True, origin, tr, *Ts],
+        owned pack: VariadicPack[True, origin, tr, *Ts],
+    ):
+        self.storage = pack^
 
-    fn __copyinit__(out self, other: Self):
-        """Copy the CallablePack.
+    # fn __copyinit__(
+    #     out self: GenericPack[False, origin, tr, *Ts],
+    #     other: GenericPack[False, origin, tr, *Ts],
+    # ):
+    #     self = GenericPack(other.storage)
 
-        Args:
-            other: The value to be moved from.
-        """
-        self.storage = other.storage
+    fn __moveinit__(out self, owned other: Self):
+        self.storage = other.storage^
 
     fn __getitem__[i: Int](self) -> ref [origin] Ts[i.value]:
         """Get one item from the CallablePack as a reference.
@@ -75,5 +80,4 @@ struct GenericPack[origin: Origin, tr: __type_of(AnyType), *Ts: tr](Copyable):
         Returns:
             The reference to the item in the VariadicPack.
         """
-        value = __mlir_op.`lit.ref.pack.extract`[index = i.value](self.storage)
-        return __get_litref_as_mvalue(value)
+        return self.storage[i]
