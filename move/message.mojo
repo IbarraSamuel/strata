@@ -1,11 +1,10 @@
-from collections import Dict
-from move.generic_pack import GenericPack
 from algorithm import sync_parallelize
+from collections import Dict
 
 alias Message = Dict[String, String]
 """A message to be readed and produced by tasks."""
 
-alias CallableMsgPack = GenericPack[is_owned=False, tr=CallableWithMessage]
+alias CallableMsgPack = VariadicPack[False, _, CallableWithMessage, *_]
 
 
 trait CallableWithMessage:
@@ -572,7 +571,7 @@ struct ImmParallelMsgTask[origin: Origin, *Ts: CallableWithMessage](
         Args:
             args: The msg tasks to be included in the group.
         """
-        self.callables = args
+        self.callables = CallableMsgPack(args._value)
 
     fn __call__(self, owned msg: Message) -> Message:
         """This will run the underlying tasks using the message.
@@ -633,7 +632,7 @@ struct ImmSeriesMsgTask[origin: Origin, *Ts: CallableWithMessage](
         Args:
             args: The msg tasks to be included in the group.
         """
-        self.callables = args
+        self.callables = CallableMsgPack(args._value)
 
     fn __call__(self, owned msg: Message) -> Message:
         """This will run the underlying tasks using the message,

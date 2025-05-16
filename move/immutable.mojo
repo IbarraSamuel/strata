@@ -1,7 +1,6 @@
-from move.generic_pack import GenericPack
 from algorithm import sync_parallelize
 
-alias CallablePack = GenericPack[is_owned=False, tr=Callable]
+alias CallablePack = VariadicPack[False, _, Callable, *_]
 
 
 trait Callable:
@@ -356,7 +355,7 @@ struct ParallelTask[origin: Origin, *Ts: Callable](Callable):
         Args:
             args: All tasks to be executed in parallel.
         """
-        self.callables = args
+        self.callables = CallablePack(args._value)
 
     fn __call__(self):
         """This function executes all tasks at the same time."""
@@ -401,7 +400,7 @@ struct SeriesTask[origin: Origin, *Ts: Callable](Callable):
         Args:
             args: All tasks to be executed in series.
         """
-        self.callables = args
+        self.callables = CallablePack(args._value)
 
     fn __call__(self):
         """This function executes all tasks in ordered sequence."""

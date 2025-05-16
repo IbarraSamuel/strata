@@ -1,4 +1,3 @@
-from move.generic_pack import GenericPack
 from algorithm import sync_parallelize
 
 
@@ -11,7 +10,7 @@ trait MutCallable:
 #     ...
 
 
-alias MutCallablePack = GenericPack[is_owned=False, tr=MutCallable]
+alias MutCallablePack = VariadicPack[False, _, MutCallable, *_]
 
 # from move.runners import series_runner, parallel_runner
 
@@ -142,7 +141,7 @@ struct SeriesTask[o: MutableOrigin, *ts: MutCallable](MutCallable):
     var storage: MutCallablePack[o, *ts]
 
     fn __init__(out self: SeriesTask[args.origin, *ts], mut*args: *ts):
-        self.storage = args
+        self.storage = MutCallablePack(args._value)
 
     fn __call__(mut self):
         series_runner(self.storage)
@@ -152,7 +151,7 @@ struct ParallelTask[o: MutableOrigin, *ts: MutCallable](MutCallable):
     var storage: MutCallablePack[o, *ts]
 
     fn __init__(out self: ParallelTask[args.origin, *ts], mut*args: *ts):
-        self.storage = args
+        self.storage = MutCallablePack(args._value)
 
     fn __call__(mut self):
         parallel_runner(self.storage)
