@@ -34,6 +34,12 @@ fn main():
         >> merge_results
     )
     print("[GRAPH 2]...")
+
+    # Calling the graph will just return a Coroutine.
+    # you need to run the coroutine with a runtime.
+    coroutine_graph = airflow_graph()
+
+    # Import the executor and provide the coroutine
     from move.async_runtime import execute
 
-    execute(airflow_graph())
+    execute(coroutine_graph^)
