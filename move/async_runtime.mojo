@@ -14,6 +14,7 @@ trait AsyncCallable:
 struct TaskRef[T: AsyncCallable, origin: Origin](AsyncCallable):
     var v: Pointer[T, origin]
 
+    @implicit
     fn __init__(out self, ref [origin]v: T):
         self.v = Pointer(to=v)
 

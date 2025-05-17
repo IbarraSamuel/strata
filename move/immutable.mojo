@@ -222,7 +222,7 @@ fn parallel_runner[*ts: Callable](*callables: *ts):
     parallel_runner(callables)
 
 
-@fieldwise_init
+@fieldwise_init("implicit")
 struct FnTask(Callable):
     """This function takes any function with a signature: `fn() -> None`
      and hold it to later call it using `__call__()`.
@@ -294,14 +294,12 @@ struct ParTaskPairRef[T1: Callable, T2: Callable, o1: Origin, o2: Origin](
         return SerTaskPairRef(self, other)
 
 
-struct ImmTaskRef[T: Callable, origin: Origin](Callable, Movable):
+struct ImmTaskRef[T: Callable, origin: Origin](Callable):
     var inner: Pointer[T, origin]
 
+    @implicit
     fn __init__(out self, ref [origin]value: T):
         self.inner = Pointer(to=value)
-
-    fn __moveinit__(out self, owned other: Self):
-        self.inner = other.inner
 
     fn __call__(self):
         self.inner[]()

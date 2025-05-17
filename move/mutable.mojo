@@ -165,19 +165,12 @@ struct ParallelTask[o: MutableOrigin, *ts: MutCallable](MutCallable):
 # And have a case for owned values, another for existing values.
 
 
+@fieldwise_init
 struct SerTaskPair[T1: MutCallable & Movable, T2: MutCallable & Movable](
     MutCallable, Movable
 ):
     var t1: T1
     var t2: T2
-
-    fn __init__(out self, owned v1: T1, owned v2: T2):
-        self.t1 = v1^
-        self.t2 = v2^
-
-    fn __moveinit__(out self, owned other: Self):
-        self.t1 = other.t1^
-        self.t2 = other.t2^
 
     fn __call__(mut self):
         series_runner(self.t1, self.t2)
@@ -205,19 +198,12 @@ struct SerTaskPair[T1: MutCallable & Movable, T2: MutCallable & Movable](
         return SerTaskPair(self^, other^)
 
 
+@fieldwise_init
 struct ParTaskPair[T1: MutCallable & Movable, T2: MutCallable & Movable](
     MutCallable, Movable
 ):
     var t1: T1
     var t2: T2
-
-    fn __init__(out self, owned v1: T1, owned v2: T2):
-        self.t1 = v1^
-        self.t2 = v2^
-
-    fn __moveinit__(out self, owned other: Self):
-        self.t1 = other.t1^
-        self.t2 = other.t2^
 
     fn __call__(mut self):
         parallel_runner(self.t1, self.t2)
@@ -248,6 +234,7 @@ struct ParTaskPair[T1: MutCallable & Movable, T2: MutCallable & Movable](
 struct TaskRef[T: MutCallable, origin: MutableOrigin](MutCallable, Movable):
     var inner: Pointer[T, origin]
 
+    @implicit
     fn __init__(out self, ref [origin]inner: T):
         self.inner = Pointer(to=inner)
 

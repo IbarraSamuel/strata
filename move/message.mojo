@@ -363,6 +363,7 @@ struct ImmMessageTask[origin: Origin, T: CallableWithMessage](
     var inner: Pointer[T, origin]
     """Pointer to the Task."""
 
+    @implicit
     fn __init__(out self, ref [origin]inner: T):
         """Create a wrapper to a ImmMessageTask using a pointer.
 

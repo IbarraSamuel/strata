@@ -3,19 +3,12 @@ from move.mutable import MutCallable
 from move.immutable import Callable
 
 
+@fieldwise_init
 struct UnsafeSerTaskPair[T1: Callable & Movable, T2: Callable & Movable](
     Callable, MutCallable, Movable
 ):
     var t1: T1
     var t2: T2
-
-    fn __init__(out self, owned v1: T1, owned v2: T2):
-        self.t1 = v1^
-        self.t2 = v2^
-
-    fn __moveinit__(out self, owned other: Self):
-        self.t1 = other.t1^
-        self.t2 = other.t2^
 
     fn __call__(self):
         series_runner(self.t1, self.t2)
@@ -51,19 +44,12 @@ struct UnsafeSerTaskPair[T1: Callable & Movable, T2: Callable & Movable](
         return UnsafeSerTaskPair(self^, other^)
 
 
+@fieldwise_init
 struct UnsafeParTaskPair[T1: Callable & Movable, T2: Callable & Movable](
     Callable, MutCallable, Movable
 ):
     var t1: T1
     var t2: T2
-
-    fn __init__(out self, owned v1: T1, owned v2: T2):
-        self.t1 = v1^
-        self.t2 = v2^
-
-    fn __moveinit__(out self, owned other: Self):
-        self.t1 = other.t1^
-        self.t2 = other.t2^
 
     fn __call__(self):
         parallel_runner(self.t1, self.t2)
@@ -117,6 +103,7 @@ struct UnsafeTaskRef[T: MutCallable, origin: ImmutableOrigin](
 
     var inner: Pointer[T, origin]
 
+    @implicit
     fn __init__(out self, ref [origin]inner: T):
         self.inner = Pointer(to=inner)
 

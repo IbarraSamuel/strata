@@ -96,6 +96,10 @@ struct TypeTask[T: TypeCallable](TypeCallable):
     ```
     """
 
+    @implicit
+    fn __init__(out self, _task: T):
+        pass
+
     @staticmethod
     fn __call__():
         """Call the task."""
