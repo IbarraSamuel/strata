@@ -121,7 +121,7 @@ struct TypeTask[T: TypeCallable](TypeCallable):
         Returns:
             A pair of references to self, and other task, to be ran on parallel.
         """
-        return ParallelTypeTask[T, t]()
+        return {}
 
     fn __rshift__[
         t: TypeCallable
@@ -139,7 +139,7 @@ struct TypeTask[T: TypeCallable](TypeCallable):
         Returns:
             A pair of references to self, and other task, to be ran on sequence.
         """
-        return SeriesTypeTask[T, t]()
+        return {}
 
 
 @fieldwise_init
@@ -179,12 +179,12 @@ struct ParallelTypeTask[*Ts: TypeCallable](TypeCallable):
     fn __add__[
         t: TypeCallable
     ](owned self, owned other: t) -> ParallelTypeTask[Self, t]:
-        return ParallelTypeTask[Self, t]()
+        return {}
 
     fn __rshift__[
         t: TypeCallable
     ](owned self, owned other: t) -> SeriesTypeTask[Self, t]:
-        return SeriesTypeTask[Self, t]()
+        return {}
 
 
 @fieldwise_init
@@ -224,9 +224,9 @@ struct SeriesTypeTask[*Ts: TypeCallable](TypeCallable):
     fn __add__[
         t: TypeCallable
     ](owned self, owned other: t) -> ParallelTypeTask[Self, t]:
-        return ParallelTypeTask[Self, t]()
+        return {}
 
     fn __rshift__[
         t: TypeCallable
     ](owned self, owned other: t) -> SeriesTypeTask[Self, t]:
-        return SeriesTypeTask[Self, t]()
+        return {}

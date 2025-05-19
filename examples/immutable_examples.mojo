@@ -15,19 +15,6 @@ struct MyTask[job: StringLiteral](Callable):
         sleep(time)
 
 
-# struct MutTask[name: StringLiteral](Callable):
-#     var value: Int
-
-#     fn __init__(out self, value: Int):
-#         self.value = value
-
-#     fn __call__(mut self):
-#         print("Running [", name, "]: Incrementing value", self.value)
-#         sleep(time)
-#         self.value += 1
-#         print("Finish [", name, "]: Value incremented. Now it's", self.value)
-
-
 fn main():
     print("\n\nHey! Running Immutable Examples...")
     from move.immutable import SeriesTask as IS

@@ -19,29 +19,31 @@ struct UnsafeSerTaskPair[T1: Callable & Movable, T2: Callable & Movable](
     ](owned self, ref [o]other: t) -> UnsafeParTaskPair[
         Self, UnsafeTaskRef[t, ImmutableOrigin.cast_from[o].result]
     ]:
-        return UnsafeParTaskPair(
-            self^, UnsafeTaskRef[t, ImmutableOrigin.cast_from[o].result](other)
-        )
+        return {
+            self^,
+            UnsafeTaskRef[t, ImmutableOrigin.cast_from[o].result](other),
+        }
 
     fn __rshift__[
         t: MutCallable, o: MutableOrigin
     ](owned self, ref [o]other: t) -> UnsafeSerTaskPair[
         Self, UnsafeTaskRef[t, ImmutableOrigin.cast_from[o].result]
     ]:
-        return UnsafeSerTaskPair(
-            self^, UnsafeTaskRef[t, ImmutableOrigin.cast_from[o].result](other)
-        )
+        return {
+            self^,
+            UnsafeTaskRef[t, ImmutableOrigin.cast_from[o].result](other),
+        }
 
     # ---- FOR IMMUTABLE VERSIONS -----
     fn __add__[
         t: Callable & Movable
     ](owned self, owned other: t) -> UnsafeParTaskPair[Self, t]:
-        return UnsafeParTaskPair(self^, other^)
+        return {self^, other^}
 
     fn __rshift__[
         t: Callable & Movable
     ](owned self, owned other: t) -> UnsafeSerTaskPair[Self, t]:
-        return UnsafeSerTaskPair(self^, other^)
+        return {self^, other^}
 
 
 @fieldwise_init
@@ -60,29 +62,31 @@ struct UnsafeParTaskPair[T1: Callable & Movable, T2: Callable & Movable](
     ](owned self, ref [o]other: t) -> UnsafeParTaskPair[
         Self, UnsafeTaskRef[t, ImmutableOrigin.cast_from[o].result]
     ]:
-        return UnsafeParTaskPair(
-            self^, UnsafeTaskRef[t, ImmutableOrigin.cast_from[o].result](other)
-        )
+        return {
+            self^,
+            UnsafeTaskRef[t, ImmutableOrigin.cast_from[o].result](other),
+        }
 
     fn __rshift__[
         t: MutCallable, o: MutableOrigin
     ](owned self, ref [o]other: t) -> UnsafeSerTaskPair[
         Self, UnsafeTaskRef[t, ImmutableOrigin.cast_from[o].result]
     ]:
-        return UnsafeSerTaskPair(
-            self^, UnsafeTaskRef[t, ImmutableOrigin.cast_from[o].result](other)
-        )
+        return {
+            self^,
+            UnsafeTaskRef[t, ImmutableOrigin.cast_from[o].result](other),
+        }
 
     # ---- FOR IMMUTABLE VERSIONS -----
     fn __add__[
         t: Callable & Movable
     ](owned self, owned other: t) -> UnsafeParTaskPair[Self, t]:
-        return UnsafeParTaskPair(self^, other^)
+        return {self^, other^}
 
     fn __rshift__[
         t: Callable & Movable
     ](owned self, owned other: t) -> UnsafeSerTaskPair[Self, t]:
-        return UnsafeSerTaskPair(self^, other^)
+        return {self^, other^}
 
 
 # THIS ALLOW US TO CREATE
@@ -122,26 +126,28 @@ struct UnsafeTaskRef[T: MutCallable, origin: ImmutableOrigin](
     ](owned self, ref [o]other: t) -> UnsafeParTaskPair[
         Self, UnsafeTaskRef[t, ImmutableOrigin.cast_from[o].result]
     ]:
-        return UnsafeParTaskPair(
-            self^, UnsafeTaskRef[t, ImmutableOrigin.cast_from[o].result](other)
-        )
+        return {
+            self^,
+            UnsafeTaskRef[t, ImmutableOrigin.cast_from[o].result](other),
+        }
 
     fn __rshift__[
         t: MutCallable, o: MutableOrigin
     ](owned self, ref [o]other: t) -> UnsafeSerTaskPair[
         Self, UnsafeTaskRef[t, ImmutableOrigin.cast_from[o].result]
     ]:
-        return UnsafeSerTaskPair(
-            self^, UnsafeTaskRef[t, ImmutableOrigin.cast_from[o].result](other)
-        )
+        return {
+            self^,
+            UnsafeTaskRef[t, ImmutableOrigin.cast_from[o].result](other),
+        }
 
     # ---- FOR IMMUTABLE VERSIONS -----
     fn __add__[
         t: Callable & Movable
     ](owned self, owned other: t) -> UnsafeParTaskPair[Self, t]:
-        return UnsafeParTaskPair(self^, other^)
+        return {self^, other^}
 
     fn __rshift__[
         t: Callable & Movable
     ](owned self, owned other: t) -> UnsafeSerTaskPair[Self, t]:
-        return UnsafeSerTaskPair(self^, other^)
+        return {self^, other^}

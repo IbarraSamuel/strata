@@ -260,14 +260,14 @@ struct SerTaskPairRef[T1: Callable, T2: Callable, o1: Origin, o2: Origin](
         series_runner(self.t1[], self.t2[])
 
     fn __add__[
-        t: Callable, o: Origin
-    ](self, ref [o]other: t) -> ParTaskPairRef[Self, t, __origin_of(self), o]:
-        return ParTaskPairRef(self, other)
+        t: Callable, s: Origin, o: Origin
+    ](ref [s]self, ref [o]other: t) -> ParTaskPairRef[Self, t, s, o]:
+        return {self, other}
 
     fn __rshift__[
-        t: Callable, o: Origin
-    ](self, ref [o]other: t) -> SerTaskPairRef[Self, t, __origin_of(self), o]:
-        return SerTaskPairRef(self, other)
+        t: Callable, s: Origin, o: Origin
+    ](ref [s]self, ref [o]other: t) -> SerTaskPairRef[Self, t, s, o]:
+        return {self, other}
 
 
 struct ParTaskPairRef[T1: Callable, T2: Callable, o1: Origin, o2: Origin](
@@ -284,14 +284,14 @@ struct ParTaskPairRef[T1: Callable, T2: Callable, o1: Origin, o2: Origin](
         parallel_runner(self.t1[], self.t2[])
 
     fn __add__[
-        t: Callable, o: Origin
-    ](self, ref [o]other: t) -> ParTaskPairRef[Self, t, __origin_of(self), o]:
-        return ParTaskPairRef(self, other)
+        t: Callable, s: Origin, o: Origin
+    ](ref [s]self, ref [o]other: t) -> ParTaskPairRef[Self, t, s, o]:
+        return {self, other}
 
     fn __rshift__[
-        t: Callable, o: Origin
-    ](self, ref [o]other: t) -> SerTaskPairRef[Self, t, __origin_of(self), o]:
-        return SerTaskPairRef(self, other)
+        t: Callable, s: Origin, o: Origin
+    ](ref [s]self, ref [o]other: t) -> SerTaskPairRef[Self, t, s, o]:
+        return {self, other}
 
 
 struct ImmTaskRef[T: Callable, origin: Origin](Callable):
@@ -307,12 +307,12 @@ struct ImmTaskRef[T: Callable, origin: Origin](Callable):
     fn __add__[
         t: Callable, o: Origin
     ](self, ref [o]other: t) -> ParTaskPairRef[T, t, origin, o]:
-        return ParTaskPairRef(self.inner[], other)
+        return {self.inner[], other}
 
     fn __rshift__[
         t: Callable, o: Origin
     ](self, ref [o]other: t) -> SerTaskPairRef[T, t, origin, o]:
-        return SerTaskPairRef(self.inner[], other)
+        return {self.inner[], other}
 
 
 # Variadic Parallel

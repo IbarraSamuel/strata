@@ -328,6 +328,45 @@ struct MsgFnTask(CallableWithMessage):
         """
         return self.func(msg^)
 
+    fn __add__[
+        s: Origin, o: Origin, t: CallableWithMessage, //
+    ](ref [s]self, ref [o]other: t) -> ImmParallelMsgTaskPair[s, o, Self, t]:
+        """Add this task pair with another task, to be executed in parallel.
+        This task will keep the internal order, but meanwhile the current one is running,
+        the other one could run too.
+
+        Parameters:
+            s: Origin of self.
+            o: Origin of the other type.
+            t: Type that conforms to `ImmCallableWithMessage`.
+
+        Args:
+            other: The task to be executed at the same time than this group.
+
+        Returns:
+            A pair of references to self, and other task, to be ran on parallel.
+        """
+        return {self, other}
+
+    fn __rshift__[
+        s: Origin, o: Origin, t: CallableWithMessage, //
+    ](ref [s]self, ref [o]other: t) -> ImmSeriesMsgTaskPair[s, o, Self, t]:
+        """Add another task to be executed after these two.
+        It's like appending another task to a list of ordered tasks.
+
+        Parameters:
+            s: Origin of self.
+            o: Origin of the other type.
+            t: Type that conforms to `ImmCallableWithMessage`.
+
+        Args:
+            other: The task to be executed after this pair.
+
+        Returns:
+            A pair of references to self, and other task, to be ran on sequence.
+        """
+        return {self, other}
+
 
 struct ImmMessageTask[origin: Origin, T: CallableWithMessage](
     CallableWithMessage
@@ -401,7 +440,7 @@ struct ImmMessageTask[origin: Origin, T: CallableWithMessage](
         Returns:
             A pair of references to self, and other task, to be ran on parallel.
         """
-        return ImmParallelMsgTaskPair(self, other)
+        return {self, other}
 
     fn __rshift__[
         s: Origin, o: Origin, t: CallableWithMessage, //
@@ -420,7 +459,7 @@ struct ImmMessageTask[origin: Origin, T: CallableWithMessage](
         Returns:
             A pair of references to self, and other task, to be ran on sequence.
         """
-        return ImmSeriesMsgTaskPair(self, other)
+        return {self, other}
 
 
 # Parallel Pair
@@ -503,7 +542,7 @@ struct ImmParallelMsgTaskPair[
         Returns:
             A pair of references to self, and other task, to be ran on parallel.
         """
-        return ImmParallelMsgTaskPair(self, other)
+        return {self, other}
 
     fn __rshift__[
         s: Origin, o: Origin, t: CallableWithMessage, //
@@ -522,7 +561,111 @@ struct ImmParallelMsgTaskPair[
         Returns:
             A pair of references to self, and other task, to be ran on sequence.
         """
-        return ImmSeriesMsgTaskPair(self, other)
+        return {self, other}
+
+
+# Series Pair
+struct ImmSeriesMsgTaskPair[
+    o1: Origin,
+    o2: Origin,
+    t1: CallableWithMessage,
+    t2: CallableWithMessage,
+](CallableWithMessage):
+    """A pair of Message Immutalbe Tasks.
+
+    Parameters:
+        mut: Wether if the origin is mutable.
+        o1: Origin for the first type.
+        o2: Origin for the second type.
+        t1: First type that conforms to `ImmCallableWithMessage`.
+        t2: Second type that conforms to `ImmCallableWithMessage`.
+
+    ```mojo
+    from move.message import Message, ImmSeriesMsgTaskPair, CallableWithMessage
+
+    struct MsgTask(CallableWithMessage):
+        fn __init__(out self):
+            pass
+
+        fn __call__(self, owned msg: Message) -> Message:
+            print("Do something with the message")
+            return msg
+
+    t1 = MsgTask()
+    t2 = MsgTask()
+    stp = ImmSeriesMsgTaskPair(t1, t2)
+
+    # Run the pair
+    msg = Message()
+    msg_out = stp(msg)
+    print(msg_out.__str__())
+    ```
+    """
+
+    var v1: Pointer[t1, o1]
+    """First msg task."""
+    var v2: Pointer[t2, o2]
+    """Second msg task."""
+
+    fn __init__(out self, ref [o1]v1: t1, ref [o2]v2: t2):
+        """Start a Msg Task pair using two reference to messages.
+
+        Args:
+            v1: First message task.
+            v2: Second message task.
+        """
+        self.v1 = Pointer(to=v1)
+        self.v2 = Pointer(to=v2)
+
+    fn __call__(self, owned message: Message) -> Message:
+        """Call both message tasks in sequence.
+
+        Args:
+            message: The message or context to read.
+
+        Returns:
+            The message output from this task or job.
+        """
+        return series_msg_runner(message, self.v1[], self.v2[])
+
+    fn __add__[
+        s: Origin, o: Origin, t: CallableWithMessage, //
+    ](ref [s]self, ref [o]other: t) -> ImmParallelMsgTaskPair[s, o, Self, t]:
+        """Add this task pair with another task, to be executed in parallel.
+        This task will keep the internal order, but meanwhile the current one is running,
+        the other one could run too.
+
+        Parameters:
+            s: Origin of self.
+            o: Origin of the other type.
+            t: Type that conforms to `ImmCallableWithMessage`.
+
+        Args:
+            other: The task to be executed at the same time than this group.
+
+        Returns:
+            A pair of references to self, and other task, to be ran on parallel.
+        """
+        return {self, other}
+
+    fn __rshift__[
+        s: Origin, o: Origin, t: CallableWithMessage, //
+    ](ref [s]self, ref [o]other: t) -> ImmSeriesMsgTaskPair[s, o, Self, t]:
+        """Add another task to be executed after these two.
+        It's like appending another task to a list of ordered tasks.
+
+        Parameters:
+            s: Origin of self.
+            o: Origin of the other type.
+            t: Type that conforms to `ImmCallableWithMessage`.
+
+        Args:
+            other: The task to be executed after this pair.
+
+        Returns:
+            A pair of references to self, and other task, to be ran on sequence.
+        """
+        return {self, other}
 
 
 # Variadic Parallel
@@ -646,107 +789,3 @@ struct ImmSeriesMsgTask[origin: Origin, *Ts: CallableWithMessage](
             The message modified.
         """
         return series_msg_runner(msg, self.callables)
-
-
-# Series Pair
-struct ImmSeriesMsgTaskPair[
-    o1: Origin,
-    o2: Origin,
-    t1: CallableWithMessage,
-    t2: CallableWithMessage,
-](CallableWithMessage):
-    """A pair of Message Immutalbe Tasks.
-
-    Parameters:
-        mut: Wether if the origin is mutable.
-        o1: Origin for the first type.
-        o2: Origin for the second type.
-        t1: First type that conforms to `ImmCallableWithMessage`.
-        t2: Second type that conforms to `ImmCallableWithMessage`.
-
-    ```mojo
-    from move.message import Message, ImmSeriesMsgTaskPair, CallableWithMessage
-
-    struct MsgTask(CallableWithMessage):
-        fn __init__(out self):
-            pass
-
-        fn __call__(self, owned msg: Message) -> Message:
-            print("Do something with the message")
-            return msg
-
-    t1 = MsgTask()
-    t2 = MsgTask()
-    stp = ImmSeriesMsgTaskPair(t1, t2)
-
-    # Run the pair
-    msg = Message()
-    msg_out = stp(msg)
-    print(msg_out.__str__())
-    ```
-    """
-
-    var v1: Pointer[t1, o1]
-    """First msg task."""
-    var v2: Pointer[t2, o2]
-    """Second msg task."""
-
-    fn __init__(out self, ref [o1]v1: t1, ref [o2]v2: t2):
-        """Start a Msg Task pair using two reference to messages.
-
-        Args:
-            v1: First message task.
-            v2: Second message task.
-        """
-        self.v1 = Pointer(to=v1)
-        self.v2 = Pointer(to=v2)
-
-    fn __call__(self, owned message: Message) -> Message:
-        """Call both message tasks in sequence.
-
-        Args:
-            message: The message or context to read.
-
-        Returns:
-            The message output from this task or job.
-        """
-        return series_msg_runner(message, self.v1[], self.v2[])
-
-    fn __add__[
-        s: Origin, o: Origin, t: CallableWithMessage, //
-    ](ref [s]self, ref [o]other: t) -> ImmParallelMsgTaskPair[s, o, Self, t]:
-        """Add this task pair with another task, to be executed in parallel.
-        This task will keep the internal order, but meanwhile the current one is running,
-        the other one could run too.
-
-        Parameters:
-            s: Origin of self.
-            o: Origin of the other type.
-            t: Type that conforms to `ImmCallableWithMessage`.
-
-        Args:
-            other: The task to be executed at the same time than this group.
-
-        Returns:
-            A pair of references to self, and other task, to be ran on parallel.
-        """
-        return ImmParallelMsgTaskPair(self, other)
-
-    fn __rshift__[
-        s: Origin, o: Origin, t: CallableWithMessage, //
-    ](ref [s]self, ref [o]other: t) -> ImmSeriesMsgTaskPair[s, o, Self, t]:
-        """Add another task to be executed after these two.
-        It's like appending another task to a list of ordered tasks.
-
-        Parameters:
-            s: Origin of self.
-            o: Origin of the other type.
-            t: Type that conforms to `ImmCallableWithMessage`.
-
-        Args:
-            other: The task to be executed after this pair.
-
-        Returns:
-            A pair of references to self, and other task, to be ran on sequence.
-        """
-        return ImmSeriesMsgTaskPair(self, other)

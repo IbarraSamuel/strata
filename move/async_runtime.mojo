@@ -24,12 +24,12 @@ struct TaskRef[T: AsyncCallable, origin: Origin](AsyncCallable):
     fn __add__[
         t: AsyncCallable, o: Origin
     ](self, ref [o]other: t) -> ParTaskPair[T, t, origin, o]:
-        return ParTaskPair(self.v[], other)
+        return {self.v[], other}
 
     fn __rshift__[
         t: AsyncCallable, o: Origin
     ](self, ref [o]other: t) -> SerTaskPair[T, t, origin, o]:
-        return SerTaskPair(self.v[], other)
+        return {self.v[], other}
 
 
 struct SerTaskPair[
@@ -49,12 +49,12 @@ struct SerTaskPair[
     fn __add__[
         t: AsyncCallable, s: Origin, o: Origin
     ](ref [s]self, ref [o]other: t) -> ParTaskPair[Self, t, s, o]:
-        return ParTaskPair(self, other)
+        return {self, other}
 
     fn __rshift__[
         t: AsyncCallable, s: Origin, o: Origin
     ](ref [s]self, ref [o]other: t) -> SerTaskPair[Self, t, s, o]:
-        return SerTaskPair(self, other)
+        return {self, other}
 
 
 struct ParTaskPair[
@@ -76,9 +76,9 @@ struct ParTaskPair[
     fn __add__[
         t: AsyncCallable, s: Origin, o: Origin
     ](ref [s]self, ref [o]other: t) -> ParTaskPair[Self, t, s, o]:
-        return ParTaskPair(self, other)
+        return {self, other}
 
     fn __rshift__[
         t: AsyncCallable, s: Origin, o: Origin
     ](ref [s]self, ref [o]other: t) -> SerTaskPair[Self, t, s, o]:
-        return SerTaskPair(self, other)
+        return {self, other}
