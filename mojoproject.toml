@@ -38,6 +38,9 @@ remove_package_folder = "rm -rf package/"
 create_package_folder = "mkdir package/"
 build_package = "mojo package move -o package/move.mojopkg"
 
+# Python Build
+python_package = "magic run mojo build move/python_interop.mojo --emit shared-lib -o python/src/move/mojo_move.so"
+
 # Testing
 test = "mojo test --diagnose-missing-doc-strings --validate-doc-strings"
 
