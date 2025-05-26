@@ -3,8 +3,7 @@ from algorithm import sync_parallelize
 from os import abort
 from memory import UnsafePointer
 from python import PythonObject, Python
-from python._bindings import PythonModuleBuilder, TypeIdentifiable
-from python._cpython import PyObjectPtr
+from python.bindings import PythonModuleBuilder, TypeIdentifiable
 
 
 @export
@@ -41,7 +40,7 @@ trait PythonCallable:
         ...
 
 
-alias PythonTask = PythonCallable & TypeIdentifiable & Representable & Defaultable
+alias PythonTask = PythonCallable & TypeIdentifiable & Representable & Defaultable & Movable
 
 
 # Question: It is possible to initialize with something else than default?
@@ -56,11 +55,11 @@ struct PyTask(PythonTask):
         return String(Self.TYPE_ID, "( inner=", self.inner, " )")
 
     @staticmethod
-    fn _get_self_ptr(py_self: PythonObject) -> UnsafePointer[Self]:
-        return UnsafePointer[Self, **_](unchecked_downcast=py_self)
+    fn _get_self_ptr(py_self: PythonObject) raises -> UnsafePointer[Self]:
+        return py_self.downcast_value_ptr[Self]()
 
     @staticmethod
-    fn _build(py_self: PythonObject, task: PythonObject):
+    fn _build(py_self: PythonObject, task: PythonObject) raises:
         self = Self._get_self_ptr(py_self)
         self[].inner = task
 
@@ -90,13 +89,13 @@ struct PyParallelTask(PythonTask):
         )
 
     @staticmethod
-    fn _get_self_ptr(py_self: PythonObject) -> UnsafePointer[Self]:
-        return UnsafePointer[Self, **_](unchecked_downcast=py_self)
+    fn _get_self_ptr(py_self: PythonObject) raises -> UnsafePointer[Self]:
+        return py_self.downcast_value_ptr[Self]()
 
     @staticmethod
     fn _build(
         py_self: PythonObject, task_1: PythonObject, task_2: PythonObject
-    ):
+    ) raises:
         self = Self._get_self_ptr(py_self)
         self[].task_1 = task_1
         self[].task_2 = task_2
@@ -143,13 +142,13 @@ struct PySerialTask(PythonTask):
         )
 
     @staticmethod
-    fn _get_self_ptr(py_self: PythonObject) -> UnsafePointer[Self]:
-        return UnsafePointer[Self, **_](unchecked_downcast=py_self)
+    fn _get_self_ptr(py_self: PythonObject) raises -> UnsafePointer[Self]:
+        return py_self.downcast_value_ptr[Self]()
 
     @staticmethod
     fn _build(
         py_self: PythonObject, task_1: PythonObject, task_2: PythonObject
-    ):
+    ) raises:
         self = Self._get_self_ptr(py_self)
         self[].task_1 = task_1
         self[].task_2 = task_2
