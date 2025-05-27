@@ -17,3 +17,5 @@ wheels/
 # Package to ignore
 package/*
 examples/move.mojopkg
+
+.vscode
