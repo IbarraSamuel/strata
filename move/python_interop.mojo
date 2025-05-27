@@ -12,18 +12,17 @@ fn PyInit_mojo_move() -> PythonObject:
         var move = PythonModuleBuilder("mojo_move")
         _ = (
             move.add_type[PyTask]("PyTask")
-            .def_method[PyTask._build]("_build")
+            .def_method[PyTask.build]("build")
             .def_method[PyTask.__call__]("__call__")
         )
-
         _ = (
             move.add_type[PyParallelTask]("PyParallelTask")
-            .def_method[PyParallelTask._build]("_build")
+            .def_method[PyParallelTask.build]("build")
             .def_method[PyParallelTask.__call__]("__call__")
         )
         _ = (
             move.add_type[PySerialTask]("PySerialTask")
-            .def_method[PySerialTask._build]("_build")
+            .def_method[PySerialTask.build]("build")
             .def_method[PySerialTask.__call__]("__call__")
         )
 
@@ -59,7 +58,7 @@ struct PyTask(PythonTask):
         return py_self.downcast_value_ptr[Self]()
 
     @staticmethod
-    fn _build(py_self: PythonObject, task: PythonObject) raises:
+    fn build(py_self: PythonObject, task: PythonObject) raises:
         self = Self._get_self_ptr(py_self)
         self[].inner = task
 
@@ -93,7 +92,7 @@ struct PyParallelTask(PythonTask):
         return py_self.downcast_value_ptr[Self]()
 
     @staticmethod
-    fn _build(
+    fn build(
         py_self: PythonObject, task_1: PythonObject, task_2: PythonObject
     ) raises:
         self = Self._get_self_ptr(py_self)
@@ -146,7 +145,7 @@ struct PySerialTask(PythonTask):
         return py_self.downcast_value_ptr[Self]()
 
     @staticmethod
-    fn _build(
+    fn build(
         py_self: PythonObject, task_1: PythonObject, task_2: PythonObject
     ) raises:
         self = Self._get_self_ptr(py_self)

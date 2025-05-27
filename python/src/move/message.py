@@ -13,7 +13,7 @@ class MojoTask[I, O](Callable[I, O], Protocol):
     def __init__(self) -> None:
         pass
 
-    def _build(self, task: Callable[I, O]) -> None:
+    def build(self, task: Callable[I, O]) -> None:
         pass
 
     @override
@@ -23,7 +23,7 @@ class MojoTask[I, O](Callable[I, O], Protocol):
 class MojoParTaskPair[I, O1, O2](Callable[I, tuple[O1, O2]], Protocol):
     def __init__(self) -> None: ...
 
-    def _build(self, task_1: Callable[I, O1], task_2: Callable[I, O2]) -> None: ...
+    def build(self, task_1: Callable[I, O1], task_2: Callable[I, O2]) -> None: ...
 
     @override
     def __call__(self, message: I) -> tuple[O1, O2]: ...
@@ -32,7 +32,7 @@ class MojoParTaskPair[I, O1, O2](Callable[I, tuple[O1, O2]], Protocol):
 class MojoSerTaskPair[I, O1, O2](Callable[I, O2], Protocol):
     def __init__(self) -> None: ...
 
-    def _build(self, task_1: Callable[I, O1], task_2: Callable[O1, O2]) -> None: ...
+    def build(self, task_1: Callable[I, O1], task_2: Callable[O1, O2]) -> None: ...
 
     @override
     def __call__(self, message: I) -> O2: ...
@@ -62,7 +62,7 @@ class Combinable(
 class Task[I, O](Combinable, Callable[I, O]):
     def __init__(self, task: Callable[I, O]) -> None:
         self.inner: MojoTask[I, O] = cast("MojoTask[I, O]", move.PyTask())  # pyright: ignore[reportUnknownMemberType]
-        self.inner._build(task)  # noqa: SLF001
+        self.inner.build(task)
 
     @override
     def __call__(self, message: I) -> O:
@@ -75,7 +75,7 @@ class ParallelTask[I, O1, O2](Combinable, Callable[I, tuple[O1, O2]]):
             "MojoParTaskPair[I, O1, O2]",
             move.PyParallelTask(),  # pyright: ignore[reportUnknownMemberType]
         )
-        self.inner._build(task_1, task_2)  # noqa: SLF001
+        self.inner.build(task_1, task_2)
 
     @override
     def __call__(self, message: I) -> tuple[O1, O2]:
@@ -88,7 +88,7 @@ class SerialTask[I, O1, O2](Combinable, Callable[I, O2]):
             "MojoSerTaskPair[I, O1, O2]",
             move.PySerialTask(),  # pyright: ignore[reportUnknownMemberType]
         )
-        self.inner._build(task_1, task_2)  # noqa: SLF001
+        self.inner.build(task_1, task_2)
 
     @override
     def __call__(self, message: I) -> O2:
