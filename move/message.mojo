@@ -37,6 +37,7 @@ trait CallableWithMessage:
     ```
     """
 
+    # TODO: Consider using raises since manipulating Messages to cast string to something else is a little bit difficult with no raises
     fn __call__(self, owned msg: Message) -> Message:
         """Run a task using a `Message` (Alias for `Dict[String, String]` for now).
         You should return a message back.

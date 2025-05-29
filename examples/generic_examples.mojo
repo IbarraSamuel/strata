@@ -1,28 +1,29 @@
-from move.generic import Fn, Task, Callable, Tuple
-from testing import assert_equal
+from move.generic import Task, Callable, Tuple
+import os
 
 
-fn string_to_int(str: String) -> Int:
-    try:
-        return Int(str)
-    except:
-        return 0
+# NOTE: Inference is not working well on functions. to be reviewed
+# fn string_to_int(str: String) -> Int:
+#     try:
+#         return Int(str)
+#     except:
+#         return 0
 
 
-fn float_to_string(float: Float32) -> String:
-    return String(float)
+# fn float_to_string(float: Float32) -> String:
+#     return String(float)
 
 
-fn int_to_float(value: Int) -> Float32:
-    return value
+# fn int_to_float(value: Int) -> Float32:
+#     return value
 
 
-fn int_mul[by: Int](value: Int) -> Int:
-    return value * by
+# fn int_mul[by: Int](value: Int) -> Int:
+#     return value * by
 
 
-fn sum_tuple(value: Tuple[Int, Float32]) -> Float32:
-    return value[0] + value[1]
+# fn sum_tuple(value: Tuple[Int, Float32]) -> Float32:
+#     return value[0] + value[1]
 
 
 @fieldwise_init
@@ -89,16 +90,19 @@ fn main():
     tuple_to_float = SumTuple()
     float_to_str = FloatToString()
 
+    print("Building graph")
     final_graph = (
         Task(str_to_int)
         >> (Task(int_mul) + int_to_float)
-        # >> tuple_to_float
-        # >> float_to_str
+        >> tuple_to_float
+        >> float_to_str
     )
 
-    col = Task(str_to_int) >> int_to_float >> float_to_str
+    print("Starting Graph execution")
+    result = final_graph("32")
 
-    # result = final_graph("32")
+    # Adding this increases compilation time by a lot x27 more
+    # if result != "96.0":
+    #     os.abort("Not valid grapth")
 
-    # debug_assert(result == "96.0")
-    # print(result)
+    print(result)

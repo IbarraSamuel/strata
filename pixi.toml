@@ -19,9 +19,11 @@ examples = { depends-on = [
     "message_examples",
     "mutable_examples",
     "unsafe_examples",
-    "async_runtime_examples",
+    "async_immutable_task_examples",
+    "generic_examples",
 ] }
-async_runtime_examples = "mojo examples/async_runtime_examples.mojo"
+async_immutable_task_examples = "mojo examples/async_immutable_task_examples.mojo"
+generic_examples = "mojo examples/generic_examples.mojo"
 mutable_examples = "mojo examples/mutable_examples.mojo"
 unsafe_examples = "mojo examples/unsafe_examples.mojo"
 immutable_examples = "mojo examples/immutable_examples.mojo"

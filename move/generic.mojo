@@ -7,37 +7,40 @@ from utils._visualizers import lldb_formatter_wrapping_type
 
 alias InType = Movable & Copyable & Defaultable
 alias OutType = Movable & Copyable & Defaultable
+"""
+Needs to be Defaultable because on parallel, needs to be initialized before calling it.
+Needs to be Copyable because I cannot rebind it in the output type if it's not copyable.
+This tradeoff could be eliminated if I don't ensure type safety on the graph, but I don't want to.
+"""
 
 
 trait Callable:
     alias I: InType
     alias O: OutType
-    """
-    Needs to be Defaultable because on parallel, needs to be initialized before calling it.
-    Needs to be Copyable because I cannot rebind it in the output type if it's not copyable.
-    This tradeoff could be eliminated if I don't ensure type safety on the graph, but I don't want to.
-    """
 
     fn __call__(self, arg: I) -> O:
         ...
 
 
-@lldb_formatter_wrapping_type
-@register_passable("trivial")
+@fieldwise_init
 struct Task[T: Callable, In: InType = T.I, Out: OutType = T.O](
-    Callable, Movable, Copyable
+    Callable, Movable
 ):
     alias I = In
     alias O = Out
     var inner: Pointer[T, ImmutableAnyOrigin]
 
-    fn __init__(out self: Task[T, T.I, T.O], inner: T):
+    fn __init__(out self, inner: T):
         """The only possible way to create a Task is to create it from a Callable.
 
         The callable will provide the values for In and Out parameters.
         We can trust that those parameters reflect the type of the callable.
         """
         self.inner = Pointer[T, ImmutableAnyOrigin](to=inner)
+
+    @implicit
+    fn __init__(func: fn (In) -> Out) -> Task[Fn[In, Out], In, Out]:
+        return Task(inner=Fn(func))
 
     fn __call__(self, arg: Self.I) -> Self.O:
         # SAFETY: This is safe because Self.I and T.I are the same type
@@ -48,115 +51,75 @@ struct Task[T: Callable, In: InType = T.I, Out: OutType = T.O](
 
     fn __rshift__[
         t: Callable
-    ](self: Task[T, T.I, t.I], other: t) -> SerTask[
-        __type_of(self), Task[t, t.I, t.O]
+    ](self: Task[T, Out = t.I], other: t) -> Task[
+        SerTask[Task[T, Out = t.I], Task[t]]
     ]:
-        return {Task(self), Task(Task(other))}
+        self_task = Task(self)
+        other_task = Task(Task(other))
+        return Task(
+            SerTask[Task[T, Out = t.I], Task[t]](self_task^, other_task^)
+        )
 
-    # fn __add__[
-    #     t: Callable
-    # ](self: Task[T, t.I, T.O], other: t) -> ParTask[
-    #     __type_of(self), Task[t, t.I, t.O]
-    # ]:
-    #     return {Task(self), Task(Task(other))}
+    fn __add__[
+        t: Callable
+    ](self: Task[T, In = t.I], other: t) -> Task[
+        ParTask[Task[T, In = t.I], Task[t]]
+    ]:
+        self_task = Task(self)
+        other_task = Task(Task(other))
+        return Task(
+            ParTask[Task[T, In = t.I], Task[t]](self_task^, other_task^)
+        )
 
 
-struct SerTask[c1: Callable, c2: Callable](Callable):
-    alias I = c1.I
-    alias O = c2.O
+@fieldwise_init
+struct SerTask[C1: Callable, C2: Callable](Callable):
+    alias I = C1.I
+    alias O = C2.O
 
-    alias T1 = Task[c1, c1.I, c1.O]
-    alias T2 = Task[c2, c1.O, c2.O]
-
-    var task_1: Self.T1
-    var task_2: Self.T2
-
-    fn __init__(out self, t1: Self.T1, t2: Self.T2):
-        self.task_1 = t1
-        self.task_2 = t2
+    var task_1: Task[C1]
+    var task_2: Task[C2, In = C1.O]
 
     fn __call__(self, arg: Self.I) -> Self.O:
-        result_1 = self.task_1(arg)
-        result_2 = self.task_2(result_1)
+        result_1 = self.task_1.inner[](arg)
+        # Safety: You cannot even instanciate this struct if this is not true.
+        inp_2 = rebind[C2.I](result_1)
+        result_2 = self.task_2.inner[](inp_2)
         return result_2^
 
-    fn __rshift__[
-        t: Callable
-    ](
-        self: SerTask[Task[c1, c1.I, c1.O], Task[c2, c1.O, t.I]], other: t
-    ) -> SerTask[
-        Task[SerTask[Task[c1, c1.I, c1.O], Task[c2, c1.O, t.I]], c1.I, t.I],
-        Task[t, t.I, t.O],
-    ]:
-        res = Task(Task(self)) >> Task(Task(other))
-        return Task(self) >> other
 
-    # fn __add__[
-    #     t: Callable
-    # ](
-    #     self: SerTask[Task[c1, t.I, c1.O], Task[c2, c1.O, c2.O]], other: t
-    # ) -> ParTask[
-    #     Task[SerTask[Task[c1, t.I, c1.O], Task[c2, c1.O, c2.O]], t.I, c2.O],
-    #     Task[t, t.I, t.O],
-    # ]:
-    #     return {Task(Task(self)), Task(Task(other))}
+@fieldwise_init
+struct ParTask[C1: Callable, C2: Callable](Callable):
+    alias I = C1.I
+    alias O = Tuple[C1.O, C2.O]
 
+    var task_1: Task[C1]
+    var task_2: Task[C2, In = C1.I]
 
-# struct ParTask[c1: Callable, c2: Callable](Callable):
-#     alias I = c1.I
-#     alias O = Tuple[c1.O, c2.O]
+    fn __call__(self, arg: Self.I) -> Self.O:
+        var res_1 = self.task_1.O()
+        var res_2 = self.task_2.O()
 
-#     alias T1 = Task[c1, c1.I, c1.O]
-#     alias T2 = Task[c2, c1.I, c2.O]
+        @parameter
+        fn run_task(idx: Int):
+            if idx == 0:
+                res_1 = self.task_1.inner[](arg)
+            else:
+                # Safety: You cannot instanciate this struct if this is not true.
+                inp_2 = rebind[C2.I](arg)
+                res_2 = self.task_2.inner[](inp_2)
 
-#     var task_1: Self.T1
-#     var task_2: Self.T2
+        sync_parallelize[run_task](2)
 
-#     fn __init__(out self, t1: Self.T1, t2: Self.T2):
-#         self.task_1 = t1
-#         self.task_2 = t2
-
-#     fn __call__(self, arg: Self.I) -> Self.O:
-#         var res_1 = self.task_1.O()
-#         var res_2 = self.task_2.O()
-
-#         @parameter
-#         fn run_task(idx: Int):
-#             if idx == 0:
-#                 res_1 = self.task_1(arg)
-#             else:
-#                 res_2 = self.task_2(arg)
-
-#         sync_parallelize[run_task](2)
-
-#         return (res_1^, res_2^)
-
-#     fn __rshift__[
-#         t: Callable
-#     ](
-#         self: ParTask[Task[c1, c1.I, c1.O], Task[c2, c1.I, c2.O]],
-#         other: Task[t, Tuple[c1.O, c2.O], t.O],
-#     ) -> SerTask[__type_of(self), __type_of(other)]:
-#         return {Task(self), Task(other)}
-
-#     # fn __add__[
-#     #     t: Callable
-#     # ](
-#     #     self: ParTask[Task[c1, t.I, c1.O], Task[c2, t.I, c2.O]], other: t
-#     # ) -> ParTask[__type_of(self), t]:
-#     #     return {Task(self), Task(other)}
+        return (res_1^, res_2^)
 
 
-@lldb_formatter_wrapping_type
+@fieldwise_init
 struct Fn[In: InType, Out: OutType](Callable):
     alias I = In
     alias O = Out
 
     var func: fn (In) -> Out
-
-    @implicit
-    fn __init__(out self, func: fn (In) -> Out):
-        self.func = func
 
     fn __call__(self, arg: Self.I) -> Self.O:
         return self.func(arg)
