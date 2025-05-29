@@ -15,95 +15,102 @@ trait Callable:
 
 
 @lldb_formatter_wrapping_type
-struct Task[T: Callable](Callable, Movable, Copyable):
-    alias I = T.I
-    alias O = T.O
-
+@register_passable("trivial")
+struct Task[T: Callable, In: Movable = T.I, Out: Movable & Defaultable = T.O](
+    Callable, Movable, Copyable
+):
+    alias I = In
+    alias O = Out
     var inner: Pointer[T, ImmutableAnyOrigin]
 
     @implicit
-    fn __init__(out self, inner: T):
+    fn __init__(out self: Task[T, T.I, T.O], inner: T):
         self.inner = Pointer[T, ImmutableAnyOrigin](to=inner)
 
-    @implicit
-    fn __init__(
-        out self: Task[Fn[Self.I, Self.O]], inner: fn (Self.I) -> Self.O
-    ):
-        self.inner = Pointer[Fn[Self.I, Self.O], ImmutableAnyOrigin](to=inner)
-
-    fn __call__(self, arg: T.I) -> T.O:
+    fn call_inner(self, arg: T.I) -> T.O:
         return self.inner[](arg)
 
-    fn __rshift__[t: Callable](self, other: Task[t]) -> SerTask[T, t]:
-        return {self.inner[], other}
+    fn __call__(self, arg: Self.I) -> Self.O:
+        self_modified = rebind[Task[T, In, T.O]](self)
+        return self_modified.call_inner(rebind[T.I](arg))
 
-    fn __add__[t: Callable](self, other: Task[t]) -> ParTask[T, t]:
-        return {self.inner[], other}
+    fn __rshift__(
+        self, other: Task[In = self.O]
+    ) -> SerTask[Self, __type_of(other)]:
+        return {self, other}
+
+    fn __add__(
+        self, other: Task[In = self.I]
+    ) -> ParTask[Self, __type_of(other)]:
+        return {self, other}
 
 
 struct SerTask[T1: Callable, T2: Callable](Callable):
     alias I = T1.I
     alias O = T2.O
 
-    var value_1: Pointer[T1, ImmutableAnyOrigin]
-    var value_2: Pointer[T2, ImmutableAnyOrigin]
+    var task_1: Task[T1]
+    var task_2: Task[T2, T1.O, T2.O]
 
-    fn __init__(out self, owned t1: Task[T1], owned t2: Task[T2]):
-        self.value_1 = t1.inner
-        self.value_2 = t2.inner
+    fn __init__(out self, owned t1: Task[T1], owned t2: Task[T2, T1.O, T2.O]):
+        self.task_1 = t1
+        self.task_2 = t2
 
     fn __call__(self, arg: Self.I) -> Self.O:
-        # Requires should assert that
-        result_1 = self.value_1[](arg)
-
-        @parameter
-        if not _type_is_eq[T1.O, T2.I]():
-            os.abort("[Type error in chain] Not Valid Types")
-
-        result_2 = self.value_2[](rebind[T2.I](result_1))
+        result_1 = self.task_1(arg)
+        result_2 = self.task_2(result_1)
         return result_2^
 
-    fn __rshift__[t: Callable](self, other: Task[t]) -> SerTask[Self, t]:
+    fn __rshift__(
+        self, other: Task[In = self.O]
+    ) -> SerTask[Self, __type_of(other)]:
         return {self, other}
 
-    fn __add__[t: Callable](self, other: Task[t]) -> ParTask[Self, t]:
+    fn __add__(
+        self, other: Task[In = self.I]
+    ) -> ParTask[Self, __type_of(other)]:
         return {self, other}
 
 
-struct ParTask[T1: Callable, T2: Callable](Callable):
+struct ParTask[
+    T1: Callable,
+    T2: Callable,
+    In: Movable = T1.I,
+    Out: Movable & Defaultable = Tuple[T1.O, T2.O],
+](Callable):
     alias I = T1.I
     alias O = Tuple[T1.O, T2.O]
 
-    var value_1: Pointer[T1, ImmutableAnyOrigin]
-    var value_2: Pointer[T2, ImmutableAnyOrigin]
+    var value_1: Task[T1]
+    var value_2: Task[T2, T1.I, T2.O]
 
-    fn __init__(out self, owned t1: Task[T1], owned t2: Task[T2]):
-        self.value_1 = t1.inner
-        self.value_2 = t2.inner
+    fn __init__(out self, owned t1: Task[T1], owned t2: Task[T2, T1.I, T2.O]):
+        self.value_1 = t1
+        self.value_2 = t2
 
-    fn __call__(self, arg: Self.I) -> Self.O:
-        @parameter
-        if not _type_is_eq[T1.O, T2.I]():
-            os.abort("[Type error in chain] Not Valid Types")
-
-        var res_1 = T1.O()
-        var res_2 = T2.O()
+    fn __call__(self, arg: T1.I) -> Tuple[T1.O, T2.O]:
+        var res_1 = self.value_1.O()
+        var res_2 = self.value_2.O()
 
         @parameter
         fn run_task(idx: Int):
             if idx == 0:
-                res_1 = self.value_1[](arg)
+                res_1 = self.value_1(arg)
             else:
-                res_2 = self.value_2[](rebind[T2.I](arg))
+                res_2 = self.value_2(arg)
 
         sync_parallelize[run_task](2)
 
         return (res_1^, res_2^)
 
-    fn __rshift__[t: Callable](self, other: Task[t]) -> SerTask[Self, t]:
+    fn __rshift__(
+        self, other: Task[In = self.O]
+    ) -> SerTask[Self, __type_of(other)]:
         return {self, other}
 
-    fn __add__[t: Callable](self, other: Task[t]) -> ParTask[Self, t]:
+    fn __add__(
+        self, other: Task[In = self.I]
+    ) -> ParTask[Self, __type_of(other)]:
         return {self, other}
 
 
@@ -121,10 +128,14 @@ struct Fn[In: Movable, Out: Movable & Defaultable](Callable):
     fn __call__(self, arg: Self.I) -> Self.O:
         return self.func(arg)
 
-    fn __rshift__[t: Callable](self, other: Task[t]) -> SerTask[Self, t]:
+    fn __rshift__(
+        self, other: Task[In = self.O]
+    ) -> SerTask[Self, __type_of(other)]:
         return {self, other}
 
-    fn __add__[t: Callable](self, other: Task[t]) -> ParTask[Self, t]:
+    fn __add__(
+        self, other: Task[In = self.I]
+    ) -> ParTask[Self, __type_of(other)]:
         return {self, other}
 
 

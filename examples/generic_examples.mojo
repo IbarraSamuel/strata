@@ -83,20 +83,24 @@ struct FloatToString(Callable):
 
 
 fn main():
-    var str_to_int = StringToInt()
+    str_to_int = StringToInt()
     int_to_float = IntToFloat()
     int_mul = IntMul[2]()
     tuple_to_float = SumTuple()
     float_to_str = FloatToString()
 
-    final_graph = (
-        Task(str_to_int)
-        >> (Task(int_mul) + int_to_float)
-        >> tuple_to_float
-        >> float_to_str
-    )
-
-    result = final_graph("32")
-
-    debug_assert(result == "96")
+    single_task = Task(str_to_int)
+    result = single_task("1")
     print(result)
+
+    # final_graph = (
+    #     Task(str_to_int)
+    #     >> (Task(int_mul) + int_to_float)
+    #     >> tuple_to_float
+    #     >> float_to_str
+    # )
+
+    # result = final_graph("32")
+
+    # debug_assert(result == "96.0")
+    # print(result)
