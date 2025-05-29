@@ -5,10 +5,18 @@ import os
 from memory import UnsafePointer
 from utils._visualizers import lldb_formatter_wrapping_type
 
+alias InType = Movable & Copyable & Defaultable
+alias OutType = Movable & Copyable & Defaultable
+
 
 trait Callable:
-    alias I: Movable
-    alias O: Movable & Defaultable
+    alias I: InType
+    alias O: OutType
+    """
+    Needs to be Defaultable because on parallel, needs to be initialized before calling it.
+    Needs to be Copyable because I cannot rebind it in the output type if it's not copyable.
+    This tradeoff could be eliminated if I don't ensure type safety on the graph, but I don't want to.
+    """
 
     fn __call__(self, arg: I) -> O:
         ...
@@ -16,43 +24,54 @@ trait Callable:
 
 @lldb_formatter_wrapping_type
 @register_passable("trivial")
-struct Task[T: Callable, In: Movable = T.I, Out: Movable & Defaultable = T.O](
+struct Task[T: Callable, In: InType = T.I, Out: OutType = T.O](
     Callable, Movable, Copyable
 ):
     alias I = In
     alias O = Out
     var inner: Pointer[T, ImmutableAnyOrigin]
 
-    @implicit
     fn __init__(out self: Task[T, T.I, T.O], inner: T):
+        """The only possible way to create a Task is to create it from a Callable.
+
+        The callable will provide the values for In and Out parameters.
+        We can trust that those parameters reflect the type of the callable.
+        """
         self.inner = Pointer[T, ImmutableAnyOrigin](to=inner)
 
-    fn call_inner(self, arg: T.I) -> T.O:
-        return self.inner[](arg)
-
     fn __call__(self, arg: Self.I) -> Self.O:
-        self_modified = rebind[Task[T, In, T.O]](self)
-        return self_modified.call_inner(rebind[T.I](arg))
+        # SAFETY: This is safe because Self.I and T.I are the same type
+        # and Self.O and T.O are the same type
 
-    fn __rshift__(
-        self, other: Task[In = self.O]
-    ) -> SerTask[Self, __type_of(other)]:
-        return {self, other}
+        # TODO: Why we can't rebind something if there is no origin for it?
+        return rebind[Self.O](self.inner[](rebind[T.I](arg)))
 
-    fn __add__(
-        self, other: Task[In = self.I]
-    ) -> ParTask[Self, __type_of(other)]:
-        return {self, other}
+    fn __rshift__[
+        t: Callable
+    ](self: Task[T, T.I, t.I], other: t) -> SerTask[
+        __type_of(self), Task[t, t.I, t.O]
+    ]:
+        return {Task(self), Task(Task(other))}
+
+    # fn __add__[
+    #     t: Callable
+    # ](self: Task[T, t.I, T.O], other: t) -> ParTask[
+    #     __type_of(self), Task[t, t.I, t.O]
+    # ]:
+    #     return {Task(self), Task(Task(other))}
 
 
-struct SerTask[T1: Callable, T2: Callable](Callable):
-    alias I = T1.I
-    alias O = T2.O
+struct SerTask[c1: Callable, c2: Callable](Callable):
+    alias I = c1.I
+    alias O = c2.O
 
-    var task_1: Task[T1]
-    var task_2: Task[T2, T1.O, T2.O]
+    alias T1 = Task[c1, c1.I, c1.O]
+    alias T2 = Task[c2, c1.O, c2.O]
 
-    fn __init__(out self, owned t1: Task[T1], owned t2: Task[T2, T1.O, T2.O]):
+    var task_1: Self.T1
+    var task_2: Self.T2
+
+    fn __init__(out self, t1: Self.T1, t2: Self.T2):
         self.task_1 = t1
         self.task_2 = t2
 
@@ -61,61 +80,75 @@ struct SerTask[T1: Callable, T2: Callable](Callable):
         result_2 = self.task_2(result_1)
         return result_2^
 
-    fn __rshift__(
-        self, other: Task[In = self.O]
-    ) -> SerTask[Self, __type_of(other)]:
-        return {self, other}
+    fn __rshift__[
+        t: Callable
+    ](
+        self: SerTask[Task[c1, c1.I, c1.O], Task[c2, c1.O, t.I]], other: t
+    ) -> SerTask[
+        Task[SerTask[Task[c1, c1.I, c1.O], Task[c2, c1.O, t.I]], c1.I, t.I],
+        Task[t, t.I, t.O],
+    ]:
+        res = Task(Task(self)) >> Task(Task(other))
+        return Task(self) >> other
 
-    fn __add__(
-        self, other: Task[In = self.I]
-    ) -> ParTask[Self, __type_of(other)]:
-        return {self, other}
+    # fn __add__[
+    #     t: Callable
+    # ](
+    #     self: SerTask[Task[c1, t.I, c1.O], Task[c2, c1.O, c2.O]], other: t
+    # ) -> ParTask[
+    #     Task[SerTask[Task[c1, t.I, c1.O], Task[c2, c1.O, c2.O]], t.I, c2.O],
+    #     Task[t, t.I, t.O],
+    # ]:
+    #     return {Task(Task(self)), Task(Task(other))}
 
 
-struct ParTask[
-    T1: Callable,
-    T2: Callable,
-    In: Movable = T1.I,
-    Out: Movable & Defaultable = Tuple[T1.O, T2.O],
-](Callable):
-    alias I = T1.I
-    alias O = Tuple[T1.O, T2.O]
+# struct ParTask[c1: Callable, c2: Callable](Callable):
+#     alias I = c1.I
+#     alias O = Tuple[c1.O, c2.O]
 
-    var value_1: Task[T1]
-    var value_2: Task[T2, T1.I, T2.O]
+#     alias T1 = Task[c1, c1.I, c1.O]
+#     alias T2 = Task[c2, c1.I, c2.O]
 
-    fn __init__(out self, owned t1: Task[T1], owned t2: Task[T2, T1.I, T2.O]):
-        self.value_1 = t1
-        self.value_2 = t2
+#     var task_1: Self.T1
+#     var task_2: Self.T2
 
-    fn __call__(self, arg: T1.I) -> Tuple[T1.O, T2.O]:
-        var res_1 = self.value_1.O()
-        var res_2 = self.value_2.O()
+#     fn __init__(out self, t1: Self.T1, t2: Self.T2):
+#         self.task_1 = t1
+#         self.task_2 = t2
 
-        @parameter
-        fn run_task(idx: Int):
-            if idx == 0:
-                res_1 = self.value_1(arg)
-            else:
-                res_2 = self.value_2(arg)
+#     fn __call__(self, arg: Self.I) -> Self.O:
+#         var res_1 = self.task_1.O()
+#         var res_2 = self.task_2.O()
 
-        sync_parallelize[run_task](2)
+#         @parameter
+#         fn run_task(idx: Int):
+#             if idx == 0:
+#                 res_1 = self.task_1(arg)
+#             else:
+#                 res_2 = self.task_2(arg)
 
-        return (res_1^, res_2^)
+#         sync_parallelize[run_task](2)
 
-    fn __rshift__(
-        self, other: Task[In = self.O]
-    ) -> SerTask[Self, __type_of(other)]:
-        return {self, other}
+#         return (res_1^, res_2^)
 
-    fn __add__(
-        self, other: Task[In = self.I]
-    ) -> ParTask[Self, __type_of(other)]:
-        return {self, other}
+#     fn __rshift__[
+#         t: Callable
+#     ](
+#         self: ParTask[Task[c1, c1.I, c1.O], Task[c2, c1.I, c2.O]],
+#         other: Task[t, Tuple[c1.O, c2.O], t.O],
+#     ) -> SerTask[__type_of(self), __type_of(other)]:
+#         return {Task(self), Task(other)}
+
+#     # fn __add__[
+#     #     t: Callable
+#     # ](
+#     #     self: ParTask[Task[c1, t.I, c1.O], Task[c2, t.I, c2.O]], other: t
+#     # ) -> ParTask[__type_of(self), t]:
+#     #     return {Task(self), Task(other)}
 
 
 @lldb_formatter_wrapping_type
-struct Fn[In: Movable, Out: Movable & Defaultable](Callable):
+struct Fn[In: InType, Out: OutType](Callable):
     alias I = In
     alias O = Out
 
@@ -127,16 +160,6 @@ struct Fn[In: Movable, Out: Movable & Defaultable](Callable):
 
     fn __call__(self, arg: Self.I) -> Self.O:
         return self.func(arg)
-
-    fn __rshift__(
-        self, other: Task[In = self.O]
-    ) -> SerTask[Self, __type_of(other)]:
-        return {self, other}
-
-    fn __add__(
-        self, other: Task[In = self.I]
-    ) -> ParTask[Self, __type_of(other)]:
-        return {self, other}
 
 
 # ===----------------------------------------------------------------------=== #
@@ -156,11 +179,12 @@ struct Fn[In: Movable, Out: Movable & Defaultable](Callable):
 # ===-----------------------------------------------------------------------===#
 # Tuple
 # ===-----------------------------------------------------------------------===#
-# Modified to be Defaultable and not require Copyability
+# Modified to be Defaultable
 
 
 @lldb_formatter_wrapping_type
-struct Tuple[*element_types: Movable](
+struct Tuple[*element_types: Copyable & Movable](
+    Copyable,
     Movable,
     Defaultable,
     Sized,
@@ -175,7 +199,7 @@ struct Tuple[*element_types: Movable](
 
     alias _mlir_type = __mlir_type[
         `!kgen.pack<:!kgen.variadic<`,
-        Movable,
+        Copyable & Movable,
         `> `,
         element_types,
         `>`,
@@ -205,7 +229,7 @@ struct Tuple[*element_types: Movable](
     fn __init__(
         out self,
         *,
-        owned storage: VariadicPack[_, _, Movable, *element_types],
+        owned storage: VariadicPack[_, _, Copyable & Movable, *element_types],
     ):
         """Construct the tuple from a low-level internal representation.
 
@@ -237,30 +261,30 @@ struct Tuple[*element_types: Movable](
         for i in range(Self.__len__()):
             UnsafePointer(to=self[i]).destroy_pointee()
 
-    # @always_inline("nodebug")
-    # fn __copyinit__(out self, existing: Self):
-    #     """Copy construct the tuple.
+    @always_inline("nodebug")
+    fn __copyinit__(out self, existing: Self):
+        """Copy construct the tuple.
 
-    #     Args:
-    #         existing: The value to copy from.
-    #     """
-    #     # Mark 'storage' as being initialized so we can work on it.
-    #     __mlir_op.`lit.ownership.mark_initialized`(
-    #         __get_mvalue_as_litref(self.storage)
-    #     )
+        Args:
+            existing: The value to copy from.
+        """
+        # Mark 'storage' as being initialized so we can work on it.
+        __mlir_op.`lit.ownership.mark_initialized`(
+            __get_mvalue_as_litref(self.storage)
+        )
 
-    #     @parameter
-    #     for i in range(Self.__len__()):
-    #         UnsafePointer(to=self[i]).init_pointee_copy(existing[i])
+        @parameter
+        for i in range(Self.__len__()):
+            UnsafePointer(to=self[i]).init_pointee_copy(existing[i])
 
-    # @always_inline
-    # fn copy(self) -> Self:
-    #     """Explicitly construct a copy of self.
+    @always_inline
+    fn copy(self) -> Self:
+        """Explicitly construct a copy of self.
 
-    #     Returns:
-    #         A copy of this value.
-    #     """
-    #     return self
+        Returns:
+            A copy of this value.
+        """
+        return self
 
     @always_inline("nodebug")
     fn __moveinit__(out self, owned existing: Self):
@@ -292,7 +316,7 @@ struct Tuple[*element_types: Movable](
 
         @parameter
         fn variadic_size(
-            x: __mlir_type[`!kgen.variadic<`, Movable, `>`]
+            x: __mlir_type[`!kgen.variadic<`, Copyable & Movable, `>`]
         ) -> Int:
             return __mlir_op.`pop.variadic.size`(x)
 

@@ -89,16 +89,14 @@ fn main():
     tuple_to_float = SumTuple()
     float_to_str = FloatToString()
 
-    single_task = Task(str_to_int)
-    result = single_task("1")
-    print(result)
+    final_graph = (
+        Task(str_to_int)
+        >> (Task(int_mul) + int_to_float)
+        # >> tuple_to_float
+        # >> float_to_str
+    )
 
-    # final_graph = (
-    #     Task(str_to_int)
-    #     >> (Task(int_mul) + int_to_float)
-    #     >> tuple_to_float
-    #     >> float_to_str
-    # )
+    col = Task(str_to_int) >> int_to_float >> float_to_str
 
     # result = final_graph("32")
 
