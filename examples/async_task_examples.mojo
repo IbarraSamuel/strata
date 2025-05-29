@@ -1,4 +1,4 @@
-from move.async_runtime import AsyncCallable
+from move.async_task import AsyncCallable
 from time import sleep
 
 alias time = 0.1
@@ -17,7 +17,7 @@ struct MyTask[job: StringLiteral](AsyncCallable):
 
 fn main():
     print("\n\nHey! Running Async Runtime Examples...")
-    from move.async_runtime import TaskRef as IT
+    from move.async_task import TaskRef as IT
 
     init = MyTask["Initialize"]("Setting up...")
     load = MyTask["Load Data"]("Reading from some place...")
@@ -40,6 +40,6 @@ fn main():
     coroutine_graph = airflow_graph()
 
     # Import the executor and provide the coroutine
-    from move.async_runtime import execute
+    from move.async_task import execute
 
     execute(coroutine_graph^)
