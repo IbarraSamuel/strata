@@ -1,13 +1,4 @@
-from runtime.asyncrt import (
-    TaskGroupContext,
-    AnyCoroutine,
-    TaskGroup,
-    _Chain,
-    _del_asyncrt_chain,
-    _run as execute,
-)
-
-from memory.unsafe_pointer import UnsafePointer
+from runtime.asyncrt import TaskGroup, _run
 
 
 trait AsyncCallable:
@@ -15,148 +6,114 @@ trait AsyncCallable:
         ...
 
 
-# struct Par(Movable, Copyable):
-#     var group: UnsafePointer[TaskGroup]
-
-#     fn __init__(out self, mut group: TaskGroup):
-#         self.group = UnsafePointer[TaskGroup, origin = __origin_of(group)](
-#             to=group
-#         )
-
-#     @implicit
-#     fn __init__[t: AsyncCallable](out self, mut task: t):
-#         self = Self()
-#         self.add_task(task)
-
-#     @implicit
-#     fn __init__(out self, owned tasks: Seq):
-#         if len(tasks.tasks) == 1:
-#             self = tasks.tasks[0]
-#             return
-
-#         self = Self()
-#         self.group[].create_task(tasks._exec())
-
-#     fn __init__(out self, owned *tsks: Seq, __set_literal__: () = ()):
-#         self = Self()
-#         for ref task in tsks:
-#             self.group[].create_task(task._exec())
-
-#     fn add_task[t: AsyncCallable](self, mut task: t):
-#         self.group[].create_task(task())
-
-#     fn __add__[t: AsyncCallable](self, mut other: t) -> Par:
-#         self.add_task(other)
-#         return self
-
-#     fn __add__(self, other: Seq) -> Par:
-#         self.group[].create_task(other._exec())
-#         return self
-
-#     fn __rshift__[t: AsyncCallable](self, mut other: t) -> Seq:
-#         tasks = Seq(self)
-#         tasks.add_task(other)
-#         return tasks^
-
-#     async fn _exec(self):
-#         await self.group[]
-
-#     fn run(self):
-#         execute(self._exec())
-
-
-# struct Seq(Movable):
-#     var tasks: Tasks
-
-#     @implicit
-#     fn __init__(out self, group: Par):
-#         self.tasks = [group]
-
-#     @implicit
-#     fn __init__[t: AsyncCallable](out self, mut task: t):
-#         self.tasks = [Par(task)]
-
-#     @implicit
-#     fn __init__(out self, *args: AsyncCallable, __list_literal__: () = ()):
-#         self.tasks = Tasks()
-#         for p in args:
-#             self.tasks.append(p^)
-
-#     fn add_task[t: AsyncCallable](mut self, mut task: t):
-#         tg = Par(task)
-#         self.tasks.append(tg^)
-
-#     fn __add__[t: AsyncCallable](owned self, mut other: t) -> Par:
-#         tg = Par(self^)
-#         tg.add_task(other)
-#         return tg^
-
-#     fn __rshift__[t: AsyncCallable](owned self, mut other: t) -> Seq:
-#         self.add_task(other)
-#         return self^
-
-#     fn __rshift__(owned self, owned other: Par) -> Seq:
-#         self.tasks.append(other)
-#         return self^
-
-#     async fn _exec(self):
-#         for ref t in self.tasks:
-#             await t._exec()
-
-#     fn run(self):
-#         execute(self._exec())
-
-struct Task(Movable):
-    var inner: AnyCoroutine
+struct TaskRef[T: AsyncCallable, origin: MutableOrigin](AsyncCallable, Movable):
+    var v: Pointer[T, origin]
 
     @implicit
-    fn __init__[t: AsyncCallable](out self, handle: AnyCoroutine):
-        self.inner = handle
+    fn __init__(out self, ref [origin]v: T):
+        self.v = Pointer(to=v)
 
-    fn __del__(owned self):
-       __mlir_op.`co.destroy`(self.inner)
+    async fn __call__(self):
+        await self.v[]()
 
-struct Tasks(Movable):
-    var storage: List[AnyCoroutine]
+    fn __add__[
+        t: AsyncCallable,
+        o: MutableOrigin,
+    ](owned self, ref [o]other: t) -> ParTaskPair[Self, TaskRef[t, o]]:
+        return {self^, TaskRef(other)}
 
-    fn __init__(out self):
-        self.storage = []
+    fn __add__[
+        t: AsyncCallable & Movable
+    ](owned self, owned other: t) -> ParTaskPair[Self, t]:
+        return {self^, other^}
 
-    @implicit
-    fn __init__[t: AsyncCallable](out self, mut task: t):
-        self = Self()
-        self.add_task(task)
-    
-    fn add_task[t: AsyncCallable](mut self, mut task: t):
-        self.storage.append(task.__call__()._handle) 
+    fn __rshift__[
+        t: AsyncCallable,
+        o: MutableOrigin,
+    ](owned self, ref [o]other: t) -> SerTaskPair[Self, TaskRef[t, o]]:
+        return {self^, other^}
 
-    # @implicit
-    # fn __init__(out self, *args: Par, __list_literal__: () = ()):
-    #     self.tasks = List[Par]()
-    #     for p in args:
-    #         self.tasks.append(p^)
+    fn __rshift__[
+        t: AsyncCallable & Movable
+    ](owned self, owned other: t) -> SerTaskPair[Self, t]:
+        return {self^, other^}
 
-    # # fn add_task[t: AsyncCallable](mut self, mut task: t):
-    # #     tg = Par(task)
-    # #     self.tasks.append(tg^)
+    fn run(self):
+        _run(self())
 
-    # fn __add__[t: AsyncCallable](owned self, mut other: t) -> Par:
-    #     tg = Par(self^)
-    #     tg.add_task(other)
-    #     return tg^
 
-    # fn __rshift__[t: AsyncCallable](owned self, mut other: t) -> Seq:
-    #     self.add_task(other)
-    #     return self^
+@fieldwise_init
+struct SerTaskPair[T1: AsyncCallable & Movable, T2: AsyncCallable & Movable](
+    AsyncCallable, Movable
+):
+    var t1: T1
+    var t2: T2
 
-    # fn __rshift__(owned self, owned other: Par) -> Seq:
-    #     self.tasks.append(other)
-    #     return self^
+    async fn __call__(mut self):
+        await self.t1()
+        await self.t2()
 
-    # async fn _exec(self):
-    #     for ref t in self.tasks:
-    #         await t._exec()
+    fn __add__[
+        t: AsyncCallable,
+        o: MutableOrigin,
+    ](owned self, ref [o]other: t) -> ParTaskPair[Self, TaskRef[t, o]]:
+        return {self^, TaskRef(other)}
 
-    # fn run(self):
-    #     execute(self._exec())
+    fn __add__[
+        t: AsyncCallable & Movable
+    ](owned self, owned other: t) -> ParTaskPair[Self, t]:
+        return {self^, other^}
 
+    fn __rshift__[
+        t: AsyncCallable,
+        o: MutableOrigin,
+    ](owned self, ref [o]other: t) -> SerTaskPair[Self, TaskRef[t, o]]:
+        return {self^, other^}
+
+    fn __rshift__[
+        t: AsyncCallable & Movable
+    ](owned self, owned other: t) -> SerTaskPair[Self, t]:
+        return {self^, other^}
+
+    fn run(mut self):
+        _run(self())
+
+
+@fieldwise_init
+struct ParTaskPair[
+    T1: AsyncCallable & Movable,
+    T2: AsyncCallable & Movable,
+](AsyncCallable, Movable):
+    var t1: T1
+    var t2: T2
+
+    async fn __call__(mut self):
+        tg = TaskGroup()
+        tg.create_task(self.t1())
+        tg.create_task(self.t2())
+        await tg
+
+    fn __add__[
+        t: AsyncCallable,
+        o: MutableOrigin,
+    ](owned self, ref [o]other: t) -> ParTaskPair[Self, TaskRef[t, o]]:
+        return {self^, TaskRef(other)}
+
+    fn __add__[
+        t: AsyncCallable & Movable
+    ](owned self, owned other: t) -> ParTaskPair[Self, t]:
+        return {self^, other^}
+
+    fn __rshift__[
+        t: AsyncCallable,
+        o: MutableOrigin,
+    ](owned self, ref [o]other: t) -> SerTaskPair[Self, TaskRef[t, o]]:
+        return {self^, other^}
+
+    fn __rshift__[
+        t: AsyncCallable & Movable
+    ](owned self, owned other: t) -> SerTaskPair[Self, t]:
+        return {self^, other^}
+
+    fn run(mut self):
+        _run(self())

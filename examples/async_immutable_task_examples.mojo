@@ -16,7 +16,7 @@ struct MyTask[job: StringLiteral](AsyncCallable):
 
 
 fn main():
-    print("\n\nHey! Running Async Runtime Examples...")
+    print("\n\nHey! Running Async Immutable Examples...")
     from move.async_immutable_task import TaskRef as IT
 
     init = MyTask["Initialize"]("Setting up...")
@@ -37,9 +37,6 @@ fn main():
 
     # Calling the graph will just return a Coroutine.
     # you need to run the coroutine with a runtime.
-    coroutine_graph = airflow_graph()
+    airflow_graph.run()
 
     # Import the executor and provide the coroutine
-    from move.async_immutable_task import execute
-
-    execute(coroutine_graph^)

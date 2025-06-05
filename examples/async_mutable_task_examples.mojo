@@ -1,4 +1,4 @@
-from move.async_mutable_task import AsyncCallable, Seq, Par
+from move.async_mutable_task import AsyncCallable, TaskRef
 from time import sleep
 
 alias time = 0.1
@@ -16,7 +16,7 @@ struct MyTask[job: StringLiteral](AsyncCallable):
 
 
 fn main():
-    print("\n\nHey! Running Async Runtime Examples...")
+    print("\n\nHey! Running Async Mutable Examples...")
 
     init = MyTask["Initialize"]("Setting up...")
     load = MyTask["Load Data"]("Reading from some place...")
@@ -27,27 +27,25 @@ fn main():
     merge_results = MyTask["Merge Results"]("Getting all together...")
 
     airflow_graph = (
-        Seq(init)
+        TaskRef(init)
         >> load
-        >> Par(find_min) + find_max + find_mean + find_median
+        >> TaskRef(find_min) + find_max + find_mean + find_median
         >> merge_results
     )
     print("[GRAPH 2]...")
 
-    # Calling the graph will just return a Coroutine.
-    # you need to run the coroutine with a runtime.
     airflow_graph.run()
 
     # Lit Graph
     # [] mean 'Serial Executor'
     # {} mean 'Parallel Executor'
 
-    lit_graph: Seq = [
-        init,
-        load,
-        {find_min, find_max, find_mean, find_median},
-        merge_results,
-    ]
+    # lit_graph: Seq = [
+    #     init,
+    #     load,
+    #     {find_min, find_max, find_mean, find_median},
+    #     merge_results,
+    # ]
     # Import the executor and provide the coroutine
 
-    lit_graph.run()
+    # lit_graph.run()

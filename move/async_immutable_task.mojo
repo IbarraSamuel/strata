@@ -1,9 +1,4 @@
-from runtime.asyncrt import (
-    TaskGroupContext,
-    AnyCoroutine,
-    TaskGroup,
-    _run as execute,
-)
+from runtime.asyncrt import TaskGroup, _run
 
 
 trait AsyncCallable:
@@ -31,6 +26,9 @@ struct TaskRef[T: AsyncCallable, origin: Origin](AsyncCallable):
     ](self, ref [o]other: t) -> SerTaskPair[T, t, origin, o]:
         return {self.v[], other}
 
+    fn run(self):
+        _run(self())
+
 
 struct SerTaskPair[
     T1: AsyncCallable, T2: AsyncCallable, o1: Origin, o2: Origin
@@ -55,6 +53,9 @@ struct SerTaskPair[
         t: AsyncCallable, s: Origin, o: Origin
     ](ref [s]self, ref [o]other: t) -> SerTaskPair[Self, t, s, o]:
         return {self, other}
+
+    fn run(self):
+        _run(self())
 
 
 struct ParTaskPair[
@@ -82,3 +83,6 @@ struct ParTaskPair[
         t: AsyncCallable, s: Origin, o: Origin
     ](ref [s]self, ref [o]other: t) -> SerTaskPair[Self, t, s, o]:
         return {self, other}
+
+    fn run(self):
+        _run(self())
