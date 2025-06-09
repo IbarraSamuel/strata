@@ -10,7 +10,7 @@ alias OutType = Movable & Copyable & Defaultable
 """
 Needs to be Defaultable because on parallel, needs to be initialized before calling it.
 Needs to be Copyable because I cannot rebind it in the output type if it's not copyable.
-This tradeoff could be eliminated if I don't ensure type safety on the graph, but I don't want to.
+This tradeoff could be eliminated if I don't ensure type safety on the graph, but I want to ensure safety :).
 """
 
 
@@ -22,25 +22,32 @@ trait Callable:
         ...
 
 
-@fieldwise_init
-struct Task[T: Callable, In: InType = T.I, Out: OutType = T.O](
-    Callable, Movable
-):
+# struct ATask[
+#     T: Callable, origin: ImmutableOrigin, In: InType = T.I, Out: OutType = T.O
+# ]:
+#     var inner: Pointer[T, origin]
+
+#     fn __init__(out self, ref [origin]inner: T):
+#         self.inner = Pointer[T, origin](to=inner)
+
+
+struct Task[
+    T: Callable,
+    origin: ImmutableOrigin,
+    In: InType = T.I,
+    Out: OutType = T.O,
+](Callable, Movable):
     alias I = In
     alias O = Out
-    var inner: Pointer[T, ImmutableAnyOrigin]
+    var inner: Pointer[T, origin]
 
-    fn __init__(out self, inner: T):
+    fn __init__(out self, ref [origin]inner: T):
         """The only possible way to create a Task is to create it from a Callable.
 
         The callable will provide the values for In and Out parameters.
         We can trust that those parameters reflect the type of the callable.
         """
-        self.inner = Pointer[T, ImmutableAnyOrigin](to=inner)
-
-    @implicit
-    fn __init__(func: fn (In) -> Out) -> Task[Fn[In, Out], In, Out]:
-        return Task(inner=Fn(func))
+        self.inner = Pointer[T, origin](to=inner)
 
     fn __call__(self, arg: Self.I) -> Self.O:
         # SAFETY: This is safe because Self.I and T.I are the same type
@@ -50,35 +57,29 @@ struct Task[T: Callable, In: InType = T.I, Out: OutType = T.O](
         return rebind[Self.O](self.inner[](rebind[T.I](arg)))
 
     fn __rshift__[
-        t: Callable
-    ](self: Task[T, Out = t.I], other: t) -> Task[
-        SerTask[Task[T, Out = t.I], Task[t]]
+        t: Callable, o: ImmutableOrigin
+    ](owned self: Task[T, origin, Out = t.I], ref [o]other: t) -> Task[
+        SerTask[T, t, origin, o], ImmutableAnyOrigin
     ]:
-        self_task = Task(self)
-        other_task = Task(Task(other))
-        return Task(
-            SerTask[Task[T, Out = t.I], Task[t]](self_task^, other_task^)
-        )
+        return {SerTask(self^, Task(other))}
 
     fn __add__[
-        t: Callable
-    ](self: Task[T, In = t.I], other: t) -> Task[
-        ParTask[Task[T, In = t.I], Task[t]]
+        t: Callable, o: ImmutableOrigin
+    ](owned self: Task[T, origin, In = t.I], ref [o]other: t) -> Task[
+        ParTask[T, t, origin, o], ImmutableAnyOrigin
     ]:
-        self_task = Task(self)
-        other_task = Task(Task(other))
-        return Task(
-            ParTask[Task[T, In = t.I], Task[t]](self_task^, other_task^)
-        )
+        return {ParTask(self^, Task(other))}
 
 
 @fieldwise_init
-struct SerTask[C1: Callable, C2: Callable](Callable):
+struct SerTask[
+    C1: Callable, C2: Callable, o1: ImmutableOrigin, o2: ImmutableOrigin
+](Callable):
     alias I = C1.I
     alias O = C2.O
 
-    var task_1: Task[C1]
-    var task_2: Task[C2, In = C1.O]
+    var task_1: Task[C1, Out = C2.I, origin=o1]
+    var task_2: Task[C2, origin=o2]
 
     fn __call__(self, arg: Self.I) -> Self.O:
         result_1 = self.task_1.inner[](arg)
@@ -89,12 +90,17 @@ struct SerTask[C1: Callable, C2: Callable](Callable):
 
 
 @fieldwise_init
-struct ParTask[C1: Callable, C2: Callable](Callable):
+struct ParTask[
+    C1: Callable,
+    C2: Callable,
+    o1: ImmutableOrigin,
+    o2: ImmutableOrigin,
+](Callable):
     alias I = C1.I
     alias O = Tuple[C1.O, C2.O]
 
-    var task_1: Task[C1]
-    var task_2: Task[C2, In = C1.I]
+    var task_1: Task[C1, In = C2.I, origin=o1]
+    var task_2: Task[C2, origin=o2]
 
     fn __call__(self, arg: Self.I) -> Self.O:
         var res_1 = self.task_1.O()
@@ -143,12 +149,15 @@ struct Fn[In: InType, Out: OutType](Callable):
 # Tuple
 # ===-----------------------------------------------------------------------===#
 # Modified to be Defaultable
+# Also so values doen't need to be copyable, but right now isn't used because rebind requires copies.
+
+alias ElementType = Copyable & Movable
+# alias ElementType = Movable
 
 
 @lldb_formatter_wrapping_type
-struct Tuple[*element_types: Copyable & Movable](
-    Copyable,
-    Movable,
+struct Tuple[*element_types: ElementType](
+    ElementType,
     Defaultable,
     Sized,
 ):
@@ -162,7 +171,7 @@ struct Tuple[*element_types: Copyable & Movable](
 
     alias _mlir_type = __mlir_type[
         `!kgen.pack<:!kgen.variadic<`,
-        Copyable & Movable,
+        ElementType,
         `> `,
         element_types,
         `>`,
@@ -192,7 +201,7 @@ struct Tuple[*element_types: Copyable & Movable](
     fn __init__(
         out self,
         *,
-        owned storage: VariadicPack[_, _, Copyable & Movable, *element_types],
+        owned storage: VariadicPack[_, _, ElementType, *element_types],
     ):
         """Construct the tuple from a low-level internal representation.
 
@@ -279,7 +288,7 @@ struct Tuple[*element_types: Copyable & Movable](
 
         @parameter
         fn variadic_size(
-            x: __mlir_type[`!kgen.variadic<`, Copyable & Movable, `>`]
+            x: __mlir_type[`!kgen.variadic<`, ElementType, `>`]
         ) -> Int:
             return __mlir_op.`pop.variadic.size`(x)
 
