@@ -8,17 +8,15 @@ package:
   version: ${{ version }}
 
 source:
-  path: strata
+  path: .
   use_gitignore: true
 
 build:
   number: 0
   script:
-    - mojo package strata -o ${{ PREFIX }}/lib/strata/strata.mojopkg
+    - mojo package strata -o ${{ PREFIX }}/lib/mojo/strata.mojopkg
 
 requirements:
-  build:
-    - max=25.4
   host:
     - max=25.4
   run:
