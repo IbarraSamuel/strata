@@ -14,7 +14,7 @@ fn parallel_runner[*Ts: TypeCallable]():
         Ts: Variadic `CallableDefaltable` types.
 
     ```mojo
-    from move.type import parallel_runner, TypeCallable
+    from strata.type import parallel_runner, TypeCallable
     from time import sleep
 
     struct Task(TypeCallable):
@@ -51,7 +51,7 @@ fn series_runner[*Ts: TypeCallable]():
         Ts: Variadic `CallableDefaltable` types.
 
     ```mojo
-    from move.type import series_runner, TypeCallable
+    from strata.type import series_runner, TypeCallable
 
     struct Task(TypeCallable):
         @staticmethod
@@ -81,7 +81,7 @@ struct TypeTask[T: TypeCallable](TypeCallable):
         T: Type that conforms to `CallableDefaultable`.
 
     ```mojo
-    from move.type import TypeTask, TypeCallable
+    from strata.type import TypeTask, TypeCallable
 
     struct DefTask(TypeCallable):
         fn __init__(out self):
@@ -150,7 +150,7 @@ struct ParallelTypeTask[*Ts: TypeCallable](TypeCallable):
         Ts: Types that conforms to `TypeCallable`.
 
     ```mojo
-    from move.type import ParallelTypeTask, TypeCallable
+    from strata.type import ParallelTypeTask, TypeCallable
 
     struct DefTask(TypeCallable):
         @staticmethod
@@ -195,7 +195,7 @@ struct SeriesTypeTask[*Ts: TypeCallable](TypeCallable):
         Ts: Types that conforms to `TypeCallable`.
 
     ```mojo
-    from move.type import SeriesTypeTask, TypeCallable
+    from strata.type import SeriesTypeTask, TypeCallable
 
     struct DefTask(TypeCallable):
         @staticmethod

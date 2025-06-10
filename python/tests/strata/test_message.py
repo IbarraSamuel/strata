@@ -5,7 +5,7 @@ from typing import cast
 
 import pytest
 
-from move import Combinable, ParallelTask, SerialTask, Task
+from strata import Combinable, ParallelTask, SerialTask, Task
 
 
 @dataclass

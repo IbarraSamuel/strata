@@ -6,7 +6,6 @@ environments:
     - url: https://conda.modular.com/max/
     - url: https://repo.prefix.dev/modular-community/
     - url: https://repo.prefix.dev/conda-forge/
-    - url: https://prefix.dev/pixi-build-backends/
     packages:
       linux-64:
       - conda: https://repo.prefix.dev/conda-forge/linux-64/_libgcc_mutex-0.1-conda_forge.tar.bz2
@@ -69,6 +68,8 @@ environments:
       - conda: https://repo.prefix.dev/conda-forge/noarch/tzdata-2025b-h78e105d_0.conda
       - conda: https://repo.prefix.dev/conda-forge/linux-64/zeromq-4.3.5-h3b0a872_7.conda
       - conda: https://repo.prefix.dev/conda-forge/noarch/zipp-3.23.0-pyhd8ed1ab_0.conda
+      - conda: ..
+        build: hb0f4dca_0
       osx-arm64:
       - conda: https://repo.prefix.dev/conda-forge/osx-arm64/bzip2-1.0.8-h99b78c6_7.conda
       - conda: https://repo.prefix.dev/conda-forge/noarch/ca-certificates-2025.4.26-hbd8a1cb_0.conda
@@ -122,6 +123,8 @@ environments:
       - conda: https://repo.prefix.dev/conda-forge/noarch/tzdata-2025b-h78e105d_0.conda
       - conda: https://repo.prefix.dev/conda-forge/osx-arm64/zeromq-4.3.5-hc1bb282_7.conda
       - conda: https://repo.prefix.dev/conda-forge/noarch/zipp-3.23.0-pyhd8ed1ab_0.conda
+      - conda: ..
+        build: h60d57d3_0
 packages:
 - conda: https://repo.prefix.dev/conda-forge/linux-64/_libgcc_mutex-0.1-conda_forge.tar.bz2
   sha256: fe51de6107f9edc7aa4f786a70f4a883943bc9d39b3bb7307c04c41410990726
@@ -1088,6 +1091,32 @@ packages:
   license_family: MIT
   size: 16385
   timestamp: 1733381032766
+- conda: ..
+  name: strata
+  version: 0.0.1
+  build: h60d57d3_0
+  subdir: osx-arm64
+  depends:
+  - max >=25.4.0.dev2025061005,<26.0a0
+  license: Apache-2.0
+  input:
+    hash: 8c4da0558e6255f4f18768e59e831ba730d6e3a868c41f0d1e2b0a7bfd047efc
+    globs:
+    - pixi.toml
+    - recipe.yaml
+- conda: ..
+  name: strata
+  version: 0.0.1
+  build: hb0f4dca_0
+  subdir: linux-64
+  depends:
+  - max >=25.4.0.dev2025061005,<26.0a0
+  license: Apache-2.0
+  input:
+    hash: 8c4da0558e6255f4f18768e59e831ba730d6e3a868c41f0d1e2b0a7bfd047efc
+    globs:
+    - pixi.toml
+    - recipe.yaml
 - conda: https://repo.prefix.dev/conda-forge/linux-64/tk-8.6.13-noxft_hd72426e_102.conda
   sha256: a84ff687119e6d8752346d1d408d5cf360dee0badd487a472aa8ddedfdc219e1
   md5: a0116df4f4ed05c303811a837d5b39d8

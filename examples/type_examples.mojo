@@ -1,5 +1,5 @@
 from time import sleep
-from move.type import TypeCallable
+from strata.type import TypeCallable
 
 alias time = 0.1
 
@@ -17,8 +17,8 @@ struct MyTypeTask[name: StringLiteral](TypeCallable):
 fn main():
     print("\n\nHey! Running Defaultable Examples...")
     # Defaultables
-    from move.type import SeriesTypeTask as SD
-    from move.type import ParallelTypeTask as PD
+    from strata.type import SeriesTypeTask as SD
+    from strata.type import ParallelTypeTask as PD
 
     alias Initialize = MyTypeTask["Initialize"]
     alias LoadData = MyTypeTask["LoadData"]
@@ -38,7 +38,7 @@ fn main():
     TypesGraph.__call__()
 
     # # Airflow Syntax.
-    from move.type import TypeTask as DT
+    from strata.type import TypeTask as DT
 
     alias airflow_graph = (
         DT[Initialize]()

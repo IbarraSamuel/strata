@@ -1,15 +1,18 @@
 [project]
+name = "strata"
+version = "0.0.1"
+description = "Series/Parallel Runner on top of mojo asyncrt"
 authors = ["Samuel Ibarra <Samuel.E.Ibarra@dell.com>"]
+platforms = ["linux-64", "osx-arm64"]
+
 channels = [
     "https://conda.modular.com/max-nightly",
     "https://conda.modular.com/max",
     "https://repo.prefix.dev/modular-community",
     "https://repo.prefix.dev/conda-forge",
+    "https://prefix.dev/pixi-build-backends",
 ]
-description = "Series/Parallel Runner"
-name = "move"
-platforms = ["linux-64", "osx-arm64"]
-version = "0.2.0"
+preview = ["pixi-build"]
 
 [tasks]
 # Examples
@@ -40,13 +43,16 @@ package = { depends-on = [
 ] }
 remove_package_folder = "rm -rf package/"
 create_package_folder = "mkdir package/"
-build_package = "mojo package move -o package/move.mojopkg"
+build_package = "mojo package strata/ -o package/strata.mojopkg"
 
 # Python Build
-python_package = "magic run mojo build move/python_interop.mojo --emit shared-lib -o python/src/move/mojo_move.so"
+python_package = "mojo build strata/python_interop.mojo --emit shared-lib -o python/src/strata/mojo_strata.so"
 
 # Testing
 test = "mojo test --diagnose-missing-doc-strings --validate-doc-strings"
 
 [dependencies]
 max = "*"
+
+[package.build]
+backend = { name = "pixi-build-rattler-build", version = "0.1.*" }

@@ -1,33 +1,19 @@
 [project]
-name = "move"
+name = "strata"
 version = "0.1.0"
-description = "Add your description here"
+description = "Series/Parallel Runner on top of mojo asyncrt"
 readme = "README.md"
-authors = [
-    { name = "Samuel Ibarra", email = "Samuel.E.Ibarra@dell.com" }
-]
+authors = [{ name = "Samuel Ibarra", email = "Samuel.E.Ibarra@dell.com" }]
 requires-python = ">=3.13.3"
 dependencies = []
-
-# [project.scripts]
-# python = "move:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [dependency-groups]
-dev = [
-    "basedpyright>=1.29.2",
-    "ruff>=0.11.11",
-    "ty>=0.0.1a6",
-    "typos>=1.32.0",
-]
-test = [
-    "pytest>=8.3.2",
-    "pytest-xdist>=3.6.1",
-    "pytest-cov>=5.0.0",
-]
+dev = ["basedpyright>=1.29.2", "ruff>=0.11.11", "ty>=0.0.1a6", "typos>=1.32.0"]
+test = ["pytest>=8.3.2", "pytest-xdist>=3.6.1", "pytest-cov>=5.0.0"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
@@ -64,18 +50,18 @@ target-version = "py313"
 select = ["ALL"]
 preview = true
 ignore = [
-    "D203",  # One blank line before class docstring. Conflicts with D213.
-    "D212",  # No blank lines allowed before function docstring. Conflicts with D213.
-    "EXE",   # Executable python files lints. Don't work on Windows so we cannot use it.
-    "COM812",  # Conflicts with Formatter
+    "D203",   # One blank line before class docstring. Conflicts with D213.
+    "D212",   # No blank lines allowed before function docstring. Conflicts with D213.
+    "EXE",    # Executable python files lints. Don't work on Windows so we cannot use it.
+    "COM812", # Conflicts with Formatter
     "ISC001", # Conflicts with Formatter
     "CPY001", # Copyright missing.
-    "D101",  # Missing docstring in public class
-    "D102",  # Missing docstring in public method
-    "D103",  # Missing docstring in public function
-    "D105",  # Missing docstring in magic method
-    "D100",  # Missing docstring in public module
-    "T201",  # Print Stmt
+    "D101",   # Missing docstring in public class
+    "D102",   # Missing docstring in public method
+    "D103",   # Missing docstring in public function
+    "D105",   # Missing docstring in magic method
+    "D100",   # Missing docstring in public module
+    "T201",   # Print Stmt
 ]
 
 [tool.ruff.lint.per-file-ignores]

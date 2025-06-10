@@ -32,8 +32,8 @@ fn series_runner[*ts: MutCallable](mut*callables: *ts):
         callables: A `CallablePack` collection of types.
 
     ```mojo
-    from move.mutable import series_runner
-    from move.mutable import MutCallable, MutCallablePack
+    from strata.mutable import series_runner
+    from strata.mutable import MutCallable, MutCallablePack
     from time import perf_counter_ns, sleep
     from memory import Pointer
     from testing import assert_true
@@ -94,8 +94,8 @@ fn parallel_runner[*ts: MutCallable](mut*callables: *ts):
         callables: A `VariadicPack` collection of types.
 
     ```mojo
-    from move.mutable import parallel_runner
-    from move.mutable import MutCallable
+    from strata.mutable import parallel_runner
+    from strata.mutable import MutCallable
     from time import perf_counter_ns, sleep
     from memory import Pointer
     from testing import assert_true

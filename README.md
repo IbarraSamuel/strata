@@ -1,5 +1,5 @@
-# move
-Series/Parallel Task runner for Mojo.
+# strata
+Series/Parallel Task runner for Mojo based on asyncrt.
 
 ## Try it
 Use the command and follow the move:
@@ -36,7 +36,7 @@ Since structs that conform to `Defaultable` doesn't need arguments to be instanc
 Also, we can build our graph in a `lazy` way, just by setting up the types needed as Variadic Parameters in `SeriesTypeTask` and `ParallelTypeTask`.
 
 ```mojo
-from move.task.model import (
+from strata.task.model import (
     ParallelTypeTask as PD,
     SeriesTypeTask as SD,
     TypeTask as DT,
@@ -97,7 +97,7 @@ We can use the TaskGroup syntax or Airflow syntax. Task groups are better and cl
 
 TaskGroup way:
 ```mojo
-from move.task.model import Task as T, SeriesTask as ST, ParallelTask as PT
+from strata.task.model import Task as T, SeriesTask as ST, ParallelTask as PT
 
 init = MyTask["Initialize"]("Setting up...")
 load = MyTask["Load Data"]("Reading from some place...")

@@ -1,5 +1,5 @@
 from time import sleep
-from move.message import Message, CallableWithMessage
+from strata.message import Message, CallableWithMessage
 
 alias time = 0.1
 
@@ -80,8 +80,8 @@ struct Final(CallableWithMessage):
 
 fn main() raises:
     print("\n\nHey! Running Message Examples...")
-    from move.message import ImmSeriesMsgTask as S
-    from move.message import ImmParallelMsgTask as P
+    from strata.message import ImmSeriesMsgTask as S
+    from strata.message import ImmParallelMsgTask as P
 
     init = Init(12)
     calc1 = Par1()
@@ -96,7 +96,7 @@ fn main() raises:
     print("final value is:", value)
 
     # Airflow Syntax
-    from move.message import ImmMessageTask as T
+    from strata.message import ImmMessageTask as T
 
     graph_2 = T(init) >> T(calc1) + calc2 >> final
     print("[GRAPH 2]...")
@@ -138,7 +138,7 @@ fn main() raises:
         sleep(time)
         return msg
 
-    from move.message import MsgFnTask as Fn
+    from strata.message import MsgFnTask as Fn
 
     ft = Fn(first_task)
     p1 = Fn(parallel1)

@@ -1,6 +1,6 @@
-from move.immutable import series_runner, parallel_runner
-from move.mutable import MutCallable
-from move.immutable import Callable
+from strata.immutable import series_runner, parallel_runner
+from strata.mutable import MutCallable
+from strata.immutable import Callable
 
 
 @fieldwise_init

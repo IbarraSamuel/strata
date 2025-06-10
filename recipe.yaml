@@ -1,0 +1,51 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/prefix-dev/recipe-format/main/schema.json
+
+context:
+  version: "0.0.1"
+
+package:
+  name: "strata"
+  version: ${{ version }}
+
+source:
+  path: strata
+  use_gitignore: true
+
+build:
+  number: 0
+  script:
+    - mojo package strata -o ${{ PREFIX }}/lib/strata/strata.mojopkg
+
+requirements:
+  build:
+    - max=25.4
+  host:
+    - max=25.4
+  run:
+    - ${{ pin_compatible('max') }}
+
+# tests:
+#   - script:
+#       - if: unix
+#         then:
+#           - mojo run tests.mojo
+
+#     requirements:
+#       run:
+#         - max=25.3
+
+#     files:
+#       recipe:
+#         - tests.mojo
+
+about:
+  homepage: https://github.com/sibarras/strata
+  license: Apache-2.0
+  license_file: LICENSE
+  summary: Parallel executor on top of mojo asyncrt.
+  repository: https://github.com/sibarras/strata
+
+extra:
+  project_name: strata
+  maintainers:
+    - sibarras

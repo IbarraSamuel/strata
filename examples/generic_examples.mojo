@@ -1,4 +1,4 @@
-from move.generic import Task, Callable, Tuple
+from strata.generic import Task, Callable, Tuple
 import os
 
 

@@ -16,6 +16,6 @@ wheels/
 
 # Package to ignore
 package/*
-examples/move.mojopkg
+examples/strata.mojopkg
 
 .vscode

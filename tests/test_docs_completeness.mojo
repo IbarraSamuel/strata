@@ -5,12 +5,12 @@ alias CMD = "magic run mojo doc --diagnose-missing-doc-strings --validate-doc-st
 
 
 fn test_docs_completeness() raises:
-    var package = Path("move")
+    var package = Path("strata")
     files = List[Path]()
     _flatten_files(package, files)
 
     for file in files:
-        path = String(file[])
+        path = String(file)
         cmd = StaticString(CMD).format(path)
         res = subprocess.run(cmd)
         if not ('"decl":' in res and '"version":' in res):
@@ -23,4 +23,4 @@ fn _flatten_files(owned path: Path, mut files: List[Path]) raises:
         return
 
     for p in path.listdir():
-        _flatten_files(path / p[], files)
+        _flatten_files(path / p, files)

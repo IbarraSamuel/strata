@@ -1,4 +1,4 @@
-from move.async_immutable_task import AsyncCallable
+from strata.async_immutable_task import AsyncCallable
 from time import sleep
 
 alias time = 0.1
@@ -17,7 +17,7 @@ struct MyTask[job: StringLiteral](AsyncCallable):
 
 fn main():
     print("\n\nHey! Running Async Immutable Examples...")
-    from move.async_immutable_task import TaskRef as IT
+    from strata.async_immutable_task import TaskRef as IT
 
     init = MyTask["Initialize"]("Setting up...")
     load = MyTask["Load Data"]("Reading from some place...")

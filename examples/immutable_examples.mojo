@@ -1,5 +1,5 @@
 from time import sleep
-from move.immutable import Callable
+from strata.immutable import Callable
 
 alias time = 0.1
 
@@ -17,8 +17,8 @@ struct MyTask[job: StringLiteral](Callable):
 
 fn main():
     print("\n\nHey! Running Immutable Examples...")
-    from move.immutable import SeriesTask as IS
-    from move.immutable import ParallelTask as IP
+    from strata.immutable import SeriesTask as IS
+    from strata.immutable import ParallelTask as IP
 
     init = MyTask["Initialize"]("Setting up...")
     load = MyTask["Load Data"]("Reading from some place...")
@@ -39,7 +39,7 @@ fn main():
     graph_1()
 
     # Airflow Syntax
-    from move.immutable import ImmTaskRef as IT
+    from strata.immutable import ImmTaskRef as IT
 
     graph_2 = (
         IT(init)
@@ -75,7 +75,7 @@ fn main():
     # don't want to do it right now. It will require to duplicate a lot of functions and
     # structs. But this is how I did for Mutable ones.
 
-    from move.immutable import FnTask as Fn
+    from strata.immutable import FnTask as Fn
 
     ft = Fn(first_task)
     p1 = Fn(parallel1)

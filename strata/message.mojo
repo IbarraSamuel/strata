@@ -11,7 +11,7 @@ trait CallableWithMessage:
     """A `ImmCallable` with a Message to pass to the next task.
 
     ```mojo
-    from move.message import Message
+    from strata.message import Message
 
     trait CallableWithMessage:
         fn __call__(mut self, owned msg: Message) -> Message:
@@ -67,7 +67,7 @@ fn parallel_msg_runner[
     Returns:
         Message: The message to be sent back from the task.
     ```mojo
-    from move.message import Message, parallel_msg_runner, CallableWithMessage
+    from strata.message import Message, parallel_msg_runner, CallableWithMessage
     from time import perf_counter_ns, sleep
     from memory import Pointer
     from testing import assert_true
@@ -122,7 +122,7 @@ fn parallel_msg_runner[
     Returns:
         Message: The message to be sent back from the task.
     ```mojo
-    from move.message import Message, parallel_msg_runner, CallableWithMessage, CallableMsgPack
+    from strata.message import Message, parallel_msg_runner, CallableWithMessage, CallableMsgPack
     from time import perf_counter_ns, sleep
     from memory import Pointer
     from testing import assert_true
@@ -191,7 +191,7 @@ fn series_msg_runner[
     Returns:
         Message: The message to be sent back from the task.
     ```mojo
-    from move.message import Message, series_msg_runner, CallableWithMessage
+    from strata.message import Message, series_msg_runner, CallableWithMessage
     from time import perf_counter_ns, sleep
     from memory import Pointer
     from testing import assert_true
@@ -245,7 +245,7 @@ fn series_msg_runner[
     Returns:
         Message: The message to be sent back from the task.
     ```mojo
-    from move.message import Message, series_msg_runner, CallableWithMessage, CallableMsgPack
+    from strata.message import Message, series_msg_runner, CallableWithMessage, CallableMsgPack
     from time import perf_counter_ns, sleep
     from memory import Pointer
     from testing import assert_true
@@ -298,8 +298,8 @@ struct MsgFnTask(CallableWithMessage):
     and hold it to later call it using `__call__()`.
 
     ```mojo
-    from move.message import MsgFnTask
-    from move.message import Message
+    from strata.message import MsgFnTask
+    from strata.message import Message
     from testing import assert_true
 
     fn modify_message(owned msg: Message) -> Message:
@@ -381,8 +381,8 @@ struct ImmMessageTask[origin: Origin, T: CallableWithMessage](
         T: It's a task that conforms to `ImmCallableWithMessage`.
 
     ```mojo
-    from move.message import ImmMessageTask, MsgFnTask
-    from move.message import Message
+    from strata.message import ImmMessageTask, MsgFnTask
+    from strata.message import Message
     from testing import assert_true
 
     fn message_task(owned msg: Message) -> Message:
@@ -477,8 +477,8 @@ struct ImmParallelMsgTaskPair[
         t2: Second type that conforms to `ImmCallableWithMessage`.
 
     ```mojo
-    from move.message import ImmParallelMsgTaskPair
-    from move.message import Message, CallableWithMessage
+    from strata.message import ImmParallelMsgTaskPair
+    from strata.message import Message, CallableWithMessage
 
     struct MsgTask(CallableWithMessage):
         fn __init__(out self):
@@ -582,7 +582,7 @@ struct ImmSeriesMsgTaskPair[
         t2: Second type that conforms to `ImmCallableWithMessage`.
 
     ```mojo
-    from move.message import Message, ImmSeriesMsgTaskPair, CallableWithMessage
+    from strata.message import Message, ImmSeriesMsgTaskPair, CallableWithMessage
 
     struct MsgTask(CallableWithMessage):
         fn __init__(out self):
@@ -681,8 +681,8 @@ struct ImmParallelMsgTask[origin: Origin, *Ts: CallableWithMessage](
         Ts: ImmutableCallableWithMessage types that conforms to `ImmCallableWithMessage`.
 
     ```mojo
-    from move.message import ImmParallelMsgTask
-    from move.message import Message, CallableWithMessage
+    from strata.message import ImmParallelMsgTask
+    from strata.message import Message, CallableWithMessage
 
     struct MsgTask(CallableWithMessage):
         fn __init__(out self):
@@ -691,7 +691,7 @@ struct ImmParallelMsgTask[origin: Origin, *Ts: CallableWithMessage](
         fn __call__(self, owned msg: Message) -> Message:
             print("Reading message keys...")
             for k in msg.keys():
-                print(k[])
+                print(k)
 
             return msg
 
@@ -743,7 +743,7 @@ struct ImmSeriesMsgTask[origin: Origin, *Ts: CallableWithMessage](
         Ts: ImmutableCallableWithMessage types that conforms to `ImmCallableWithMessage`.
 
     ```mojo
-    from move.message import Message, ImmSeriesMsgTask, CallableWithMessage
+    from strata.message import Message, ImmSeriesMsgTask, CallableWithMessage
 
     struct MsgTask(CallableWithMessage):
         fn __init__(out self):
@@ -752,7 +752,7 @@ struct ImmSeriesMsgTask[origin: Origin, *Ts: CallableWithMessage](
         fn __call__(self, owned msg: Message) -> Message:
             print("Reading message keys...")
             for k in msg.keys():
-                print(k[])
+                print(k)
 
             return msg
 

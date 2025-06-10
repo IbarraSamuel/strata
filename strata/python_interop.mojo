@@ -3,30 +3,30 @@ from algorithm import sync_parallelize
 from os import abort
 from memory import UnsafePointer
 from python import PythonObject, Python
-from python.bindings import PythonModuleBuilder, TypeIdentifiable
+from python.bindings import PythonModuleBuilder
 
 
 @export
-fn PyInit_mojo_move() -> PythonObject:
+fn PyInit_mojo_strata() -> PythonObject:
     try:
-        var move = PythonModuleBuilder("mojo_move")
+        var strata = PythonModuleBuilder("mojo_strata")
         _ = (
-            move.add_type[PyTask]("PyTask")
+            strata.add_type[PyTask]("PyTask")
             .def_method[PyTask.build]("build")
             .def_method[PyTask.__call__]("__call__")
         )
         _ = (
-            move.add_type[PyParallelTask]("PyParallelTask")
+            strata.add_type[PyParallelTask]("PyParallelTask")
             .def_method[PyParallelTask.build]("build")
             .def_method[PyParallelTask.__call__]("__call__")
         )
         _ = (
-            move.add_type[PySerialTask]("PySerialTask")
+            strata.add_type[PySerialTask]("PySerialTask")
             .def_method[PySerialTask.build]("build")
             .def_method[PySerialTask.__call__]("__call__")
         )
 
-        return move.finalize()
+        return strata.finalize()
     except e:
         return abort[PythonObject](
             String("failed to create Python module: ", e)
@@ -39,12 +39,12 @@ trait PythonCallable:
         ...
 
 
-alias PythonTask = PythonCallable & TypeIdentifiable & Representable & Defaultable & Movable
+alias PythonTask = PythonCallable & Representable & Defaultable & Movable
 
 
 # Question: It is possible to initialize with something else than default?
 struct PyTask(PythonTask):
-    alias TYPE_ID = "move.PyTask"
+    alias TYPE_ID = "strata.PyTask"
     var inner: PythonObject
 
     fn __init__(out self):
@@ -69,7 +69,7 @@ struct PyTask(PythonTask):
 
 
 struct PyParallelTask(PythonTask):
-    alias TYPE_ID = "move.PyParallelTask"
+    alias TYPE_ID = "strata.PyParallelTask"
     var task_1: PythonObject
     var task_2: PythonObject
 
@@ -122,7 +122,7 @@ struct PyParallelTask(PythonTask):
 
 
 struct PySerialTask(PythonTask):
-    alias TYPE_ID = "move.PySerialTask"
+    alias TYPE_ID = "strata.PySerialTask"
     var task_1: PythonObject
     var task_2: PythonObject
 

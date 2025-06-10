@@ -1,4 +1,4 @@
-from move.async_mutable_task import AsyncCallable, TaskRef
+from strata.async_mutable_task import AsyncCallable, TaskRef
 from time import sleep
 
 alias time = 0.1

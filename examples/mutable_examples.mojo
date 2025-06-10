@@ -1,5 +1,5 @@
 from time import sleep
-from move.mutable import MutCallable
+from strata.mutable import MutCallable
 
 alias time = 0.1
 
@@ -39,7 +39,7 @@ fn main():
 
     # mutable_type_graph()
 
-    from move.mutable import SeriesTask as ST, ParallelTask as PT
+    from strata.mutable import SeriesTask as ST, ParallelTask as PT
 
     task1 = InitTask["first"](0)
     task2 = InitTask["second parallel 1"](1)
@@ -55,7 +55,7 @@ fn main():
     # You can just wrap the initial struct with a MutableTask and do operations.
 
     # For tasks with independent values:
-    from move.mutable import TaskRef as T
+    from strata.mutable import TaskRef as T
 
     print("Airflow graph...")
     graph = T(task1) >> T(task2) + task3 >> task4

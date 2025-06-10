@@ -40,7 +40,7 @@ fn series_runner[*Ts: Callable](callables: CallablePack[_, *Ts]):
         callables: A `CallablePack` collection of types.
 
     ```mojo
-    from move.immutable import series_runner, Callable, CallablePack
+    from strata.immutable import series_runner, Callable, CallablePack
     from time import perf_counter_ns, sleep
     from memory import Pointer
     from testing import assert_true
@@ -89,7 +89,7 @@ fn series_runner[*ts: Callable](*callables: *ts):
         callables: A collection of `ImmCallable` types.
 
     ```mojo
-    from move.immutable import series_runner, Callable
+    from strata.immutable import series_runner, Callable
     from time import perf_counter_ns, sleep
     from memory import Pointer
     from testing import assert_true
@@ -135,7 +135,7 @@ fn parallel_runner[*Ts: Callable](callables: CallablePack[_, *Ts]):
         callables: A `CallablePack` collection of types.
 
     ```mojo
-    from move.immutable import parallel_runner, Callable, CallablePack
+    from strata.immutable import parallel_runner, Callable, CallablePack
     from time import perf_counter_ns, sleep
     from memory import Pointer
     from testing import assert_true
@@ -189,7 +189,7 @@ fn parallel_runner[*ts: Callable](*callables: *ts):
         callables: A collection of `ImmCallable` types.
 
     ```mojo
-    from move.immutable import parallel_runner, Callable
+    from strata.immutable import parallel_runner, Callable
     from time import perf_counter_ns, sleep
     from memory import Pointer
     from testing import assert_true
@@ -228,7 +228,7 @@ struct FnTask(Callable):
      and hold it to later call it using `__call__()`.
 
      ```mojo
-    from move.immutable import FnTask
+    from strata.immutable import FnTask
 
     fn my_task():
          print("Running a task!")
@@ -325,7 +325,7 @@ struct ParallelTask[origin: Origin, *Ts: Callable](Callable):
         Ts: ImmutableCallable types that conforms to `ImmCallable`.
 
     ```mojo
-    from move.immutable import ParallelTask, Callable
+    from strata.immutable import ParallelTask, Callable
 
     struct ImmTask(Callable):
         fn __init__(out self):
@@ -370,7 +370,7 @@ struct SeriesTask[origin: Origin, *Ts: Callable](Callable):
         Ts: ImmutableCallable types that conforms to `Callable`.
 
     ```mojo
-    from move.immutable import SeriesTask, Callable
+    from strata.immutable import SeriesTask, Callable
 
     struct ImmTask(Callable):
         fn __init__(out self):

@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 from typing import Protocol, cast, override
-
-import move.mojo_move as move  # ty: ignore[unresolved-import]
+from strata import _strata  # ty: ignore[unresolved-import]  # pyright: ignore[reportAttributeAccessIssue]
 
 
 class Callable[I, O](Protocol):
@@ -61,7 +60,7 @@ class Combinable(
 
 class Task[I, O](Combinable, Callable[I, O]):
     def __init__(self, task: Callable[I, O]) -> None:
-        self.inner: MojoTask[I, O] = cast("MojoTask[I, O]", move.PyTask())  # pyright: ignore[reportUnknownMemberType]
+        self.inner: MojoTask[I, O] = cast("MojoTask[I, O]", _strata.PyTask())  # pyright: ignore[reportUnknownMemberType, reportAttributeAccessIssue]
         self.inner.build(task)
 
     @override
@@ -73,7 +72,7 @@ class ParallelTask[I, O1, O2](Combinable, Callable[I, tuple[O1, O2]]):
     def __init__(self, task_1: Callable[I, O1], task_2: Callable[I, O2]) -> None:
         self.inner: MojoParTaskPair[I, O1, O2] = cast(
             "MojoParTaskPair[I, O1, O2]",
-            move.PyParallelTask(),  # pyright: ignore[reportUnknownMemberType]
+            _strata.PyParallelTask(),  # pyright: ignore[reportUnknownMemberType, reportAttributeAccessIssue]
         )
         self.inner.build(task_1, task_2)
 
@@ -86,7 +85,7 @@ class SerialTask[I, O1, O2](Combinable, Callable[I, O2]):
     def __init__(self, task_1: Callable[I, O1], task_2: Callable[O1, O2]) -> None:
         self.inner: MojoSerTaskPair[I, O1, O2] = cast(
             "MojoSerTaskPair[I, O1, O2]",
-            move.PySerialTask(),  # pyright: ignore[reportUnknownMemberType]
+            _strata.PySerialTask(),  # pyright: ignore[reportUnknownMemberType, reportAttributeAccessIssue]
         )
         self.inner.build(task_1, task_2)
 

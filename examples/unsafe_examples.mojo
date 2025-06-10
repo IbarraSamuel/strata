@@ -1,4 +1,4 @@
-from move.unsafe import MutCallable
+from strata.unsafe import MutCallable
 from time import sleep
 
 alias time = 0.1
@@ -91,7 +91,7 @@ fn main():
     # the Immutable API to do everything on those tasks.
     # It's assuming all of them are immutable, so everything will work.
 
-    from move.unsafe import UnsafeTaskRef as UT
+    from strata.unsafe import UnsafeTaskRef as UT
 
     i = UT(initial)
     g11 = UT(group1_1)
@@ -101,7 +101,7 @@ fn main():
     f = UT(final)
 
     # Using Immutable Group Types
-    from move.immutable import SeriesTask as S, ParallelTask as P
+    from strata.immutable import SeriesTask as S, ParallelTask as P
 
     print("Type graph...")
     imm_type_graph = S(i, P(S(g11, g12), S(g21, g22)), f)
@@ -111,7 +111,7 @@ fn main():
     # NOTE: This one could cause confution because the UnsafeTaskRef itself contains
     # it's own airflow syntax, and could be mixed up by mistake with the Immutable airflow syntax
     # if you don't properly type the graph
-    from move.immutable import ImmTaskRef as IT
+    from strata.immutable import ImmTaskRef as IT
 
     print("Airflow graph...")
     imm_graph = IT(i) >> (IT(g11) >> g12) + (IT(g21) >> g22) >> f
