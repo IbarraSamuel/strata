@@ -1100,7 +1100,7 @@ packages:
   - max >=25.4.0.dev2025061005,<26.0a0
   license: Apache-2.0
   input:
-    hash: fad49a7e3b134d15d8a5b784f44bb93ef37de4857742e21da2bc69f49a3a6614
+    hash: 74cda37fcf5ff604a2b62b09bc39e0d21cd0cd568c2415797667247b54b2a07c
     globs:
     - pixi.toml
     - recipe.yaml
@@ -1113,7 +1113,7 @@ packages:
   - max >=25.4.0.dev2025061005,<26.0a0
   license: Apache-2.0
   input:
-    hash: fad49a7e3b134d15d8a5b784f44bb93ef37de4857742e21da2bc69f49a3a6614
+    hash: 74cda37fcf5ff604a2b62b09bc39e0d21cd0cd568c2415797667247b54b2a07c
     globs:
     - pixi.toml
     - recipe.yaml
