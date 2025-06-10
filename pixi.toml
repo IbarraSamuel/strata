@@ -2,7 +2,7 @@
 name = "strata"
 version = "0.0.1"
 description = "Series/Parallel Runner on top of mojo asyncrt"
-authors = ["Samuel Ibarra <Samuel.E.Ibarra@dell.com>"]
+authors = ["Samuel Ibarra <ing.samuelibarra@gmail.com>"]
 platforms = ["linux-64", "osx-arm64"]
 
 channels = [
@@ -15,26 +15,6 @@ channels = [
 preview = ["pixi-build"]
 
 [tasks]
-# Examples
-examples = { depends-on = [
-    "type_examples",
-    "immutable_examples",
-    "message_examples",
-    "mutable_examples",
-    "unsafe_examples",
-    "async_immutable_task_examples",
-    "async_mutable_task_examples",
-    "generic_examples",
-] }
-async_immutable_task_examples = "mojo examples/async_immutable_task_examples.mojo"
-async_mutable_task_examples = "mojo examples/async_mutable_task_examples.mojo"
-generic_examples = "mojo examples/generic_examples.mojo"
-mutable_examples = "mojo examples/mutable_examples.mojo"
-unsafe_examples = "mojo examples/unsafe_examples.mojo"
-immutable_examples = "mojo examples/immutable_examples.mojo"
-type_examples = "mojo examples/type_examples.mojo"
-message_examples = "mojo examples/message_examples.mojo"
-
 # Build
 package = { depends-on = [
     "remove_package_folder",
@@ -49,7 +29,10 @@ build_package = "mojo package strata/ -o package/strata.mojopkg"
 python_package = "mojo build strata/python_interop.mojo --emit shared-lib -o python/src/strata/mojo_strata.so"
 
 # Testing
-test = "mojo test --diagnose-missing-doc-strings --validate-doc-strings"
+tests = { depends-on = [
+    "test_docs"
+] }
+test_docs = "mojo test --diagnose-missing-doc-strings --validate-doc-strings"
 
 [dependencies]
 max = "*"

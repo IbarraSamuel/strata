@@ -246,9 +246,14 @@ struct FnTask(Callable):
         self.func()
 
 
-struct SerTaskPairRef[T1: Callable, T2: Callable, o1: Origin, o2: Origin](
-    Callable
-):
+struct SerTaskPairRef[
+    m1: Bool,
+    m2: Bool, //,
+    T1: Callable,
+    T2: Callable,
+    o1: Origin[m1],
+    o2: Origin[m2],
+](Callable):
     var t1: Pointer[T1, o1]
     var t2: Pointer[T2, o2]
 
@@ -270,9 +275,14 @@ struct SerTaskPairRef[T1: Callable, T2: Callable, o1: Origin, o2: Origin](
         return {self, other}
 
 
-struct ParTaskPairRef[T1: Callable, T2: Callable, o1: Origin, o2: Origin](
-    Callable
-):
+struct ParTaskPairRef[
+    m1: Bool,
+    m2: Bool, //,
+    T1: Callable,
+    T2: Callable,
+    o1: Origin[m1],
+    o2: Origin[m2],
+](Callable):
     var t1: Pointer[T1, o1]
     var t2: Pointer[T2, o2]
 

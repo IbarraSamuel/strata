@@ -17,5 +17,6 @@ wheels/
 # Package to ignore
 package/*
 examples/strata.mojopkg
+python/src/strata/mojo_strata.so
 
 .vscode
