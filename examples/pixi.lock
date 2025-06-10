@@ -1096,11 +1096,9 @@ packages:
   version: 0.0.1
   build: h60d57d3_0
   subdir: osx-arm64
-  depends:
-  - max >=25.4.0.dev2025061005,<26.0a0
   license: Apache-2.0
   input:
-    hash: 8c4da0558e6255f4f18768e59e831ba730d6e3a868c41f0d1e2b0a7bfd047efc
+    hash: e2e0f6c72cc0a282909eca167ee7a0bf00c6316e2fa2f80855485bd65c53d9b9
     globs:
     - pixi.toml
     - recipe.yaml
@@ -1109,11 +1107,9 @@ packages:
   version: 0.0.1
   build: hb0f4dca_0
   subdir: linux-64
-  depends:
-  - max >=25.4.0.dev2025061005,<26.0a0
   license: Apache-2.0
   input:
-    hash: 8c4da0558e6255f4f18768e59e831ba730d6e3a868c41f0d1e2b0a7bfd047efc
+    hash: e2e0f6c72cc0a282909eca167ee7a0bf00c6316e2fa2f80855485bd65c53d9b9
     globs:
     - pixi.toml
     - recipe.yaml
