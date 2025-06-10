@@ -465,12 +465,18 @@ struct ImmMessageTask[origin: Origin, T: CallableWithMessage](
 
 # Parallel Pair
 struct ImmParallelMsgTaskPair[
-    o1: Origin, o2: Origin, t1: CallableWithMessage, t2: CallableWithMessage
+    m1: Bool,
+    m2: Bool, //,
+    o1: Origin[m1],
+    o2: Origin[m2],
+    t1: CallableWithMessage,
+    t2: CallableWithMessage,
 ](CallableWithMessage):
     """A pair of Message Immutable Tasks.
 
     Parameters:
-        mut: Wether if the origin is mutable.
+        m1: Wether if the origin is mutable.
+        m2: Wether if the origin is mutable.
         o1: Origin for the first type.
         o2: Origin for the second type.
         t1: First type that conforms to `ImmCallableWithMessage`.
@@ -567,15 +573,18 @@ struct ImmParallelMsgTaskPair[
 
 # Series Pair
 struct ImmSeriesMsgTaskPair[
-    o1: Origin,
-    o2: Origin,
+    m1: Bool,
+    m2: Bool, //,
+    o1: Origin[m1],
+    o2: Origin[m2],
     t1: CallableWithMessage,
     t2: CallableWithMessage,
 ](CallableWithMessage):
     """A pair of Message Immutalbe Tasks.
 
     Parameters:
-        mut: Wether if the origin is mutable.
+        m1: Wether if the origin is mutable.
+        m2: Wether if the origin is mutable.
         o1: Origin for the first type.
         o2: Origin for the second type.
         t1: First type that conforms to `ImmCallableWithMessage`.

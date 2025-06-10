@@ -31,7 +31,12 @@ struct TaskRef[T: AsyncCallable, origin: Origin](AsyncCallable):
 
 
 struct SerTaskPair[
-    T1: AsyncCallable, T2: AsyncCallable, o1: Origin, o2: Origin
+    m1: Bool,
+    m2: Bool, //,
+    T1: AsyncCallable,
+    T2: AsyncCallable,
+    o1: Origin[m1],
+    o2: Origin[m2],
 ](AsyncCallable):
     var t1: Pointer[T1, o1]
     var t2: Pointer[T2, o2]
@@ -59,7 +64,12 @@ struct SerTaskPair[
 
 
 struct ParTaskPair[
-    T1: AsyncCallable, T2: AsyncCallable, o1: Origin, o2: Origin
+    m1: Bool,
+    m2: Bool, //,
+    T1: AsyncCallable,
+    T2: AsyncCallable,
+    o1: Origin[m1],
+    o2: Origin[m2],
 ](AsyncCallable):
     var t1: Pointer[T1, o1]
     var t2: Pointer[T2, o2]
