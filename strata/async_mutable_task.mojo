@@ -31,7 +31,7 @@ struct TaskRef[T: AsyncCallable, origin: MutableOrigin](AsyncCallable, Movable):
         t: AsyncCallable,
         o: MutableOrigin,
     ](owned self, ref [o]other: t) -> SerTaskPair[Self, TaskRef[t, o]]:
-        return {self^, other^}
+        return {self^, TaskRef(other)}
 
     fn __rshift__[
         t: AsyncCallable & Movable
@@ -68,7 +68,7 @@ struct SerTaskPair[T1: AsyncCallable & Movable, T2: AsyncCallable & Movable](
         t: AsyncCallable,
         o: MutableOrigin,
     ](owned self, ref [o]other: t) -> SerTaskPair[Self, TaskRef[t, o]]:
-        return {self^, other^}
+        return {self^, TaskRef(other)}
 
     fn __rshift__[
         t: AsyncCallable & Movable
@@ -80,10 +80,9 @@ struct SerTaskPair[T1: AsyncCallable & Movable, T2: AsyncCallable & Movable](
 
 
 @fieldwise_init
-struct ParTaskPair[
-    T1: AsyncCallable & Movable,
-    T2: AsyncCallable & Movable,
-](AsyncCallable, Movable):
+struct ParTaskPair[T1: AsyncCallable & Movable, T2: AsyncCallable & Movable](
+    AsyncCallable, Movable
+):
     var t1: T1
     var t2: T2
 
@@ -108,7 +107,7 @@ struct ParTaskPair[
         t: AsyncCallable,
         o: MutableOrigin,
     ](owned self, ref [o]other: t) -> SerTaskPair[Self, TaskRef[t, o]]:
-        return {self^, other^}
+        return {self^, TaskRef(other)}
 
     fn __rshift__[
         t: AsyncCallable & Movable

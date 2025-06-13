@@ -62,8 +62,8 @@ struct SyncPar:
 
     sync_parallelize[do_par](2)
 
-    # Commented to not fail tests
-    assert_true(False)
+    # Both sould start before the other ends.
+    assert_true(start0 < end1 and start1 < end0)
 
     ```
     """
