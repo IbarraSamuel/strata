@@ -5,7 +5,7 @@ from strata.immutable import Callable
 
 @fieldwise_init
 struct UnsafeSerTaskPair[T1: Callable & Movable, T2: Callable & Movable](
-    Callable, MutCallable, Movable
+    Callable, Movable, MutCallable
 ):
     var t1: T1
     var t2: T2
@@ -48,7 +48,7 @@ struct UnsafeSerTaskPair[T1: Callable & Movable, T2: Callable & Movable](
 
 @fieldwise_init
 struct UnsafeParTaskPair[T1: Callable & Movable, T2: Callable & Movable](
-    Callable, MutCallable, Movable
+    Callable, Movable, MutCallable
 ):
     var t1: T1
     var t2: T2
@@ -91,7 +91,7 @@ struct UnsafeParTaskPair[T1: Callable & Movable, T2: Callable & Movable](
 
 # THIS ALLOW US TO CREATE
 struct UnsafeTaskRef[T: MutCallable, origin: ImmutableOrigin](
-    Callable, MutCallable, Movable
+    Callable, Movable, MutCallable
 ):
     """This structure will treat MutableCallables as Immutable Callables.
     Is a way of casting a MutableCallable into a Callable.

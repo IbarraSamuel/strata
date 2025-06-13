@@ -5,11 +5,17 @@ import os
 from memory import UnsafePointer
 from utils._visualizers import lldb_formatter_wrapping_type
 
-alias InType = Movable & Copyable & Defaultable
-alias OutType = Movable & Copyable & Defaultable
+alias TaskValue = Movable & Copyable & Defaultable
+alias InType = TaskValue
+alias OutType = TaskValue
 """
-Needs to be Defaultable because on parallel, needs to be initialized before calling it.
-Needs to be Copyable because I cannot rebind it in the output type if it's not copyable.
+Both sould conform to the same trait since an output from a Task could be an input for the next task. 
+
+* Needs to be Defaultable because on parallel, needs to be initialized before calling it. `var ..: type` is not enought
+* Needs to be Copyable because I cannot rebind it in the output type if it's not copyable.
+    I tried using refs, but then each one needs to return an ImmutableAnyOrigin, since those values are produced within the __call__ method.
+    Then, we cannot use register_passable types, because they doesn't have origin. The API will be restricted to not register_passable types,
+    and then things like SIMD cannot be used. Better just use Copyable things meanwhile the rebind doesn't work or we wait for requires or parametrized traits.
 This tradeoff could be eliminated if I don't ensure type safety on the graph, but I want to ensure safety :).
 """
 
@@ -46,12 +52,14 @@ struct Task[
 
         The callable will provide the values for In and Out parameters.
         We can trust that those parameters reflect the type of the callable.
+        This is kind of parametrizing an trait?
         """
         self.inner = Pointer[T, origin](to=inner)
 
     fn __call__(self, arg: Self.I) -> Self.O:
         # SAFETY: This is safe because Self.I and T.I are the same type
         # and Self.O and T.O are the same type
+        # Why? Because the only way to construct this struct is by using a reference to a Callable, which will define In and Out types automatically
 
         # TODO: Why we can't rebind something if there is no origin for it?
         return rebind[Self.O](self.inner[](rebind[T.I](arg)))
@@ -151,13 +159,13 @@ struct Fn[In: InType, Out: OutType](Callable):
 # Modified to be Defaultable
 # Also so values doen't need to be copyable, but right now isn't used because rebind requires copies.
 
-alias ElementType = Copyable & Movable
+alias CallableElement = Copyable & Movable
 # alias ElementType = Movable
 
 
 @lldb_formatter_wrapping_type
 struct Tuple[*element_types: Copyable & Movable](
-    Copyable, Defaultable, Movable, Sized
+    CallableElement, Copyable, Defaultable, Movable, Sized
 ):
     """The type of a literal tuple expression.
 
