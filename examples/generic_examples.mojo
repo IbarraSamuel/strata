@@ -67,7 +67,7 @@ struct IntMul[by: Int](Callable):
 
 @fieldwise_init
 struct SumTuple(Callable):
-    alias I = Tuple[Int, Float32]
+    alias I = (Int, Float32)
     alias O = Float32
 
     fn __call__(self, value: Self.I) -> Self.O:

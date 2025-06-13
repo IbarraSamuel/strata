@@ -97,7 +97,7 @@ struct ParTask[
     o2: ImmutableOrigin,
 ](Callable):
     alias I = C1.I
-    alias O = Tuple[C1.O, C2.O]
+    alias O = (C1.O, C2.O)
 
     var task_1: Task[C1, In = C2.I, origin=o1]
     var task_2: Task[C2, origin=o2]
@@ -156,10 +156,8 @@ alias ElementType = Copyable & Movable
 
 
 @lldb_formatter_wrapping_type
-struct Tuple[*element_types: ElementType](
-    ElementType,
-    Defaultable,
-    Sized,
+struct Tuple[*element_types: Copyable & Movable](
+    Copyable, Defaultable, Movable, Sized
 ):
     """The type of a literal tuple expression.
 
@@ -171,7 +169,7 @@ struct Tuple[*element_types: ElementType](
 
     alias _mlir_type = __mlir_type[
         `!kgen.pack<:!kgen.variadic<`,
-        ElementType,
+        Copyable & Movable,
         `> `,
         element_types,
         `>`,
@@ -201,7 +199,7 @@ struct Tuple[*element_types: ElementType](
     fn __init__(
         out self,
         *,
-        owned storage: VariadicPack[_, _, ElementType, *element_types],
+        owned storage: VariadicPack[_, _, Copyable & Movable, *element_types],
     ):
         """Construct the tuple from a low-level internal representation.
 
@@ -288,7 +286,7 @@ struct Tuple[*element_types: ElementType](
 
         @parameter
         fn variadic_size(
-            x: __mlir_type[`!kgen.variadic<`, ElementType, `>`]
+            x: __mlir_type[`!kgen.variadic<`, Copyable & Movable, `>`]
         ) -> Int:
             return __mlir_op.`pop.variadic.size`(x)
 
