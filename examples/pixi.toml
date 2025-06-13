@@ -12,11 +12,12 @@ platforms = ["linux-64", "osx-arm64"]
 preview = ["pixi-build"]
 
 [dependencies]
-strata = { path = ".." }
+# strata = { path = ".." }
 
 [tasks]
 # Examples
 examples = { depends-on = [
+    "build_package",
     "type_examples",
     "immutable_examples",
     "message_examples",
@@ -26,6 +27,9 @@ examples = { depends-on = [
     "async_mutable_task_examples",
     "generic_examples",
 ] }
+
+build_package = "cd .. && pixi run package && mv package/strata.mojopkg examples/strata.mojopkg && cd examples"
+
 async_immutable_task_examples = "mojo async_immutable_task_examples.mojo"
 async_mutable_task_examples = "mojo async_mutable_task_examples.mojo"
 generic_examples = "mojo generic_examples.mojo"
