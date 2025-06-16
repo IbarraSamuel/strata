@@ -1,7 +1,8 @@
 from strata.generic import Task, Callable, Tuple
 import os
+from time import sleep
 
-
+alias time = 0.1
 # NOTE: Inference is not working well on functions. to be reviewed
 # fn string_to_int(str: String) -> Int:
 #     try:
@@ -32,6 +33,8 @@ struct StringToInt(Callable):
     alias O = Int
 
     fn __call__(self, value: Self.I) -> Self.O:
+        print("String to int...")
+        sleep(time)
         try:
             return Int(value)
         except:
@@ -44,6 +47,8 @@ struct IntToString(Callable):
     alias O = String
 
     fn __call__(self, value: Self.I) -> Self.O:
+        print("Int to string...")
+        sleep(time)
         return Self.O(value)
 
 
@@ -53,6 +58,8 @@ struct IntToFloat(Callable):
     alias O = Float32
 
     fn __call__(self, value: Self.I) -> Self.O:
+        print("Int to float...")
+        sleep(time)
         return Self.O(value)
 
 
@@ -62,16 +69,21 @@ struct IntMul[by: Int](Callable):
     alias O = Int
 
     fn __call__(self, value: Self.I) -> Self.O:
+        print("Int multiply...")
+        sleep(time)
         return value * by
 
 
+# NOTE: Since we cannot flatten tuples still, we need to do things like ((a, b), c)
 @fieldwise_init
 struct SumTuple(Callable):
-    alias I = (Int, Float32)
+    alias I = ((Int, Float32), Int)
     alias O = Float32
 
     fn __call__(self, value: Self.I) -> Self.O:
-        return value[0] + value[1]
+        print("Sum Tuple...")
+        sleep(time)
+        return value[0][0] + value[0][1] + value[1]
 
 
 @fieldwise_init
@@ -80,6 +92,8 @@ struct FloatToString(Callable):
     alias O = String
 
     fn __call__(self, value: Self.I) -> Self.O:
+        print("Float to String...")
+        sleep(time)
         return Self.O(value)
 
 
@@ -93,7 +107,7 @@ fn main():
     print("Building graph")
     final_graph = (
         Task(str_to_int)
-        >> (Task(int_mul) + int_to_float)
+        >> (Task(IntMul[2]()) + IntToFloat() + IntMul[3]())
         >> tuple_to_float
         >> float_to_str
     )
@@ -102,7 +116,7 @@ fn main():
     result = final_graph("32")
 
     # Adding this increases compilation time by a lot x27 more
-    # if result != "96.0":
+    # if result != "192.0":
     #     os.abort("Not valid grapth")
 
     print(result)
