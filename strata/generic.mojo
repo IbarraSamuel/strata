@@ -159,14 +159,9 @@ struct Fn[In: InType, Out: OutType](Callable):
 # Modified to be Defaultable
 # Also so values doen't need to be copyable, but right now isn't used because rebind requires copies.
 
-alias CallableElement = Copyable & Movable
-# alias ElementType = Movable
-
 
 @lldb_formatter_wrapping_type
-struct Tuple[*element_types: Copyable & Movable](
-    CallableElement, Copyable, Defaultable, Movable, Sized
-):
+struct Tuple[*element_types: Copyable & Movable](Sized, TaskValue):
     """The type of a literal tuple expression.
 
     A tuple consists of zero or more values, separated by commas.
