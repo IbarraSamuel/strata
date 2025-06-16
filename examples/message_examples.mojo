@@ -17,11 +17,9 @@ fn str_to_int(str: String) -> Int:
     return Int(v)
 
 
+@fieldwise_init
 struct Init(CallableWithMessage):
     var count: Int
-
-    fn __init__(out self, count: Int):
-        self.count = count
 
     fn __call__(self, owned msg: Message) -> Message:
         print("Running [Init]:", msg.__str__())
@@ -31,10 +29,8 @@ struct Init(CallableWithMessage):
         return msg
 
 
+@fieldwise_init
 struct Par1(CallableWithMessage):
-    fn __init__(out self):
-        pass
-
     fn __call__(self, owned msg: Message) -> Message:
         print("Running [par1]...", msg.__str__())
         init = msg.pop("init", "0")
@@ -46,11 +42,8 @@ struct Par1(CallableWithMessage):
         return msg
 
 
-@value
+@fieldwise_init
 struct Par2(CallableWithMessage):
-    fn __init__(out self):
-        pass
-
     fn __call__(self, owned msg: Message) -> Message:
         print("Running [par2]...", msg.__str__())
         init = msg.pop("init", "0")
@@ -62,10 +55,8 @@ struct Par2(CallableWithMessage):
         return msg
 
 
+@fieldwise_init
 struct Final(CallableWithMessage):
-    fn __init__(out self):
-        pass
-
     fn __call__(self, owned msg: Message) -> Message:
         print("Running [Final]", msg.__str__())
         calc1 = str_to_int(msg.pop("calc1", "0"))
