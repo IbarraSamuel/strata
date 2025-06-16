@@ -4,11 +4,9 @@ from strata.mutable import MutCallable
 alias time = 0.1
 
 
+@fieldwise_init
 struct InitTask[name: String = "Init"](MutCallable):
     var value: Int
-
-    fn __init__(out self, value: Int):
-        self.value = value
 
     fn __call__(mut self):
         print("Starting [", name, "Task]: Value is", self.value, "...")

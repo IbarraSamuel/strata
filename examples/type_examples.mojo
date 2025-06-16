@@ -4,10 +4,8 @@ from strata.type import TypeCallable
 alias time = 0.1
 
 
+@fieldwise_init
 struct MyTypeTask[name: StringLiteral](TypeCallable):
-    fn __init__(out self):
-        pass
-
     @staticmethod
     fn __call__():
         print("Task [", name, "] Running...")
