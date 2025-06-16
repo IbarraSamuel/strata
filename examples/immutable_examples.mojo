@@ -4,11 +4,9 @@ from strata.immutable import Callable
 alias time = 0.1
 
 
+@fieldwise_init
 struct MyTask[job: StringLiteral](Callable):
     var some_data: String
-
-    fn __init__(out self, owned some_data: StringLiteral):
-        self.some_data = some_data
 
     fn __call__(self):
         print("Running [", job, "]:", self.some_data)
