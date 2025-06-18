@@ -28,15 +28,6 @@ trait Callable:
         ...
 
 
-# struct ATask[
-#     T: Callable, origin: ImmutableOrigin, In: InType = T.I, Out: OutType = T.O
-# ]:
-#     var inner: Pointer[T, origin]
-
-#     fn __init__(out self, ref [origin]inner: T):
-#         self.inner = Pointer[T, origin](to=inner)
-
-
 struct Task[
     T: Callable,
     origin: ImmutableOrigin,
@@ -56,6 +47,17 @@ struct Task[
         """
         self.inner = Pointer[T, origin](to=inner)
 
+    fn __init__(
+        out self: Task[_Fn[In, Out], ImmutableAnyOrigin], func: fn (In) -> Out
+    ):
+        """The only possible way to create a Task is to create it from a Callable.
+
+        The callable will provide the values for In and Out parameters.
+        We can trust that those parameters reflect the type of the callable.
+        This is kind of parametrizing an trait?
+        """
+        self.inner = Pointer[_Fn[In, Out], ImmutableAnyOrigin](to=_Fn(func))
+
     fn __call__(self, arg: Self.I) -> Self.O:
         # SAFETY: This is safe because Self.I and T.I are the same type
         # and Self.O and T.O are the same type
@@ -71,12 +73,26 @@ struct Task[
     ]:
         return {SerTask(self^, Task(other))}
 
+    fn __rshift__[
+        I: TaskValue, O: TaskValue
+    ](owned self: Task[T, origin, Out=I], func: fn (I) -> O) -> Task[
+        SerTask[T, _Fn[I, O], origin, ImmutableAnyOrigin], ImmutableAnyOrigin
+    ]:
+        return {SerTask(self^, Task(func))}
+
     fn __add__[
         t: Callable, o: ImmutableOrigin
     ](owned self: Task[T, origin, In = t.I], ref [o]other: t) -> Task[
         ParTask[T, t, origin, o], ImmutableAnyOrigin
     ]:
         return {ParTask(self^, Task(other))}
+
+    fn __add__[
+        I: TaskValue, O: TaskValue
+    ](owned self: Task[T, origin, In=I], func: fn (I) -> O) -> Task[
+        ParTask[T, _Fn[I, O], origin, ImmutableAnyOrigin], ImmutableAnyOrigin
+    ]:
+        return {ParTask(self^, Task(func))}
 
 
 @fieldwise_init
@@ -128,8 +144,8 @@ struct ParTask[
         return (res_1^, res_2^)
 
 
-@fieldwise_init
-struct Fn[In: InType, Out: OutType](Callable):
+@fieldwise_init("implicit")
+struct _Fn[In: InType, Out: OutType](Callable):
     alias I = In
     alias O = Out
 
