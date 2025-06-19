@@ -23,19 +23,21 @@ backend = { name = "pixi-build-rattler-build", version = "0.1.*" }
 [tasks]
 # Build
 build_package = "mojo package strata/ -o package/strata.mojopkg"
-build_examples_package = { cmd = "mv package/strata.mojopkg examples/", depends-on = ["build_package"] }
+build_examples_package = { cmd = "mv package/strata.mojopkg examples/", depends-on = [
+    "build_package",
+] }
 
 # Python Build
 build_python_package = "mojo build strata/python_interop.mojo --emit shared-lib -o package/mojo_strata.so"
-package_python = { cmd = "mv package/mojo_strata.so python/src/strata/", depends-on = ["build_python_package"] }
+package_python = { cmd = "mv package/mojo_strata.so python/src/strata/", depends-on = [
+    "build_python_package",
+] }
 
 # All
 build_all = { depends-on = ["build_package", "build_python_package"] }
 
 # Testing
-tests = { depends-on = [
-    "test_docs"
-] }
+tests = { depends-on = ["test_docs"] }
 test_docs = "mojo test --diagnose-missing-doc-strings --validate-doc-strings"
 
 # Examples
@@ -43,7 +45,6 @@ examples = { depends-on = [
     "build_examples_package",
     "type_examples",
     "immutable_examples",
-    "message_examples",
     "mutable_examples",
     "unsafe_examples",
     "async_immutable_task_examples",
@@ -58,4 +59,3 @@ mutable_examples = "mojo examples/mutable_examples.mojo"
 unsafe_examples = "mojo examples/unsafe_examples.mojo"
 immutable_examples = "mojo examples/immutable_examples.mojo"
 type_examples = "mojo examples/type_examples.mojo"
-message_examples = "mojo examples/message_examples.mojo"
