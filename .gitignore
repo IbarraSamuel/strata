@@ -15,8 +15,9 @@ wheels/
 .magic
 
 # Package to ignore
-package/*
-examples/strata.mojopkg
-python/src/strata/mojo_strata.so
+package/*.mojopkg
+package/*.so
+examples/*.mojopkg
+python/src/strata/*.so
 
 .vscode
