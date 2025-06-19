@@ -53,6 +53,10 @@ fn main():
 
     # NOTE 2: We need to instanciate because there is no way to implement
     # __rshift__ and __add__ without a struct instance.
+
+    # Functions need to be wrapped in a Fn struct.
+    # Structs that implements __call__ need to be wrapped in a Task struct, if the task is the first within a group.
+
     alias final_graph = (
         Fn[string_to_int]()
         >> Fn[int_mul[2]]() + Fn[int_to_float]() + Fn[int_mul[3]]()
