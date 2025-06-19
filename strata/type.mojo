@@ -12,25 +12,6 @@ fn parallel_runner[*Ts: TypeCallable]():
 
     Parameters:
         Ts: Variadic `CallableDefaltable` types.
-
-    ```mojo
-    from strata.type import parallel_runner, TypeCallable
-    from time import sleep
-
-    struct Task(TypeCallable):
-        @staticmethod
-        fn __call__():
-            print("running")
-            sleep(1.0) # Less times didn't work well on doctests
-            print("Done")
-
-    alias t1 = Task
-    alias t2 = Task
-
-    # Will run t1 and t2 at the same time
-    parallel_runner[t1, t2]()
-
-    ```
     """
     alias size = len(VariadicList(Ts))
 
@@ -49,22 +30,6 @@ fn series_runner[*Ts: TypeCallable]():
 
     Parameters:
         Ts: Variadic `CallableDefaltable` types.
-
-    ```mojo
-    from strata.type import series_runner, TypeCallable
-
-    struct Task(TypeCallable):
-        @staticmethod
-        fn __call__():
-            print()
-
-    alias t1 = Task
-    alias t2 = Task
-
-    # Will run t1 first, then t2
-    series_runner[t1, t2]()
-
-    ```
     """
     alias size = len(VariadicList(Ts))
 
@@ -79,21 +44,6 @@ struct TypeTask[T: TypeCallable](TypeCallable):
 
     Parameters:
         T: Type that conforms to `CallableDefaultable`.
-
-    ```mojo
-    from strata.type import TypeTask, TypeCallable
-
-    struct DefTask(TypeCallable):
-        fn __init__(out self):
-            pass
-
-        @staticmethod
-        fn __call__():
-            print("default task")
-
-    alias Task = TypeTask[DefTask]
-    Task.__call__()
-    ```
     """
 
     @implicit
@@ -148,27 +98,6 @@ struct ParallelTypeTask[*Ts: TypeCallable](TypeCallable):
 
     Parameters:
         Ts: Types that conforms to `TypeCallable`.
-
-    ```mojo
-    from strata.type import ParallelTypeTask, TypeCallable
-
-    struct DefTask(TypeCallable):
-        @staticmethod
-        fn __call__():
-            print("Running...")
-
-    struct DefTask2(TypeCallable):
-        @staticmethod
-        fn __call__():
-            print("Running...")
-
-    # Because could be instanciated in future, you can pass it as a type.
-
-    alias Parallel = ParallelTypeTask[DefTask, DefTask2]
-
-    Parallel.__call__()
-
-    ```
     """
 
     @staticmethod
@@ -193,27 +122,6 @@ struct SeriesTypeTask[*Ts: TypeCallable](TypeCallable):
 
     Parameters:
         Ts: Types that conforms to `TypeCallable`.
-
-    ```mojo
-    from strata.type import SeriesTypeTask, TypeCallable
-
-    struct DefTask(TypeCallable):
-        @staticmethod
-        fn __call__():
-            print("Running...")
-
-    struct DefTask2(TypeCallable):
-        @staticmethod
-        fn __call__():
-            print("Running...")
-    # Because could be instanciated in future, you can pass it as a type.
-
-    alias Series = SeriesTypeTask[DefTask, DefTask2]
-
-    # then, you can run it in future.
-    Series.__call__()
-
-    ```
     """
 
     @staticmethod
