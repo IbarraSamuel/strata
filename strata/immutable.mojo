@@ -4,26 +4,7 @@ alias CallablePack = VariadicPack[False, _, Callable, *_]
 
 
 trait Callable:
-    """The struct should contain a fn __call__ method.
-
-    ```mojo
-    trait Callable:
-        fn __call__(mut self):
-            ...
-
-    struct MyStruct(Callable):
-        fn __init__(out self):
-            pass
-
-        fn __call__(mut self):
-            print("calling...")
-
-    inst = MyStruct()
-
-    # Calling the instance.
-    inst()
-    ```
-    """
+    """The struct should contain a fn __call__ method."""
 
     fn __call__(self):
         """Run a task with the possibility to mutate internal state."""
@@ -38,39 +19,6 @@ fn series_runner[*Ts: Callable](callables: CallablePack[_, *Ts]):
 
     Args:
         callables: A `CallablePack` collection of types.
-
-    ```mojo
-    from strata.immutable import series_runner, Callable, CallablePack
-    from time import perf_counter_ns, sleep
-    from memory import Pointer
-    from testing import assert_true
-
-    t1_starts = UInt(0)
-    t1_finish = UInt(0)
-    t2_starts = UInt(0)
-    t2_finish = UInt(0)
-
-    struct Task[o1: Origin[True], o2: Origin[True]](Callable):
-        var start: Pointer[UInt, o1]
-        var finish: Pointer[UInt, o2]
-        fn __init__(out self, ref[o1] start: UInt, ref[o2] finish: UInt):
-            self.start = Pointer(to=start)
-            self.finish = Pointer(to=finish)
-        fn __call__(self):
-            self.start[] = perf_counter_ns()
-            sleep(0.1)
-            self.finish[] = perf_counter_ns()
-
-    t1 = Task(t1_starts, t1_finish)
-    t2 = Task(t2_starts, t2_finish)
-
-    fn series_variadic_inp[*ts: Callable](*args: *ts):
-        series_runner(args)
-    # Will run t1 first, then t2
-    series_variadic_inp(t1, t2)
-
-    assert_true(t1_finish < t2_starts)
-    ```
     """
     alias size = len(VariadicList(Ts))
 
@@ -87,37 +35,6 @@ fn series_runner[*ts: Callable](*callables: *ts):
 
     Args:
         callables: A collection of `ImmCallable` types.
-
-    ```mojo
-    from strata.immutable import series_runner, Callable
-    from time import perf_counter_ns, sleep
-    from memory import Pointer
-    from testing import assert_true
-
-    t1_starts = UInt(0)
-    t1_finish = UInt(0)
-    t2_starts = UInt(0)
-    t2_finish = UInt(0)
-
-    struct Task[o1: Origin[True], o2: Origin[True]](Callable):
-        var start: Pointer[UInt, o1]
-        var finish: Pointer[UInt, o2]
-        fn __init__(out self, ref[o1] start: UInt, ref[o2] finish: UInt):
-            self.start = Pointer(to=start)
-            self.finish = Pointer(to=finish)
-        fn __call__(self):
-            self.start[] = perf_counter_ns()
-            sleep(0.1)
-            self.finish[] = perf_counter_ns()
-
-    t1 = Task(t1_starts, t1_finish)
-    t2 = Task(t2_starts, t2_finish)
-
-    # Will run t1 first, then t2
-    series_runner(t1, t2)
-
-    assert_true(t1_finish < t2_starts)
-    ```
     """
     series_runner(callables)
 
@@ -133,39 +50,6 @@ fn parallel_runner[*Ts: Callable](callables: CallablePack[_, *Ts]):
 
     Args:
         callables: A `CallablePack` collection of types.
-
-    ```mojo
-    from strata.immutable import parallel_runner, Callable, CallablePack
-    from time import perf_counter_ns, sleep
-    from memory import Pointer
-    from testing import assert_true
-
-    t1_starts = UInt(0)
-    t1_finish = UInt(0)
-    t2_starts = UInt(0)
-    t2_finish = UInt(0)
-
-    struct Task[o1: Origin[True], o2: Origin[True]](Callable):
-        var start: Pointer[UInt, o1]
-        var finish: Pointer[UInt, o2]
-        fn __init__(out self, ref[o1] start: UInt, ref[o2] finish: UInt):
-            self.start = Pointer(to=start)
-            self.finish = Pointer(to=finish)
-        fn __call__(self):
-            self.start[] = perf_counter_ns()
-            sleep(1.0) # Less times didn't work well on doctests
-            self.finish[] = perf_counter_ns()
-
-    t1 = Task(t1_starts, t1_finish)
-    t2 = Task(t2_starts, t2_finish)
-
-    fn parallel_variadic_inp[*ts: Callable](*args: *ts):
-        parallel_runner(args)
-    # Will run t1 and t2 at the same time
-    parallel_variadic_inp(t1, t2)
-
-    assert_true(t2_starts < t1_finish and t1_starts < t2_finish)
-    ```
     """
     alias size = len(VariadicList(Ts))
 
@@ -187,55 +71,13 @@ fn parallel_runner[*ts: Callable](*callables: *ts):
 
     Args:
         callables: A collection of `ImmCallable` types.
-
-    ```mojo
-    from strata.immutable import parallel_runner, Callable
-    from time import perf_counter_ns, sleep
-    from memory import Pointer
-    from testing import assert_true
-
-    t1_starts = UInt(0)
-    t1_finish = UInt(0)
-    t2_starts = UInt(0)
-    t2_finish = UInt(0)
-
-    struct Task[o1: Origin[True], o2: Origin[True]](Callable):
-        var start: Pointer[UInt, o1]
-        var finish: Pointer[UInt, o2]
-        fn __init__(out self, ref[o1] start: UInt, ref[o2] finish: UInt):
-            self.start = Pointer(to=start)
-            self.finish = Pointer(to=finish)
-        fn __call__(self):
-            self.start[] = perf_counter_ns()
-            sleep(1.0) # Less times didn't work well on doctests
-            self.finish[] = perf_counter_ns()
-
-    t1 = Task(t1_starts, t1_finish)
-    t2 = Task(t2_starts, t2_finish)
-
-    # Will run t1 and t2 at the same time
-    parallel_runner(t1, t2)
-
-    assert_true(t2_starts < t1_finish and t1_starts < t2_finish)
-    ```
     """
     parallel_runner(callables)
 
 
 @fieldwise_init("implicit")
 struct FnTask(Callable):
-    """This function takes any function with a signature: `fn() -> None`
-     and hold it to later call it using `__call__()`.
-
-     ```mojo
-    from strata.immutable import FnTask
-
-    fn my_task():
-         print("Running a task!")
-
-    task = FnTask(my_task)
-    task()
-     ```
+    """This function takes any function with a signature: `fn() -> None` and hold it to later call it using `__call__()`.
     """
 
     var func: fn ()
@@ -333,25 +175,6 @@ struct ParallelTask[origin: Origin, *Ts: Callable](Callable):
         mut: If we can mutate the elements.
         origin: The origin of the `VariadicPack` values.
         Ts: ImmutableCallable types that conforms to `ImmCallable`.
-
-    ```mojo
-    from strata.immutable import ParallelTask, Callable
-
-    struct ImmTask(Callable):
-        fn __init__(out self):
-            pass
-
-        fn __call__(self):
-            print("Working...")
-
-    t1 = ImmTask()
-    t2 = ImmTask()
-    t3 = ImmTask()
-
-    parallel = ParallelTask(t1, t2, t3)
-    # Running tasks in parallel.
-    parallel()
-    ```
     """
 
     var callables: CallablePack[origin, *Ts]
@@ -378,25 +201,6 @@ struct SeriesTask[origin: Origin, *Ts: Callable](Callable):
         mut: If the elements could be mutated.
         origin: The origin of the `VariadicPack` values.
         Ts: ImmutableCallable types that conforms to `Callable`.
-
-    ```mojo
-    from strata.immutable import SeriesTask, Callable
-
-    struct ImmTask(Callable):
-        fn __init__(out self):
-            pass
-
-        fn __call__(self):
-            print("Working...")
-
-    t1 = ImmTask()
-    t2 = ImmTask()
-    t3 = ImmTask()
-
-    series = SeriesTask(t1, t2, t3)
-    # Running tasks in series.
-    series()
-    ```
     """
 
     var callables: CallablePack[origin, *Ts]

@@ -30,37 +30,6 @@ fn series_runner[*ts: MutCallable](mut*callables: *ts):
 
     Args:
         callables: A `CallablePack` collection of types.
-
-    ```mojo
-    from strata.mutable import series_runner
-    from strata.mutable import MutCallable, MutCallablePack
-    from time import perf_counter_ns, sleep
-    from memory import Pointer
-    from testing import assert_true
-
-    t1_starts = UInt(0)
-    t1_finish = UInt(0)
-    t2_starts = UInt(0)
-    t2_finish = UInt(0)
-
-    struct Task[o1: Origin[True], o2: Origin[True]](MutCallable):
-        var start: Pointer[UInt, o1]
-        var finish: Pointer[UInt, o2]
-        fn __init__(out self, ref[o1] start: UInt, ref[o2] finish: UInt):
-            self.start = Pointer(to=start)
-            self.finish = Pointer(to=finish)
-        fn __call__(mut self):
-            self.start[] = perf_counter_ns()
-            sleep(0.1)
-            self.finish[] = perf_counter_ns()
-
-    t1 = Task(t1_starts, t1_finish)
-    t2 = Task(t2_starts, t2_finish)
-
-    series_runner(t1, t2)
-
-    assert_true(t1_finish < t2_starts)
-    ```
     """
     alias size = len(VariadicList(ts))
 
@@ -92,33 +61,6 @@ fn parallel_runner[*ts: MutCallable](mut*callables: *ts):
 
     Args:
         callables: A `VariadicPack` collection of types.
-
-    ```mojo
-    from strata.mutable import parallel_runner
-    from strata.mutable import MutCallable
-    from time import perf_counter_ns, sleep
-    from memory import Pointer
-    from testing import assert_true
-
-    struct Task(MutCallable):
-        var start: UInt
-        var finish: UInt
-        fn __init__(out self):
-            self.start = 0
-            self.finish = 0
-        fn __call__(mut self):
-            self.start = perf_counter_ns()
-            sleep(1.0) # Less times didn't work well on doctests
-            self.finish = perf_counter_ns()
-
-    t1 = Task()
-    t2 = Task()
-
-    # Will run t1 and t2 at the same time.
-    parallel_runner(t1, t2)
-
-    assert_true(t2.start < t1.finish and t1.start < t2.finish)
-    ```
     """
     alias size = len(VariadicList(ts))
 

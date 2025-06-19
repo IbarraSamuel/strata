@@ -199,14 +199,6 @@ struct Tuple[*element_types: Copyable & Movable](
     ](self, value: T) -> Bool:
         """Return whether the tuple contains the specified value.
 
-        For example:
-
-        ```mojo
-        var t = Tuple(True, 1, 2.5)
-        if 1 in t:
-            print("t contains 1")
-        ```
-
         Args:
             value: The value to search for.
 
