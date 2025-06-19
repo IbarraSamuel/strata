@@ -37,23 +37,11 @@ struct Task[
     var inner: Pointer[T, origin]
 
     fn __init__(out self, ref [origin]inner: T):
-        """The only possible way to create a Task is to create it from a Callable.
-
-        The callable will provide the values for In and Out parameters.
-        We can trust that those parameters reflect the type of the callable.
-        This is kind of parametrizing an trait?
-        """
-        self.inner = Pointer[T, origin](to=inner)
+        self.inner = Pointer(to=inner)
 
     fn __init__(
         out self: Task[_Fn[In, Out], ImmutableAnyOrigin], func: fn (In) -> Out
     ):
-        """The only possible way to create a Task is to create it from a Callable.
-
-        The callable will provide the values for In and Out parameters.
-        We can trust that those parameters reflect the type of the callable.
-        This is kind of parametrizing an trait?
-        """
         self.inner = Pointer[_Fn[In, Out], ImmutableAnyOrigin](to=_Fn(func))
 
     fn __call__(self, arg: Self.I) -> Self.O:
