@@ -51,7 +51,7 @@ fn main():
     print("Building graph")
     final_graph = (
         Task(string_to_int)
-        >> (Task(int_mul[2]) + int_to_float + int_mul[3])
+        >> Task(int_mul[2]) + int_to_float + int_mul[3]
         >> sum_tuple
         >> FloatToString()
     )

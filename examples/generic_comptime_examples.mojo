@@ -1,4 +1,4 @@
-from strata.comptime_generic import Task, Callable, Tuple, Fn
+from strata.generic_comptime import Task, Callable, Tuple, Fn
 import os
 from time import sleep
 
@@ -51,6 +51,8 @@ fn main():
     # NOTE: Compile times could be faster if you use struct instead of functions.
     print("Building graph")
 
+    # NOTE 2: We need to instanciate because there is no way to implement
+    # __rshift__ and __add__ without a struct instance.
     alias final_graph = (
         Fn[string_to_int]()
         >> Fn[int_mul[2]]() + Fn[int_to_float]() + Fn[int_mul[3]]()
