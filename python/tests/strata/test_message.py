@@ -5,7 +5,7 @@ from typing import cast
 
 import pytest
 
-from strata import Combinable, ParallelTask, SerialTask, Task
+from strata.message import Combinable, ParallelTask, SerialTask, Task
 
 
 @dataclass
@@ -87,7 +87,7 @@ def test_serial_task():
 
     print("[End of Task]...")
 
-    assert out == "7", "tasks should add 1 to each input"
+    assert out == message + 2, "tasks should add 1 to each input"
     assert my_task_1.end < my_task_2.start, "task1 should finish before task2 starts"
 
 
@@ -127,7 +127,7 @@ def test_parallel_task():
     assert my_task_2.end > my_task_1.start, "t1 starts before t2 finishes"
 
 
-@pytest.mark.skip("Causes sigfoult when trying to run in parallel.")
+# @pytest.mark.skip("Causes sigfoult when trying to run in parallel.")
 def test_parallel_task_combination():
     my_task_1 = AddOneTask()
     my_task_2 = AddOneTask()
@@ -141,8 +141,8 @@ def test_parallel_task_combination():
     print("[End of Task]...")
 
     assert out == (message + 1, message + 1), "tasks should add 1 to each input"
-    assert my_task_1.end > my_task_2.start, "t2 starts before t1 finishes"
-    assert my_task_2.end > my_task_1.start, "t1 starts before t2 finishes"
+    assert my_task_1.end > my_task_2.start, "t2 should start before t1 finishes"
+    assert my_task_2.end > my_task_1.start, "t1 should start before t2 finishes"
 
 
 @pytest.mark.skip("Causes sigfoult when trying to run in parallel.")
