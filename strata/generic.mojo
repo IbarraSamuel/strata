@@ -55,34 +55,34 @@ struct Task[
     fn __rshift__[
         t: Callable, o: ImmutableOrigin
     ](owned self: Task[T, origin, Out = t.I], ref [o]other: t) -> Task[
-        SerTask[T, t, origin, o], ImmutableAnyOrigin
+        SerPair[T, t, origin, o], ImmutableAnyOrigin
     ]:
-        return {SerTask(self^, Task(other))}
+        return {SerPair(self^, Task(other))}
 
     fn __rshift__[
         I: TaskValue, O: TaskValue
     ](owned self: Task[T, origin, Out=I], func: fn (I) -> O) -> Task[
-        SerTask[T, _Fn[I, O], origin, ImmutableAnyOrigin], ImmutableAnyOrigin
+        SerPair[T, _Fn[I, O], origin, ImmutableAnyOrigin], ImmutableAnyOrigin
     ]:
-        return {SerTask(self^, Task(func))}
+        return {SerPair(self^, Task(func))}
 
     fn __add__[
         t: Callable, o: ImmutableOrigin
     ](owned self: Task[T, origin, In = t.I], ref [o]other: t) -> Task[
-        ParTask[T, t, origin, o], ImmutableAnyOrigin
+        ParPair[T, t, origin, o], ImmutableAnyOrigin
     ]:
-        return {ParTask(self^, Task(other))}
+        return {ParPair(self^, Task(other))}
 
     fn __add__[
         I: TaskValue, O: TaskValue
     ](owned self: Task[T, origin, In=I], func: fn (I) -> O) -> Task[
-        ParTask[T, _Fn[I, O], origin, ImmutableAnyOrigin], ImmutableAnyOrigin
+        ParPair[T, _Fn[I, O], origin, ImmutableAnyOrigin], ImmutableAnyOrigin
     ]:
-        return {ParTask(self^, Task(func))}
+        return {ParPair(self^, Task(func))}
 
 
 @fieldwise_init
-struct SerTask[
+struct SerPair[
     C1: Callable, C2: Callable, o1: ImmutableOrigin, o2: ImmutableOrigin
 ](Callable):
     alias I = C1.I
@@ -100,7 +100,7 @@ struct SerTask[
 
 
 @fieldwise_init
-struct ParTask[
+struct ParPair[
     C1: Callable,
     C2: Callable,
     o1: ImmutableOrigin,

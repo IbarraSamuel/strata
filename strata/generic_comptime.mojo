@@ -37,16 +37,16 @@ struct Task[C: Callable, *, In: InType = C.I, Out: OutType = C.O](Callable):
 
     fn __rshift__[
         c: Callable
-    ](self: Task[C, Out = c.I], other: c) -> Task[SerTask[C, c]]:
+    ](self: Task[C, Out = c.I], other: c) -> Task[SerPair[C, c]]:
         return {}
 
     fn __add__[
         c: Callable,
-    ](self: Task[C, In = c.I], other: c) -> Task[ParTask[C, c]]:
+    ](self: Task[C, In = c.I], other: c) -> Task[ParPair[C, c]]:
         return {}
 
 
-struct SerTask[
+struct SerPair[
     C1: Callable,
     C2: Callable,
     t1: Task[C1, Out = C2.I] = {},
@@ -65,7 +65,7 @@ struct SerTask[
 
 
 @fieldwise_init
-struct ParTask[
+struct ParPair[
     C1: Callable,
     C2: Callable,
     t1: Task[C1, In = C2.I] = {},
@@ -104,10 +104,10 @@ struct Fn[In: InType, Out: OutType, //, F: fn (In) -> Out, /](Callable):
 
     fn __rshift__[
         c: Callable
-    ](self: Fn[Out = c.I], other: c) -> Task[SerTask[Self, c]]:
+    ](self: Fn[Out = c.I], other: c) -> Task[SerPair[Self, c]]:
         return {}
 
     fn __add__[
         c: Callable,
-    ](self: Fn[In = c.I], other: c) -> Task[ParTask[Self, c]]:
+    ](self: Fn[In = c.I], other: c) -> Task[ParPair[Self, c]]:
         return {}
