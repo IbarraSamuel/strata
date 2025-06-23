@@ -1,5 +1,4 @@
-from algorithm import sync_parallelize
-
+from runtime.asyncrt import TaskGroup, _run
 from os import abort
 from memory import UnsafePointer
 from python import PythonObject, Python
@@ -44,14 +43,13 @@ alias PythonTask = PythonCallable & Representable & Defaultable & Movable
 
 # Question: It is possible to initialize with something else than default?
 struct PyTask(PythonTask):
-    alias TYPE_ID = "strata.PyTask"
     var inner: PythonObject
 
     fn __init__(out self):
         self.inner = PythonObject()
 
     fn __repr__(self) -> String:
-        return String(Self.TYPE_ID, "( inner=", self.inner, " )")
+        return String("PyTask( inner=", self.inner, " )")
 
     @staticmethod
     fn _get_self_ptr(py_self: PythonObject) raises -> UnsafePointer[Self]:
@@ -69,7 +67,6 @@ struct PyTask(PythonTask):
 
 
 struct PyParallelTask(PythonTask):
-    alias TYPE_ID = "strata.PyParallelTask"
     var task_1: PythonObject
     var task_2: PythonObject
 
@@ -79,8 +76,7 @@ struct PyParallelTask(PythonTask):
 
     fn __repr__(self) -> String:
         return String(
-            Self.TYPE_ID,
-            "( task_1=",
+            "PyParallelTask( task_1=",
             self.task_1,
             ", task_2=",
             self.task_2,
@@ -103,26 +99,47 @@ struct PyParallelTask(PythonTask):
     def __call__(py_self: PythonObject, message: PythonObject) -> PythonObject:
         self = Self._get_self_ptr(py_self)
 
-        alias size = 2
-        var msgs: PythonObject = [PythonObject(), PythonObject()]
+        # t1, m1 = self[].task_1.copy(), message.copy()
+        # t2, m2 = self[].task_2.copy(), message.copy()
+
+        data = [Python.int(1), Python.int(1)]
 
         @parameter
-        fn append_msg(i: Int) raises:
-            @parameter
-            for ti in range(size):
+        fn apply[i: Int]():
+            try:
 
                 @parameter
-                if ti == 0:
-                    msgs[0] = self[].task_1(message)
+                if i == 0:
+                    data[i] = self[].task_1(message)
                 else:
-                    msgs[1] = self[].task_2(message)
+                    data[i] = self[].task_2(message)
+            except e:
+                print(e)
 
-        sync_parallelize[append_msg](size)
-        return Python.tuple(msgs[0], msgs[1])
+        apply[0]()
+        apply[1]()
+        # tg = TaskGroup()
+        # tg.create_task(apply[0]())
+        # tg.create_task(apply[1]())
+
+        # @parameter
+        # async fn run():
+        #     await tg
+
+        # _run(run())
+
+        # @parameter
+        # fn append_msg(i: Int) raises:
+        #     if i == 0:
+        #         r1 = t1(m1)
+        #     else:
+        #         r2 = t2(m2)
+
+        # sync_parallelize[append_msg](2)
+        return Python.tuple(data[0], data[1])
 
 
 struct PySerialTask(PythonTask):
-    alias TYPE_ID = "strata.PySerialTask"
     var task_1: PythonObject
     var task_2: PythonObject
 
@@ -132,8 +149,7 @@ struct PySerialTask(PythonTask):
 
     fn __repr__(self) -> String:
         return String(
-            Self.TYPE_ID,
-            "( task_1=",
+            "PySerialTask( task_1=",
             self.task_1,
             ", task_2=",
             self.task_2,
