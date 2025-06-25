@@ -1,29 +1,53 @@
-from runtime.asyncrt import TaskGroup, _run
 from os import abort
 from memory import UnsafePointer
-from python import PythonObject, Python
+from python import PythonObject, Python, ConvertibleFromPython
 from python.bindings import PythonModuleBuilder
+
+# from algorithm import parallelize
+from runtime.asyncrt import TaskGroup as TG, _run
 
 
 @export
 fn PyInit_mojo_strata() -> PythonObject:
     try:
         var strata = PythonModuleBuilder("mojo_strata")
+
         _ = (
-            strata.add_type[PyTask]("PyTask")
-            .def_method[PyTask.build]("build")
-            .def_method[PyTask.__call__]("__call__")
+            strata.add_type[Graph]("Graph")
+            .def_method[Graph.call_task](
+                "call_task", "Execute the graph and return the result."
+            )
+            .def_method[Graph.capture_elems](
+                "capture_elems", "Capture the tasks in the graph."
+            )
         )
+
         _ = (
-            strata.add_type[PyParallelTask]("PyParallelTask")
-            .def_method[PyParallelTask.build]("build")
-            .def_method[PyParallelTask.__call__]("__call__")
+            strata.add_type[TaskGroup]("TaskGroup")
+            .def_method[TaskGroup.add_task](
+                "add_task", "Add a task to the group."
+            )
+            .def_method[TaskGroup.from_single_task](
+                "from_single_task", "Add a single task to the group."
+            )
+            .def_method[TaskGroup.call]("call", "Make this group callable.")
         )
-        _ = (
-            strata.add_type[PySerialTask]("PySerialTask")
-            .def_method[PySerialTask.build]("build")
-            .def_method[PySerialTask.__call__]("__call__")
-        )
+        # strata.def_function[PyTask]("PyTask")
+        # _ = (
+        #     strata.add_type[_PyTask]("_PyTask")
+        #     # .def_method[PyTask.build]("build")
+        #     .def_method[_PyTask.__call__]("__call__")
+        # )
+        # _ = (
+        #     strata.add_type[PyParallelTask]("PyParallelTask")
+        #     .def_method[PyParallelTask.build]("build")
+        #     .def_method[PyParallelTask.__call__]("__call__")
+        # )
+        # _ = (
+        #     strata.add_type[PySerialTask]("PySerialTask")
+        #     .def_method[PySerialTask.build]("build")
+        #     .def_method[PySerialTask.__call__]("__call__")
+        # )
 
         return strata.finalize()
     except e:
@@ -34,143 +58,346 @@ fn PyInit_mojo_strata() -> PythonObject:
 
 trait PythonCallable:
     @staticmethod
-    def __call__(py_self: PythonObject, args: PythonObject) -> PythonObject:
+    def call_task(py_self: PythonObject, args: PythonObject) -> PythonObject:
         ...
 
 
-alias PythonTask = PythonCallable & Representable & Defaultable & Movable
+alias PythonType = Representable & Movable & Defaultable
+
+
+# fn PyTask(task: PythonObject) raises -> PythonObject:
+#     return PythonObject(alloc=_PyTask(task))
+
+
+struct Graph(PythonCallable, PythonType):
+    var elems: TaskGroup
+
+    fn __init__(out self):
+        self.elems = TaskGroup()
+
+    fn __repr__(self) -> String:
+        return String("Graph(...)")
+
+    fn _call(self, v: PythonObject) raises -> PythonObject:
+        return self.elems._call(v)
+
+    fn _capture_elems(mut self, owned elems: TaskGroup) raises:
+        self.elems = elems^
+
+    @staticmethod
+    fn _get_self(s: PythonObject) -> UnsafePointer[Self]:
+        return s.unchecked_downcast_value_ptr[Self]()
+
+    @staticmethod
+    fn call_task(s: PythonObject, v: PythonObject) raises -> PythonObject:
+        self = Self._get_self(s)
+        return self[]._call(v)
+
+    @staticmethod
+    fn capture_elems(s: PythonObject, elems: PythonObject) raises:
+        self = Self._get_self(s)
+        e = elems.downcast_value_ptr[TaskGroup]()
+        self[]._capture_elems(e[])
+
+
+struct TaskGroup(Copyable, PythonType):
+    alias undefined = TaskGroup(-1)
+    alias Serial = TaskGroup(0)
+    alias Parallel = TaskGroup(1)
+
+    var mode: Int
+    var objects: List[PythonObject]
+
+    fn __init__(out self):
+        self.mode = -1
+        self.objects = []
+
+    fn __repr__(self) -> String:
+        objs = "[" + String(", ").join(self.objects) + "]"
+        mode = (
+            "undefined" if self.mode
+            == Self.undefined.mode else "Serial" if self.mode
+            == Self.Serial.mode else "Parallel"
+        )
+        return String("TaskGroup(mode:", mode, ", objects:", objs, ")")
+
+    fn __init__(out self, mode: Int):
+        self.mode = mode
+        self.objects = []
+
+    fn add(mut self, t: PythonObject, mode: Int) raises:
+        if self.mode == Self.undefined.mode:
+            self.mode = mode
+
+        if self.mode == mode:
+            self.objects.append(t)
+            return
+
+        new_group = TaskGroup(mode=mode)
+        new_group.objects.append(PythonObject(alloc=self))
+        new_group.objects.append(t)
+        self = new_group
+
+    fn _call(self, msg: PythonObject) raises -> PythonObject:
+        if len(self.objects) == 0:
+            return msg
+
+        if self.mode == Self.undefined.mode:
+            raise "Group mode not set up"
+
+        print(
+            "in mode:",
+            "undefined" if self.mode
+            == Self.undefined.mode else "Serial" if self.mode
+            == Self.Serial.mode else "Parallel",
+        )
+
+        if self.mode == Self.Serial.mode:
+            iv = msg
+            for i in self.objects:
+                print("Calling elem:", i)
+                possible_group = i._try_downcast_value[TaskGroup]()
+                if possible_group:
+                    iv = possible_group.value()[]._call(iv)
+                else:
+                    iv = i.__call__(iv)
+            print("Done!..")
+            return Python.tuple(iv)
+
+        # var o = Python.tuple()
+        var values = List[PythonObject](
+            length=len(self.objects), fill=PythonObject()
+        )
+        # message = UnsafePointer(to=msg)
+
+        async fn run_task(
+            callable: UnsafePointer[PythonObject],
+            value: UnsafePointer[PythonObject],
+        ):
+            print("with input:", value[])
+            try:
+                callable[].__call__(value[])
+            except:
+                print("Task Failed!...")
+
+        # tg = TG()
+        # for ref i in self.objects:
+        #     callable = Pointer(to=i)
+        #     tg.create_task(print_some(callable, message))
+
+        async fn run_groups(
+            groups: UnsafePointer[List[PythonObject]],
+            message: UnsafePointer[PythonObject],
+        ):
+            tg = TG()
+            for tsk in groups[]:
+                t = UnsafePointer(to=tsk)
+                tg.create_task(run_task(t, message))
+
+            await tg
+
+        _run(run_groups(UnsafePointer(to=self.objects), UnsafePointer(to=msg)))
+
+        # @parameter
+        # fn run_task(i: Int):
+        #     print("Running task:", i)
+        #     task = self.objects[i]
+        #     print("Calling elem:", task)
+        #     # possible_group = task._try_downcast_value[TaskGroup]()
+        #     # if possible_group:
+        #     #     values[i] = possible_group.value()[].call(v)
+        #     # else:
+        #     try:
+        #         values[i] = task.__call__(v)
+        #     except:
+        #         try:
+        #             task.call(v)
+        #         except:
+        #             print("Failed Call!..")
+        #             return
+        #     print("Success Call!..")
+
+        # parallelize[run_task](len(self.objects))
+        print("Done!..")
+        tp = Python.tuple()
+        for res in values:
+            tp += Python.tuple(res)
+        return tp
+
+    @staticmethod
+    fn _get_self(s: PythonObject) -> UnsafePointer[Self]:
+        return s.unchecked_downcast_value_ptr[Self]()
+
+    @staticmethod
+    fn from_single_task(s: PythonObject, t: PythonObject) raises:
+        self = Self._get_self(s)
+        self[].objects.append(t)
+
+    @staticmethod
+    fn add_task(s: PythonObject, t: PythonObject, _mode: PythonObject) raises:
+        self = Self._get_self(s)
+        self[].add(t, Int(_mode))
+
+    @staticmethod
+    fn call(s: PythonObject, v: PythonObject) raises -> PythonObject:
+        self = Self._get_self(s)
+        return self[]._call(v)
 
 
 # Question: It is possible to initialize with something else than default?
-struct PyTask(PythonTask):
-    var inner: PythonObject
+# struct _PyTask(ConvertibleFromPython, PythonCallable, PythonType):
+#     var inner: PythonObject
+#     var msg: Optional[PythonObject]
 
-    fn __init__(out self):
-        self.inner = PythonObject()
+#     fn __init__(out self):
+#         self.inner = PythonObject()
+#         self.msg = None
 
-    fn __repr__(self) -> String:
-        return String("PyTask( inner=", self.inner, " )")
+#     # ConvertibleFromPython Trait
+#     fn __init__(out self, task: PythonObject) raises:
+#         self.inner = task
+#         self.msg = None
 
-    @staticmethod
-    fn _get_self_ptr(py_self: PythonObject) raises -> UnsafePointer[Self]:
-        return py_self.downcast_value_ptr[Self]()
+#     fn __moveinit__(out self, owned other: Self):
+#         self.inner = other.inner^
+#         self.msg = other.msg^
 
-    @staticmethod
-    fn build(py_self: PythonObject, task: PythonObject) raises:
-        self = Self._get_self_ptr(py_self)
-        self[].inner = task
+#     fn __copyinit__(out self, other: Self):
+#         self.inner = other.inner
+#         self.msg = other.msg
 
-    @staticmethod
-    def __call__(py_self: PythonObject, message: PythonObject) -> PythonObject:
-        self = Self._get_self_ptr(py_self)
-        return self[].inner(message)
+#     # PythonConvertible Trait
+#     fn to_python_object(owned self) raises -> PythonObject:
+#         return PythonObject(alloc=self^)
 
+#     # PythonType Trait
+#     fn __repr__(self) -> String:
+#         return String("PyTask(...)")
 
-struct PyParallelTask(PythonTask):
-    var task_1: PythonObject
-    var task_2: PythonObject
+#     @staticmethod
+#     fn _get_self_ptr(py_self: PythonObject) -> UnsafePointer[Self]:
+#         return py_self.unchecked_downcast_value_ptr[Self]()
 
-    fn __init__(out self):
-        self.task_1 = PythonObject()
-        self.task_2 = PythonObject()
+#     # @staticmethod
+#     # fn build(py_self: PythonObject, task: PythonObject) raises:
+#     #     self = Self._get_self_ptr(py_self)
+#     #     self[] = Self(task)
+#     #     self[].inner = task
 
-    fn __repr__(self) -> String:
-        return String(
-            "PyParallelTask( task_1=",
-            self.task_1,
-            ", task_2=",
-            self.task_2,
-            " )",
-        )
+#     # fn call(self, message: PythonObject) raises -> PythonObject:
+#     #     return self.inner(message)
 
-    @staticmethod
-    fn _get_self_ptr(py_self: PythonObject) raises -> UnsafePointer[Self]:
-        return py_self.downcast_value_ptr[Self]()
-
-    @staticmethod
-    fn build(
-        py_self: PythonObject, task_1: PythonObject, task_2: PythonObject
-    ) raises:
-        self = Self._get_self_ptr(py_self)
-        self[].task_1 = task_1
-        self[].task_2 = task_2
-
-    @staticmethod
-    def __call__(py_self: PythonObject, message: PythonObject) -> PythonObject:
-        self = Self._get_self_ptr(py_self)
-
-        # t1, m1 = self[].task_1.copy(), message.copy()
-        # t2, m2 = self[].task_2.copy(), message.copy()
-
-        data = [Python.int(1), Python.int(1)]
-
-        @parameter
-        fn apply[i: Int]():
-            try:
-
-                @parameter
-                if i == 0:
-                    data[i] = self[].task_1(message)
-                else:
-                    data[i] = self[].task_2(message)
-            except e:
-                print(e)
-
-        apply[0]()
-        apply[1]()
-        # tg = TaskGroup()
-        # tg.create_task(apply[0]())
-        # tg.create_task(apply[1]())
-
-        # @parameter
-        # async fn run():
-        #     await tg
-
-        # _run(run())
-
-        # @parameter
-        # fn append_msg(i: Int) raises:
-        #     if i == 0:
-        #         r1 = t1(m1)
-        #     else:
-        #         r2 = t2(m2)
-
-        # sync_parallelize[append_msg](2)
-        return Python.tuple(data[0], data[1])
+#     @staticmethod
+#     def __call__(py_self: PythonObject, message: PythonObject) -> PythonObject:
+#         self = Self._get_self_ptr(py_self)
+#         return self[].inner(message.copy())
 
 
-struct PySerialTask(PythonTask):
-    var task_1: PythonObject
-    var task_2: PythonObject
+# struct PyParallelTask(PythonTask):
+#     var task_1: PythonObject
+#     var task_2: PythonObject
 
-    fn __init__(out self):
-        self.task_1 = PythonObject()
-        self.task_2 = PythonObject()
+#     fn __init__(out self):
+#         self.task_1 = PythonObject()
+#         self.task_2 = PythonObject()
 
-    fn __repr__(self) -> String:
-        return String(
-            "PySerialTask( task_1=",
-            self.task_1,
-            ", task_2=",
-            self.task_2,
-            " )",
-        )
+#     fn __repr__(self) -> String:
+#         return String(
+#             "PyParallelTask( task_1=",
+#             self.task_1,
+#             ", task_2=",
+#             self.task_2,
+#             " )",
+#         )
 
-    @staticmethod
-    fn _get_self_ptr(py_self: PythonObject) raises -> UnsafePointer[Self]:
-        return py_self.downcast_value_ptr[Self]()
+#     @staticmethod
+#     fn _get_self_ptr(py_self: PythonObject) raises -> UnsafePointer[Self]:
+#         return py_self.downcast_value_ptr[Self]()
 
-    @staticmethod
-    fn build(
-        py_self: PythonObject, task_1: PythonObject, task_2: PythonObject
-    ) raises:
-        self = Self._get_self_ptr(py_self)
-        self[].task_1 = task_1
-        self[].task_2 = task_2
+#     @staticmethod
+#     fn build(
+#         py_self: PythonObject, task_1: PythonObject, task_2: PythonObject
+#     ) raises:
+#         self = Self._get_self_ptr(py_self)
+#         self[].task_1 = task_1
+#         self[].task_2 = task_2
 
-    @staticmethod
-    def __call__(py_self: PythonObject, message: PythonObject) -> PythonObject:
-        self = Self._get_self_ptr(py_self)
-        first = self[].task_1(message)
-        second = self[].task_2(first)
-        return second
+#     @staticmethod
+#     def __call__(py_self: PythonObject, message: PythonObject) -> PythonObject:
+#         self = Self._get_self_ptr(py_self)
+
+#         # t1, m1 = self[].task_1.copy(), message.copy()
+#         # t2, m2 = self[].task_2.copy(), message.copy()
+
+#         data = [Python.int(1), Python.int(1)]
+
+#         @parameter
+#         fn apply[i: Int]():
+#             try:
+
+#                 @parameter
+#                 if i == 0:
+#                     data[i] = self[].task_1(message)
+#                 else:
+#                     data[i] = self[].task_2(message)
+#             except e:
+#                 print(e)
+
+#         apply[0]()
+#         apply[1]()
+#         # tg = TaskGroup()
+#         # tg.create_task(apply[0]())
+#         # tg.create_task(apply[1]())
+
+#         # @parameter
+#         # async fn run():
+#         #     await tg
+
+#         # _run(run())
+
+#         # @parameter
+#         # fn append_msg(i: Int) raises:
+#         #     if i == 0:
+#         #         r1 = t1(m1)
+#         #     else:
+#         #         r2 = t2(m2)
+
+#         # sync_parallelize[append_msg](2)
+#         return Python.tuple(data[0], data[1])
+
+
+# struct PySerialTask(PythonTask):
+#     var task_1: PythonObject
+#     var task_2: PythonObject
+
+#     fn __init__(out self):
+#         self.task_1 = PythonObject()
+#         self.task_2 = PythonObject()
+
+#     fn __repr__(self) -> String:
+#         return String(
+#             "PySerialTask( task_1=",
+#             self.task_1,
+#             ", task_2=",
+#             self.task_2,
+#             " )",
+#         )
+
+#     @staticmethod
+#     fn _get_self_ptr(py_self: PythonObject) raises -> UnsafePointer[Self]:
+#         return py_self.downcast_value_ptr[Self]()
+
+#     @staticmethod
+#     fn build(
+#         py_self: PythonObject, task_1: PythonObject, task_2: PythonObject
+#     ) raises:
+#         self = Self._get_self_ptr(py_self)
+#         self[].task_1 = task_1
+#         self[].task_2 = task_2
+
+#     @staticmethod
+#     def __call__(py_self: PythonObject, message: PythonObject) -> PythonObject:
+#         self = Self._get_self_ptr(py_self)
+#         first = self[].task_1(message)
+#         second = self[].task_2(first)
+#         return second

@@ -1,21 +1,26 @@
-[project]
-name = "strata"
-version = "0.0.1"
+[workspace]
 description = "Series/Parallel Runner on top of mojo asyncrt"
 authors = ["Samuel Ibarra <ing.samuelibarra@gmail.com>"]
 platforms = ["linux-64", "osx-arm64"]
 
 channels = [
     "https://conda.modular.com/max-nightly",
-    "https://conda.modular.com/max",
-    "https://repo.prefix.dev/modular-community",
+    # "https://conda.modular.com/max",
+    # "https://repo.prefix.dev/modular-community",
     "https://repo.prefix.dev/conda-forge",
     "https://prefix.dev/pixi-build-backends",
 ]
 preview = ["pixi-build"]
 
+[package]
+name = "strata"
+version = "0.0.1"
+
 [dependencies]
-max = "*"
+strata = { path = "." }
+
+[package.run-dependencies]
+modular = "*"
 
 [package.build]
 backend = { name = "pixi-build-rattler-build", version = "0.1.*" }

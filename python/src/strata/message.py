@@ -65,8 +65,7 @@ class Task[I, O](Combinable, HasTask[I, O]):
     inner: MojoTask[I, O]
 
     def __init__(self, task: HasTask[I, O]) -> None:
-        self.inner = cast("MojoTask[I, O]", mojo_strata.PyTask())  # pyright: ignore[reportUnknownMemberType]
-        self.inner.build(task)
+        self.inner = cast("MojoTask[I, O]", mojo_strata.PyTask(task))  # pyright: ignore[reportUnknownMemberType]
 
     @override
     def __call__(self, message: I) -> O:
