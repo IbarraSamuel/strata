@@ -3,6 +3,7 @@
 context:
   name: "strata"
   version: "0.0.1"
+  max_version: "=25.5"
 
 package:
   name: ${{ name }}
@@ -19,7 +20,7 @@ build:
 
 requirements:
   host:
-    - max=25.4
+    - max ${{ max_version }}
   run:
     - ${{ pin_compatible('max') }}
 
