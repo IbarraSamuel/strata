@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Protocol, cast, override
 
 from strata import (
-    mojo_strata,  # pyright: ignore[reportUnknownVariableType, reportAttributeAccessIssue]
+    mojo_strata_old as mojo_strata,  # pyright: ignore[reportUnknownVariableType, reportAttributeAccessIssue]
 )
 
 
