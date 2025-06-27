@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Protocol, cast, override
 
 from strata import (
-    mojo_strata,  # pyright: ignore[reportUnknownVariableType, reportAttributeAccessIssue]
+    old_mojo_strata as mojo_strata,  # pyright: ignore[reportUnknownVariableType, reportAttributeAccessIssue]
 )
 
 
@@ -65,7 +65,8 @@ class Task[I, O](Combinable, HasTask[I, O]):
     inner: MojoTask[I, O]
 
     def __init__(self, task: HasTask[I, O]) -> None:
-        self.inner = cast("MojoTask[I, O]", mojo_strata.PyTask(task))  # pyright: ignore[reportUnknownMemberType]
+        self.inner = cast("MojoTask[I, O]", mojo_strata.PyTask())  # pyright: ignore[reportUnknownMemberType]
+        self.inner.build(task)
 
     @override
     def __call__(self, message: I) -> O:
