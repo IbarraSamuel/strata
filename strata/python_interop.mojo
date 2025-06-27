@@ -1,7 +1,7 @@
 from os import abort
-from memory import UnsafePointer
+from memory import OwnedPointer
 from python import PythonObject, Python, ConvertibleFromPython
-from python.bindings import PythonModuleBuilder
+from python.bindings import PythonModuleBuilder, GILAcquired
 
 # from algorithm import parallelize
 from runtime.asyncrt import TaskGroup as TG, _run
@@ -79,7 +79,9 @@ struct Graph(PythonCallable, PythonType):
         return String("Graph(...)")
 
     fn _call(self, v: PythonObject) raises -> PythonObject:
-        return self.elems._call(v)
+        var cpython = Python().cpython()
+        with GILAcquired(cpython):
+            return self.elems._call(v)
 
     fn _capture_elems(mut self, owned elems: TaskGroup) raises:
         self.elems = elems^
@@ -154,70 +156,45 @@ struct TaskGroup(Copyable, PythonType):
 
         if self.mode == Self.Serial.mode:
             iv = msg
-            for i in self.objects:
-                print("Calling elem:", i)
-                possible_group = i._try_downcast_value[TaskGroup]()
-                if possible_group:
-                    iv = possible_group.value()[]._call(iv)
-                else:
-                    iv = i.__call__(iv)
-            print("Done!..")
-            return Python.tuple(iv)
+            for obj in self.objects:
+                pg = obj._try_downcast_value[TaskGroup]()
+                if pg:
+                    return pg.value()[]._call(iv)
 
-        # var o = Python.tuple()
+                iv = pg.__call__(iv)
+            print("Done!..")
+            return iv  # Before, here we had a tuple
+
         var values = List[PythonObject](
             length=len(self.objects), fill=PythonObject()
         )
-        # message = UnsafePointer(to=msg)
 
-        async fn run_task(
-            callable: UnsafePointer[PythonObject],
-            value: UnsafePointer[PythonObject],
-        ):
-            print("with input:", value[])
+        @parameter
+        @always_inline
+        fn run_task(i: Int):
+            tsk = self.objects.unsafe_get(i)
+            grp = tsk._try_downcast_value[TaskGroup]()
+            if grp:
+                values[i] = grp.value()[]._call(msg)
+                return
+
             try:
-                callable[].__call__(value[])
+                values[i] = tsk.__call__(msg)
             except:
-                print("Task Failed!...")
+                print("Task Failed!")
+                values[i] = PyhtonObject(None)
 
-        # tg = TG()
-        # for ref i in self.objects:
-        #     callable = Pointer(to=i)
-        #     tg.create_task(print_some(callable, message))
+        @parameter
+        @always_inline
+        async fn run_async(i: Int):
+            run_task(i)
 
-        async fn run_groups(
-            groups: UnsafePointer[List[PythonObject]],
-            message: UnsafePointer[PythonObject],
-        ):
-            tg = TG()
-            for tsk in groups[]:
-                t = UnsafePointer(to=tsk)
-                tg.create_task(run_task(t, message))
+        tg = TG()
+        for idx in range(len(self.objects)):
+            tg.create_task(run_async(idx))
 
-            await tg
+        tg.wait()
 
-        _run(run_groups(UnsafePointer(to=self.objects), UnsafePointer(to=msg)))
-
-        # @parameter
-        # fn run_task(i: Int):
-        #     print("Running task:", i)
-        #     task = self.objects[i]
-        #     print("Calling elem:", task)
-        #     # possible_group = task._try_downcast_value[TaskGroup]()
-        #     # if possible_group:
-        #     #     values[i] = possible_group.value()[].call(v)
-        #     # else:
-        #     try:
-        #         values[i] = task.__call__(v)
-        #     except:
-        #         try:
-        #             task.call(v)
-        #         except:
-        #             print("Failed Call!..")
-        #             return
-        #     print("Success Call!..")
-
-        # parallelize[run_task](len(self.objects))
         print("Done!..")
         tp = Python.tuple()
         for res in values:

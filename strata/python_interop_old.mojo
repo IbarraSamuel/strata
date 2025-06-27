@@ -2,7 +2,8 @@ from runtime.asyncrt import TaskGroup, _run
 from os import abort
 from memory import UnsafePointer
 from python import PythonObject, Python
-from python.bindings import PythonModuleBuilder
+from python.bindings import PythonModuleBuilder, GILAcquired
+from algorithm import sync_parallelize
 
 
 @export
@@ -97,27 +98,23 @@ struct PyParallelTask(PythonTask):
 
     @staticmethod
     def __call__(py_self: PythonObject, message: PythonObject) -> PythonObject:
-        self = Self._get_self_ptr(py_self)
+        # self = Self._get_self_ptr(py_self)
 
-        # t1, m1 = self[].task_1.copy(), message.copy()
-        # t2, m2 = self[].task_2.copy(), message.copy()
+        cpython = Python().cpython()
+        with GILAcquired(cpython):
+            self = Self._get_self_ptr(py_self)
+            data = [Python.int(1), Python.int(1)]
 
-        data = [Python.int(1), Python.int(1)]
-
-        @parameter
-        fn apply[i: Int]():
-            try:
-
-                @parameter
+            @parameter
+            fn apply(i: Int) raises:
                 if i == 0:
                     data[i] = self[].task_1(message)
                 else:
                     data[i] = self[].task_2(message)
-            except e:
-                print(e)
 
-        apply[0]()
-        apply[1]()
+            sync_parallelize[apply](2)
+            return Python.tuple(data[0], data[1])
+
         # tg = TaskGroup()
         # tg.create_task(apply[0]())
         # tg.create_task(apply[1]())
@@ -136,7 +133,7 @@ struct PyParallelTask(PythonTask):
         #         r2 = t2(m2)
 
         # sync_parallelize[append_msg](2)
-        return Python.tuple(data[0], data[1])
+        # return Python.tuple(0, 0)
 
 
 struct PySerialTask(PythonTask):
