@@ -1081,9 +1081,8 @@ packages:
   - max >=25.5.0.dev2025062905,<26.0a0
   license: Apache-2.0
   input:
-    hash: 66429b2351cb0beb6b36c896bb63aa392d8420c3ed36a6b677220a923a671ed3
+    hash: e296e9bef6f71e42cdc0e638f500b86208d7839455e832a1be05b82745dfdedc
     globs:
-    - pixi.toml
     - recipe.yaml
 - conda: .
   name: strata
@@ -1094,9 +1093,8 @@ packages:
   - max >=25.5.0.dev2025062905,<26.0a0
   license: Apache-2.0
   input:
-    hash: 66429b2351cb0beb6b36c896bb63aa392d8420c3ed36a6b677220a923a671ed3
+    hash: e296e9bef6f71e42cdc0e638f500b86208d7839455e832a1be05b82745dfdedc
     globs:
-    - pixi.toml
     - recipe.yaml
 - conda: https://repo.prefix.dev/conda-forge/linux-64/tk-8.6.13-noxft_hd72426e_102.conda
   sha256: a84ff687119e6d8752346d1d408d5cf360dee0badd487a472aa8ddedfdc219e1
