@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Series/Parallel Runner on top of mojo asyncrt"
 readme = "README.md"
 authors = [{ name = "Samuel Ibarra", email = "Samuel.E.Ibarra@dell.com" }]
-requires-python = ">=3.13.3"
+requires-python = ">=3.13.5"
 dependencies = []
 
 [build-system]

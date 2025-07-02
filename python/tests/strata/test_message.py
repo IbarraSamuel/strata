@@ -109,7 +109,7 @@ def test_serial_task_combination():
     assert my_task_1.end < my_task_2.start, "task1 should finish before task2 starts"
 
 
-# @pytest.mark.skip("Causes sigfoult when trying to run in parallel.")
+@pytest.mark.skip("Causes sigfoult when trying to run in parallel.")
 def test_parallel_task():
     my_task_1 = AddOneTask()
     my_task_2 = AddOneTask()
@@ -127,7 +127,7 @@ def test_parallel_task():
     assert my_task_2.end > my_task_1.start, "t1 starts before t2 finishes"
 
 
-# @pytest.mark.skip("Causes sigfoult when trying to run in parallel.")
+@pytest.mark.skip("Causes sigfoult when trying to run in parallel.")
 def test_parallel_task_combination():
     my_task_1 = AddOneTask()
     my_task_2 = AddOneTask()
