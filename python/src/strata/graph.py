@@ -1,11 +1,9 @@
 from __future__ import annotations
 
 from enum import IntEnum
-from typing import Any, Literal, Protocol, cast, overload
+from typing import Protocol, cast
 
-from strata import (
-    mojo_strata,  # pyright: ignore[reportUnknownVariableType, reportAttributeAccessIssue]
-)
+from strata import mojo_strata
 
 
 class GroupMode(IntEnum):
@@ -14,118 +12,85 @@ class GroupMode(IntEnum):
     PARALLEL = 1
 
 
-class MojoGraph[I, O](Protocol):
-    def __init__(self) -> None: ...
-
-    def call_task(self, msg: I, /) -> O: ...
-
-    def capture_elems(self, task: MojoTaskGroup[I, O], /) -> None: ...
-
-
-def flatten_tuple[A, B, C](t: tuple[A, tuple[B, C]]) -> tuple[A, B, C]:
-    return (t[0], t[1][0], t[1][1])
-
-
-class MojoTaskGroup[I, O](Protocol):
-    def from_single_task(self, task: Task[I, O]) -> None: ...
-    @overload
-    def add_task[*Os, T](
-        self: MojoTaskGroup[I, tuple[*Os]],
-        task: Task[I, T] | MojoTaskGroup[I, T],
-        mode: Literal[GroupMode.PARALLEL],
-        /,
-    ) -> None: ...
-    @overload
-    def add_task[T](
-        self, task: Task[O, T] | MojoTaskGroup[O, T], mode: Literal[GroupMode.SERIAL], /
-    ) -> None: ...
-    def add_task[T](
-        self,
-        task: Task[Any, T] | MojoTaskGroup[Any, T],  # pyright: ignore[reportExplicitAny]
-        mode: Literal[GroupMode.SERIAL, GroupMode.PARALLEL],
-        /,
-    ) -> None: ...
-
-
 class Task[I, O](Protocol):
     def __call__(self, msg: I, /) -> O: ...
 
 
 class SerTaskGroup[I, O]:
-    inner: MojoTaskGroup[I, O]
+    inner: mojo_strata.TaskGroup[I, O]
 
-    def __init__(self, task: MojoTaskGroup[I, O]) -> None:
+    def __init__(self, task: mojo_strata.TaskGroup[I, O]) -> None:
         self.inner = task
 
     def __rshift__[T](
-        self, other: Task[O, T] | ParTaskGroup[O, T] | MojoTaskGroup[O, T]
+        self, other: Task[O, T] | ParTaskGroup[O, T] | mojo_strata.TaskGroup[O, T]
     ) -> SerTaskGroup[I, T]:
         if isinstance(other, ParTaskGroup):
             other = other.inner
-        self.inner.add_task(other, GroupMode.SERIAL)
+        self.inner.add_task(other, GroupMode.SERIAL.value)
         return cast("SerTaskGroup[I, T]", self)
 
     def __add__[*Os, T](
         self: SerTaskGroup[I, tuple[*Os]], other: Task[O, T]
     ) -> ParTaskGroup[I, tuple[*Os, T]]:
-        self.inner.add_task(other, GroupMode.PARALLEL)
+        self.inner.add_task(other, GroupMode.PARALLEL.value)
         return ParTaskGroup[I, tuple[*Os, T]](
-            cast("MojoTaskGroup[I, tuple[*Os, T]]", self.inner)  # ty: ignore[redundant-cast]
+            cast("mojo_strata.TaskGroup[I, tuple[*Os, T]]", self.inner)
         )
 
 
 class ParTaskGroup[I, O]:
-    inner: MojoTaskGroup[I, O]
+    inner: mojo_strata.TaskGroup[I, O]
 
-    def __init__(self, task: MojoTaskGroup[I, O]) -> None:
+    def __init__(self, task: mojo_strata.TaskGroup[I, O]) -> None:
         self.inner = task
 
     def __rshift__[T](self, other: Task[O, T]) -> SerTaskGroup[I, T]:
-        self.inner.add_task(other, GroupMode.SERIAL)
-        return SerTaskGroup[I, T](cast("MojoTaskGroup[I, T]", self.inner))
+        self.inner.add_task(other, GroupMode.SERIAL.value)
+        return SerTaskGroup[I, T](cast("mojo_strata.TaskGroup[I, T]", self.inner))
 
     def __add__[*Os, T](
         self: ParTaskGroup[I, tuple[*Os]],
-        other: Task[I, T] | SerTaskGroup[I, T] | MojoTaskGroup[I, T],
+        other: Task[I, T] | SerTaskGroup[I, T] | mojo_strata.TaskGroup[I, T],
     ) -> ParTaskGroup[I, tuple[*Os, T]]:
         if isinstance(other, SerTaskGroup):
             other = other.inner
-        self.inner.add_task(other, GroupMode.PARALLEL)  # ty: ignore[no-matching-overload]
+        self.inner.add_task(other, GroupMode.PARALLEL.value)  # ty: ignore[no-matching-overload]
         return cast("ParTaskGroup[I, tuple[*Os, T]]", self)
 
 
 class TaskGroup[I, O]:
-    inner: MojoTaskGroup[I, O]
+    inner: mojo_strata.TaskGroup[I, O]
 
     def __init__(self, task: Task[I, O]) -> None:
-        self.inner = cast("MojoTaskGroup[I, O]", mojo_strata.TaskGroup())  # pyright: ignore[reportUnknownMemberType]
+        self.inner = cast("mojo_strata.TaskGroup[I, O]", mojo_strata.TaskGroup())
         self.inner.from_single_task(task)
 
     def __rshift__[T](
-        self, other: Task[O, T] | ParTaskGroup[O, T] | MojoTaskGroup[O, T]
+        self, other: Task[O, T] | ParTaskGroup[O, T] | mojo_strata.TaskGroup[O, T]
     ) -> SerTaskGroup[I, T]:
         if isinstance(other, ParTaskGroup):
             other = other.inner
-        self.inner.add_task(other, GroupMode.SERIAL)
-        return SerTaskGroup[I, T](cast("MojoTaskGroup[I, T]", self.inner))
+        self.inner.add_task(other, GroupMode.SERIAL.value)
+        return SerTaskGroup[I, T](cast("mojo_strata.TaskGroup[I, T]", self.inner))
 
     def __add__[*Os, T](
         self: TaskGroup[I, tuple[*Os]],
-        other: Task[I, T] | SerTaskGroup[I, T] | MojoTaskGroup[I, T],
+        other: Task[I, T] | SerTaskGroup[I, T] | mojo_strata.TaskGroup[I, T],
     ) -> ParTaskGroup[I, tuple[*Os, T]]:
         if isinstance(other, SerTaskGroup):
             other = other.inner
-        self.inner.add_task(other, GroupMode.PARALLEL)  # ty: ignore[no-matching-overload]
+        self.inner.add_task(other, GroupMode.PARALLEL.value)  # ty: ignore[no-matching-overload]
         return ParTaskGroup[I, tuple[*Os, T]](
-            cast("MojoTaskGroup[I, tuple[*Os, T]]", self.inner)  # ty: ignore[redundant-cast]
+            cast("mojo_strata.TaskGroup[I, tuple[*Os, T]]", self.inner)
         )
 
 
 class Graph[I = object, O = object]:
-    inner: MojoGraph[I, O]
+    inner: mojo_strata.Graph[I, O]
 
     def __init__(self) -> None:
-        self.inner = cast("MojoGraph[I, O]", mojo_strata.Graph())  # pyright: ignore[reportUnknownMemberType]
+        self.inner = cast("mojo_strata.Graph[I, O]", mojo_strata.Graph())
 
     @staticmethod
     def __lshift__[In, Out](
@@ -221,15 +186,19 @@ class SumTuple(Combinable):
 
 
 str_to_int = StrToIntTask()
-my_task_1 = AddOneTask()
-my_task_2 = AddOneTask()
-my_task_3 = AddOneTask()
+add_one_task_1 = AddOneTask()
+add_one_task_2 = AddOneTask()
+add_one_task_3 = AddOneTask()
 sum_tuple = SumTuple()
 int_to_str = IntToStrTask()
 
-serial_task = Graph() << (
-    str_to_int >> my_task_1 + my_task_2 + my_task_3 >> sum_tuple >> int_to_str
+tasks = (
+    str_to_int
+    >> (add_one_task_1 + add_one_task_2 + add_one_task_3)
+    >> sum_tuple
+    >> int_to_str
 )
 
-res = serial_task("4")
+graph = Graph() << tasks
+res = graph("4")
 print(res)
