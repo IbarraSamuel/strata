@@ -18,7 +18,7 @@ test = ["pytest>=8.3.2", "pytest-xdist>=3.6.1", "pytest-cov>=5.0.0"]
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 minversion = "8.0"
-# addopts = "-ra -q"
+addopts = "-ra -q"
 testpaths = ["tests"]
 
 [tool.coverage.run]
