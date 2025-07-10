@@ -3,7 +3,7 @@ from __future__ import annotations
 from enum import IntEnum
 from typing import Protocol, cast
 
-from strata import mojo_strata
+from . import mojo_strata
 
 
 class GroupMode(IntEnum):
@@ -192,13 +192,12 @@ add_one_task_3 = AddOneTask()
 sum_tuple = SumTuple()
 int_to_str = IntToStrTask()
 
-tasks = (
+graph = Graph() << (
     str_to_int
     >> (add_one_task_1 + add_one_task_2 + add_one_task_3)
     >> sum_tuple
     >> int_to_str
 )
 
-graph = Graph() << tasks
 res = graph("4")
 print(res)

@@ -37,16 +37,10 @@ fn PyInit_mojo_strata() -> PythonObject:
         )
 
 
-trait PythonCallable:
-    @staticmethod
-    def call_task(py_self: PythonObject, args: PythonObject) -> PythonObject:
-        ...
+alias PythonType = Representable
 
 
-alias PythonType = Representable & Movable & Defaultable
-
-
-struct Graph(PythonCallable, PythonType):
+struct Graph(PythonType):
     var elems: TaskGroup
 
     fn __init__(out self):
@@ -62,22 +56,18 @@ struct Graph(PythonCallable, PythonType):
         self.elems = elems^
 
     @staticmethod
-    fn _get_self(s: PythonObject) -> UnsafePointer[Self]:
-        return s.unchecked_downcast_value_ptr[Self]()
+    fn call_task(
+        self_ptr: UnsafePointer[Self], v: PythonObject
+    ) raises -> PythonObject:
+        return self_ptr[]._call(v)
 
     @staticmethod
-    fn call_task(s: PythonObject, v: PythonObject) raises -> PythonObject:
-        self = Self._get_self(s)
-        return self[]._call(v)
-
-    @staticmethod
-    fn capture_elems(s: PythonObject, elems: PythonObject) raises:
-        self = Self._get_self(s)
+    fn capture_elems(self_ptr: UnsafePointer[Self], elems: PythonObject) raises:
         e = elems.downcast_value_ptr[TaskGroup]()
-        self[]._capture_elems(e[])
+        self_ptr[]._capture_elems(e[])
 
 
-struct TaskGroup(Copyable, PythonType):
+struct TaskGroup(Copyable, Movable, PythonType):
     alias undefined = TaskGroup(-1)
     alias Serial = TaskGroup(0)
     alias Parallel = TaskGroup(1)
@@ -113,7 +103,7 @@ struct TaskGroup(Copyable, PythonType):
         new_group = TaskGroup(mode=mode)
         new_group.objects.append(PythonObject(alloc=self))
         new_group.objects.append(t)
-        self = new_group
+        self = new_group^
 
     fn _call(self, msg: PythonObject) raises -> PythonObject:
         if len(self.objects) == 0:
@@ -177,20 +167,17 @@ struct TaskGroup(Copyable, PythonType):
         return tp
 
     @staticmethod
-    fn _get_self(s: PythonObject) -> UnsafePointer[Self]:
-        return s.unchecked_downcast_value_ptr[Self]()
+    fn from_single_task(self_ptr: UnsafePointer[Self], t: PythonObject) raises:
+        self_ptr[].objects.append(t)
 
     @staticmethod
-    fn from_single_task(s: PythonObject, t: PythonObject) raises:
-        self = Self._get_self(s)
-        self[].objects.append(t)
+    fn add_task(
+        self_ptr: UnsafePointer[Self], t: PythonObject, _mode: PythonObject
+    ) raises:
+        self_ptr[].add(t, Int(_mode))
 
     @staticmethod
-    fn add_task(s: PythonObject, t: PythonObject, _mode: PythonObject) raises:
-        self = Self._get_self(s)
-        self[].add(t, Int(_mode))
-
-    @staticmethod
-    fn call(s: PythonObject, v: PythonObject) raises -> PythonObject:
-        self = Self._get_self(s)
-        return self[]._call(v)
+    fn call(
+        self_ptr: UnsafePointer[Self], v: PythonObject
+    ) raises -> PythonObject:
+        return self_ptr[]._call(v)
