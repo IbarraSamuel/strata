@@ -34,15 +34,21 @@ struct Task[
 ](Callable, Movable):
     alias I = In
     alias O = Out
+    alias CallableTask = Task[T, origin, In = T.I, Out = T.O]
     var inner: Pointer[T, origin]
 
     fn __init__(out self, ref [origin]inner: T):
         self.inner = Pointer(to=inner)
 
-    fn __init__(
-        out self: Task[_Fn[In, Out], ImmutableAnyOrigin], func: fn (In) -> Out
-    ):
-        self.inner = Pointer[_Fn[In, Out], ImmutableAnyOrigin](to=_Fn(func))
+    # fn __init__[
+    #     t: Callable, o: ImmutableOrigin
+    # ](out self: Self.CallableTask[t, o], ref [o]inner: t):
+    #     self.inner = Pointer(to=inner)
+
+    # fn __init__(
+    #     out self: Task[_Fn[In, Out], ImmutableAnyOrigin], func: fn (In) -> Out
+    # ):
+    #     self.inner = Pointer[_Fn[In, Out], ImmutableAnyOrigin](to=_Fn(func))
 
     fn __call__(self, arg: Self.I) -> Self.O:
         # SAFETY: This is safe because Self.I and T.I are the same type
@@ -54,42 +60,51 @@ struct Task[
 
     fn __rshift__[
         t: Callable, o: ImmutableOrigin
-    ](owned self: Task[T, origin, Out = t.I], ref [o]other: t) -> Task[
-        SerPair[T, t, origin, o], ImmutableAnyOrigin
+    ](
+        owned self: Task[T, origin, In = T.I, Out = t.I], ref [o]other: t
+    ) -> Task[
+        SerPair[T, t, origin, o], ImmutableAnyOrigin, In = T.I, Out = t.O
     ]:
-        return {SerPair(self^, Task(other))}
+        sp = SerPair(self^, Task(other))
+        return Task[__type_of(sp), ImmutableAnyOrigin](sp)
 
-    fn __rshift__[
-        I: TaskValue, O: TaskValue
-    ](owned self: Task[T, origin, Out=I], func: fn (I) -> O) -> Task[
-        SerPair[T, _Fn[I, O], origin, ImmutableAnyOrigin], ImmutableAnyOrigin
-    ]:
-        return {SerPair(self^, Task(func))}
+    # fn __rshift__[
+    #     I: TaskValue, O: TaskValue
+    # ](owned self: Task[T, origin, Out=I], func: fn (I) -> O) -> Task[
+    #     SerPair[T, _Fn[I, O], origin, ImmutableAnyOrigin], ImmutableAnyOrigin
+    # ]:
+    #     return {SerPair(self^, _Fn(func))}
 
     fn __add__[
         t: Callable, o: ImmutableOrigin
-    ](owned self: Task[T, origin, In = t.I], ref [o]other: t) -> Task[
-        ParPair[T, t, origin, o], ImmutableAnyOrigin
+    ](
+        owned self: Task[T, origin, In = t.I, Out = T.O], ref [o]other: t
+    ) -> Task[
+        ParPair[T, t, origin, o], ImmutableAnyOrigin, In = t.I, Out = (T.O, t.O)
     ]:
-        return {ParPair(self^, Task(other))}
+        pp = ParPair(self^, Task(other))
+        return Task[__type_of(pp), ImmutableAnyOrigin](pp)
 
-    fn __add__[
-        I: TaskValue, O: TaskValue
-    ](owned self: Task[T, origin, In=I], func: fn (I) -> O) -> Task[
-        ParPair[T, _Fn[I, O], origin, ImmutableAnyOrigin], ImmutableAnyOrigin
-    ]:
-        return {ParPair(self^, Task(func))}
+    # fn __add__[
+    #     I: TaskValue, O: TaskValue
+    # ](owned self: Task[T, origin, In=I], func: fn (I) -> O) -> Task[
+    #     ParPair[T, _Fn[I, O], origin, ImmutableAnyOrigin], ImmutableAnyOrigin
+    # ]:
+    #     return {ParPair(self^, _Fn(func))}
 
 
 @fieldwise_init
 struct SerPair[
-    C1: Callable, C2: Callable, o1: ImmutableOrigin, o2: ImmutableOrigin
+    C1: Callable,
+    C2: Callable,
+    o1: ImmutableOrigin,
+    o2: ImmutableOrigin,
 ](Callable):
     alias I = C1.I
     alias O = C2.O
 
-    var task_1: Task[C1, Out = C2.I, origin=o1]
-    var task_2: Task[C2, origin=o2]
+    var task_1: Task[C1, o1, In = C1.I, Out = C2.I]
+    var task_2: Task[C2, o2, In = C2.I, Out = C2.O]
 
     fn __call__(self, arg: Self.I) -> Self.O:
         result_1 = self.task_1.inner[](arg)
@@ -106,11 +121,11 @@ struct ParPair[
     o1: ImmutableOrigin,
     o2: ImmutableOrigin,
 ](Callable):
-    alias I = C1.I
+    alias I = C2.I
     alias O = (C1.O, C2.O)
 
-    var task_1: Task[C1, In = C2.I, origin=o1]
-    var task_2: Task[C2, origin=o2]
+    var task_1: Task[C1, o1, In = C2.I, Out = C1.O]
+    var task_2: Task[C2, o2, In = C2.I, Out = C2.O]
 
     fn __call__(self, arg: Self.I) -> Self.O:
         var res_1 = self.task_1.O()
@@ -119,11 +134,11 @@ struct ParPair[
         @parameter
         fn run_task(idx: Int):
             if idx == 0:
-                res_1 = self.task_1.inner[](arg)
+                inp_1 = rebind[C1.I](arg)
+                res_1 = self.task_1.inner[](inp_1)
             else:
                 # Safety: You cannot instanciate this struct if this is not true.
-                inp_2 = rebind[C2.I](arg)
-                res_2 = self.task_2.inner[](inp_2)
+                res_2 = self.task_2.inner[](arg)
 
         sync_parallelize[run_task](2)
 
@@ -131,7 +146,7 @@ struct ParPair[
 
 
 @fieldwise_init("implicit")
-struct _Fn[In: InType, Out: OutType](Callable):
+struct Fn[In: InType, Out: OutType](Callable):
     alias I = In
     alias O = Out
 
