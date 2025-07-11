@@ -68,7 +68,7 @@ class SumTuple(Combinable):
     start: int = 0
     end: int = 0
 
-    def __call__[T](self, message: tuple[T, T]) -> T:
+    def __call__[T](self, message: tuple[T, T, T]) -> T:
         self.start = time_ns()
         sleep(1.0)
         self.end = time_ns()
@@ -131,16 +131,17 @@ def test_parallel_task():
 def test_parallel_task_combination():
     my_task_1 = AddOneTask()
     my_task_2 = AddOneTask()
-    serial_task = my_task_1 + my_task_2
+    my_task_3 = AddOneTask()
+    serial_task = my_task_1 + my_task_2 + my_task_3
 
     print("[Serial Task]...")
 
-    message = 5
-    out = serial_task(message)
+    msg = 5
+    out = serial_task(msg)
 
     print("[End of Task]...")
 
-    assert out == (message + 1, message + 1), "tasks should add 1 to each input"
+    assert out == (msg + 1, msg + 1, msg + 1), "tasks should add 1 to each input"
     assert my_task_1.end > my_task_2.start, "t2 should start before t1 finishes"
     assert my_task_2.end > my_task_1.start, "t1 should start before t2 finishes"
 
@@ -150,10 +151,13 @@ def test_mixed_task_combination():
     str_to_int = StrToIntTask()
     my_task_1 = AddOneTask()
     my_task_2 = AddOneTask()
+    my_task_3 = AddOneTask()
     sum_tuple = SumTuple()
     int_to_str = IntToStrTask()
 
-    serial_task = str_to_int >> my_task_1 + my_task_2 >> sum_tuple >> int_to_str
+    serial_task = (
+        str_to_int >> my_task_1 + my_task_2 + my_task_3 >> sum_tuple >> int_to_str
+    )
     print("[Serial Task]...")
 
     message = "5"

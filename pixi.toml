@@ -23,8 +23,8 @@ channels = [
 
 
 # [package.run-dependencies]
-modular = "*"
-
+# max = "*"
+max = "*"
 # [package.build]
 # backend = { name = "pixi-build-rattler-build", version = "0.1.*" }
 # END OF CHANGES
