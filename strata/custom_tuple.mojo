@@ -1,16 +1,19 @@
-# # ===----------------------------------------------------------------------=== #
-# # Copyright (c) 2025, Modular Inc. All rights reserved.
-# #
-# # Licensed under the Apache License v2.0 with LLVM Exceptions:
-# # https://llvm.org/LICENSE.txt
-# #
-# # Unless required by applicable law or agreed to in writing, software
-# # distributed under the License is distributed on an "AS IS" BASIS,
-# # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# # See the License for the specific language governing permissions and
-# # limitations under the License.
-# # ===----------------------------------------------------------------------=== #
+# ===----------------------------------------------------------------------=== #
+# Copyright (c) 2025, Modular Inc. All rights reserved.
+#
+# Licensed under the Apache License v2.0 with LLVM Exceptions:
+# https://llvm.org/LICENSE.txt
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ===----------------------------------------------------------------------=== #
+"""Implements the Tuple type.
 
+These are Mojo built-ins, so you don't need to import them.
+"""
 
 # # ===-----------------------------------------------------------------------===#
 # # Tuple
@@ -20,8 +23,8 @@
 
 
 from sys.intrinsics import _type_is_eq
-import os
-from memory import UnsafePointer
+
+
 from utils._visualizers import lldb_formatter_wrapping_type
 
 
@@ -57,7 +60,7 @@ struct Tuple[*element_types: Copyable & Movable](
         )
 
     @always_inline("nodebug")
-    fn __init__(out self, owned *args: *element_types):
+    fn __init__(out self, var *args: *element_types):
         """Construct the tuple.
 
         Args:
@@ -198,6 +201,14 @@ struct Tuple[*element_types: Copyable & Movable](
         T: EqualityComparable & Copyable & Movable
     ](self, value: T) -> Bool:
         """Return whether the tuple contains the specified value.
+
+        For example:
+
+        ```mojo
+        var t = Tuple(True, 1, 2.5)
+        if 1 in t:
+            print("t contains 1")
+        ```
 
         Args:
             value: The value to search for.

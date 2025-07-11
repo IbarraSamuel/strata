@@ -1,4 +1,4 @@
-from strata.generic import Task, Callable, Tuple
+from strata.generic import Task, Callable, Tuple, Fn
 import os
 from time import sleep
 
@@ -49,14 +49,15 @@ struct FloatToString(Callable):
 fn main():
     # NOTE: Compile times could be faster if you use struct instead of functions.
     print("Building graph")
+    Task(Fn(int_mul[2])) + Fn(int_to_float) + Fn(int_mul[3])
     final_graph = (
-        Task(string_to_int)
-        >> Task(int_mul[2]) + int_to_float + int_mul[3]
-        >> sum_tuple
+        Task(Fn(string_to_int))
+        >> Task(Fn(int_mul[2])) + Fn(int_to_float) + Fn(int_mul[3])
+        >> Fn(sum_tuple)
         >> FloatToString()
     )
 
-    print("Starting Graph execution")
-    result = final_graph("32")
+    # print("Starting Graph execution")
+    # result = final_graph("32")
 
-    print(result)
+    # print(result)
