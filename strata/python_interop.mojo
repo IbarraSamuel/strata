@@ -134,31 +134,42 @@ struct TaskGroup(Copyable, Movable, PythonType):
             length=len(self.objects), fill=PythonObject()
         )
 
-        @parameter
-        @always_inline
-        fn run_task(i: Int):
-            tsk = self.objects.unsafe_get(i)
-            try:
-                grp = tsk._try_downcast_value[TaskGroup]()
-                if grp:
-                    values[i] = grp.value()[]._call(msg)
-                    return
+        # WORKAROUND:
+        for i in range(len(self.objects)):
+            ref task = self.objects.unsafe_get(i)
+            pg = task._try_downcast_value[TaskGroup]()
+            if pg:
+                values[i] = pg.value()[]._call(msg)
+                continue
 
-                values[i] = tsk.__call__(msg)
-            except:
-                print("Task Failed!")
-                values[i] = PythonObject(None)
+            values[i] = task.__call__(msg)
 
-        @parameter
-        @always_inline
-        async fn run_async(i: Int):
-            run_task(i)
+        # TODO: Turn on when NO GIL is possible
+        # @parameter
+        # @always_inline
+        # fn run_task(i: Int):
+        #     tsk = self.objects.unsafe_get(i)
+        #     try:
+        #         grp = tsk._try_downcast_value[TaskGroup]()
+        #         if grp:
+        #             values[i] = grp.value()[]._call(msg)
+        #             return
 
-        tg = TG()
-        for idx in range(len(self.objects)):
-            tg.create_task(run_async(idx))
+        #         values[i] = tsk.__call__(msg)
+        #     except:
+        #         print("Task Failed!")
+        #         values[i] = PythonObject(None)
 
-        tg.wait()
+        # @parameter
+        # @always_inline
+        # async fn run_async(i: Int):
+        #     run_task(i)
+
+        # tg = TG()
+        # for idx in range(len(self.objects)):
+        #     tg.create_task(run_async(idx))
+
+        # tg.wait()
 
         print("Done!..")
         tp = Python.tuple()

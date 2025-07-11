@@ -118,14 +118,20 @@ struct PyParallelTask(PythonTask):
     ) -> PythonObject:
         data = [Python.int(1), Python.int(1)]
 
-        @parameter
-        fn apply(i: Int) raises:
-            if i == 0:
-                data[i] = self_ptr[].task_1(msg)
-            else:
-                data[i] = self_ptr[].task_2(msg)
+        # TODO: Turn on again when NO GIL
+        # @parameter
+        # fn apply(i: Int) raises:
+        #     if i == 0:
+        #         data[i] = self_ptr[].task_1(msg)
+        #     else:
+        #         data[i] = self_ptr[].task_2(msg)
 
-        sync_parallelize[apply](2)
+        # sync_parallelize[apply](2)
+
+        # Workaround meanwhile.
+        self_ptr[].task_1(msg)
+        self_ptr[].task_2(msg)
+
         return Python.tuple(data[0], data[1])
 
 
