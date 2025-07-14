@@ -6,9 +6,6 @@ trait WithAnAlias:
 struct SomeStruct(WithAnAlias):
     alias A = Int
 
-    fn __init__(out self):
-        pass
-
 
 # Example that works
 # Needs a struct that conforms to `WithAnAlias`
@@ -27,6 +24,5 @@ struct SomeWrapper[t: WithAnAlias, a: AnyType, b: AnyType]:
 
 
 fn main():
-    ss = SomeStruct()
     ssw = StructWrapper[SomeStruct]() # Works
     sw = SomeWrapper[SomeStruct](). # invalid initialization: could not deduce parameter 'b' of parent struct 'SomeWrapper'
