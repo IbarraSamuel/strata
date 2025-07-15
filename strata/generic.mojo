@@ -1,156 +1,133 @@
-from memory.pointer import Pointer
-from algorithm import sync_parallelize
-
-from strata.custom_tuple import Tuple
-
-alias TaskValue = Movable & Copyable & Defaultable
-alias InType = TaskValue
-alias OutType = TaskValue
-"""
-Both sould conform to the same trait since an output from a Task could be an input for the next task. 
-
-* Needs to be Defaultable because on parallel, needs to be initialized before calling it. `var ..: type` is not enought
-* Needs to be Copyable because I cannot rebind it in the output type if it's not copyable.
-    I tried using refs, but then each one needs to return an ImmutableAnyOrigin, since those values are produced within the __call__ method.
-    Then, we cannot use register_passable types, because they doesn't have origin. The API will be restricted to not register_passable types,
-    and then things like SIMD cannot be used. Better just use Copyable things meanwhile the rebind doesn't work or we wait for requires or parametrized traits.
-This tradeoff could be eliminated if I don't ensure type safety on the graph, but I want to ensure safety :).
-"""
+from runtime.asyncrt import _run, TaskGroup
 
 
 trait Callable:
-    alias I: InType
-    alias O: OutType
+    alias I: Copyable & Movable  # Because tuple
+    alias O: Copyable & Movable  # Beacuse tuple
 
     fn __call__(self, arg: I) -> O:
         ...
 
 
+@register_passable("trivial")
 struct Task[
     T: Callable,
-    origin: ImmutableOrigin,
-    In: InType = T.I,
-    Out: OutType = T.O,
-](Callable, Movable):
+    *,
+    origin: Origin[mut=False],
+    In: Copyable & Movable = T.I,
+    Out: Copyable & Movable = T.O,
+](Callable):
     alias I = In
     alias O = Out
-    alias CallableTask = Task[T, origin, In = T.I, Out = T.O]
+
     var inner: Pointer[T, origin]
 
-    fn __init__(out self, ref [origin]inner: T):
-        self.inner = Pointer(to=inner)
+    fn __init__(out self, ref [origin]task: T):
+        self.inner = Pointer[origin=origin](to=task)
 
-    # fn __init__[
-    #     t: Callable, o: ImmutableOrigin
-    # ](out self: Self.CallableTask[t, o], ref [o]inner: t):
-    #     self.inner = Pointer(to=inner)
-
-    # fn __init__(
-    #     out self: Task[_Fn[In, Out], ImmutableAnyOrigin], func: fn (In) -> Out
-    # ):
-    #     self.inner = Pointer[_Fn[In, Out], ImmutableAnyOrigin](to=_Fn(func))
-
+    @always_inline("nodebug")
     fn __call__(self, arg: Self.I) -> Self.O:
-        # SAFETY: This is safe because Self.I and T.I are the same type
-        # and Self.O and T.O are the same type
-        # Why? Because the only way to construct this struct is by using a reference to a Callable, which will define In and Out types automatically
+        return rebind[Self.O](self.inner[].__call__(rebind[T.I](arg)))
 
-        # TODO: Why we can't rebind something if there is no origin for it?
-        return rebind[Self.O](self.inner[](rebind[T.I](arg)))
-
+    # For airflow syntax
+    @always_inline("nodebug")
     fn __rshift__[
-        t: Callable, o: ImmutableOrigin
+        t: Callable, o: Origin[mut=False]
     ](
-        owned self: Task[T, origin, In = T.I, Out = t.I], ref [o]other: t
-    ) -> Task[
-        SerPair[T, t, origin, o], ImmutableAnyOrigin, In = T.I, Out = t.O
-    ]:
-        sp = SerPair(self^, Task(other))
-        return Task[__type_of(sp), ImmutableAnyOrigin](sp)
+        self: Task[T, origin=origin, In = T.I, Out = t.I],
+        ref [o]other: t,
+        out pair: Task[
+            SequentialPair[origin, o, T, t], origin=ImmutableAnyOrigin
+        ],
+    ):
+        pair = {SequentialPair(self, Task(other))}
 
-    # fn __rshift__[
-    #     I: TaskValue, O: TaskValue
-    # ](owned self: Task[T, origin, Out=I], func: fn (I) -> O) -> Task[
-    #     SerPair[T, _Fn[I, O], origin, ImmutableAnyOrigin], ImmutableAnyOrigin
-    # ]:
-    #     return {SerPair(self^, _Fn(func))}
-
+    @always_inline("nodebug")
     fn __add__[
-        t: Callable, o: ImmutableOrigin
+        t: Callable, o: Origin[mut=False]
     ](
-        owned self: Task[T, origin, In = t.I, Out = T.O], ref [o]other: t
-    ) -> Task[
-        ParPair[T, t, origin, o], ImmutableAnyOrigin, In = t.I, Out = (T.O, t.O)
-    ]:
-        pp = ParPair(self^, Task(other))
-        return Task[__type_of(pp), ImmutableAnyOrigin](pp)
-
-    # fn __add__[
-    #     I: TaskValue, O: TaskValue
-    # ](owned self: Task[T, origin, In=I], func: fn (I) -> O) -> Task[
-    #     ParPair[T, _Fn[I, O], origin, ImmutableAnyOrigin], ImmutableAnyOrigin
-    # ]:
-    #     return {ParPair(self^, _Fn(func))}
+        self: Task[T, origin=origin, In = t.I, Out = T.O],
+        ref [o]other: t,
+        out pair: Task[
+            ParallelPair[origin, o, T, t], origin=ImmutableAnyOrigin
+        ],
+    ):
+        pair = {ParallelPair(self, Task(other))}
 
 
-@fieldwise_init
-struct SerPair[
-    C1: Callable,
-    C2: Callable,
-    o1: ImmutableOrigin,
-    o2: ImmutableOrigin,
-](Callable):
-    alias I = C1.I
-    alias O = C2.O
+@register_passable("trivial")
+struct SequentialPair[
+    o1: Origin[mut=False], o2: Origin[mut=False], T1: Callable, T2: Callable
+](Callable, Movable):
+    alias I = T1.I
+    alias O = T2.O
 
-    var task_1: Task[C1, o1, In = C1.I, Out = C2.I]
-    var task_2: Task[C2, o2, In = C2.I, Out = C2.O]
+    alias Task1 = Task[T1, origin=o1, In = T1.I, Out = T2.I]
+    alias Task2 = Task[T2, origin=o2, In = T2.I, Out = T2.O]
 
+    var t1: Pointer[T1, o1]
+    var t2: Pointer[T2, o2]
+
+    fn __init__(out self, t1: Self.Task1, t2: Self.Task2):
+        self.t1 = t1.inner
+        self.t2 = t2.inner
+
+    @always_inline("nodebug")
     fn __call__(self, arg: Self.I) -> Self.O:
-        result_1 = self.task_1.inner[](arg)
-        # Safety: You cannot even instanciate this struct if this is not true.
-        inp_2 = rebind[C2.I](result_1)
-        result_2 = self.task_2.inner[](inp_2)
-        return result_2^
+        return self.t2[].__call__(rebind[T2.I](self.t1[].__call__(arg)))
 
 
-@fieldwise_init
-struct ParPair[
-    C1: Callable,
-    C2: Callable,
-    o1: ImmutableOrigin,
-    o2: ImmutableOrigin,
-](Callable):
-    alias I = C2.I
-    alias O = (C1.O, C2.O)
+@register_passable("trivial")
+struct ParallelPair[
+    o1: Origin[mut=False], o2: Origin[mut=False], T1: Callable, T2: Callable
+](Callable, Movable):
+    alias I = T1.I
+    alias O = (T1.O, T2.O)
 
-    var task_1: Task[C1, o1, In = C2.I, Out = C1.O]
-    var task_2: Task[C2, o2, In = C2.I, Out = C2.O]
+    alias Task1 = Task[T1, origin=o1, In = T2.I, Out = T1.O]
+    alias Task2 = Task[T2, origin=o2, In = T2.I, Out = T2.O]
 
+    var t1: Pointer[T1, o1]
+    var t2: Pointer[T2, o2]
+
+    fn __init__(out self, t1: Self.Task1, t2: Self.Task2):
+        self.t1 = t1.inner
+        self.t2 = t2.inner
+
+    # @always_inline("nodebug")
     fn __call__(self, arg: Self.I) -> Self.O:
-        var res_1 = self.task_1.O()
-        var res_2 = self.task_2.O()
+        tg = TaskGroup()
+
+        v1: T1.O
+        v2: T2.O
 
         @parameter
-        fn run_task(idx: Int):
-            if idx == 0:
-                inp_1 = rebind[C1.I](arg)
-                res_1 = self.task_1.inner[](inp_1)
-            else:
-                # Safety: You cannot instanciate this struct if this is not true.
-                res_2 = self.task_2.inner[](arg)
+        async fn task_1():
+            v1 = self.t1[].__call__(arg)
 
-        sync_parallelize[run_task](2)
+        @parameter
+        async fn task_2():
+            v2 = self.t2[].__call__(rebind[T2.I](arg))
 
-        return (res_1^, res_2^)
+        # This is safe because the variables will be initialized at the return.
+        __mlir_op.`lit.ownership.mark_initialized`(__get_mvalue_as_litref(v1))
+        __mlir_op.`lit.ownership.mark_initialized`(__get_mvalue_as_litref(v2))
+
+        tg.create_task(task_1())
+        tg.create_task(task_2())
+
+        tg.wait()
+
+        return (v1, v2)
 
 
 @fieldwise_init("implicit")
-struct Fn[In: InType, Out: OutType](Callable):
+struct Fn[In: Copyable & Movable, Out: Copyable & Movable](Callable):
     alias I = In
     alias O = Out
 
     var func: fn (In) -> Out
 
+    @always_inline("nodebug")
     fn __call__(self, arg: Self.I) -> Self.O:
         return self.func(arg)
