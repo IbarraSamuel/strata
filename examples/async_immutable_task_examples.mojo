@@ -11,7 +11,7 @@ struct MyTask[job: StringLiteral](AsyncCallable):
         self.some_data = some_data
 
     async fn __call__(self):
-        print("Running [", job, "]:", self.some_data)
+        print("Running")
         sleep(time)
 
 

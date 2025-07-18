@@ -62,17 +62,47 @@ struct StringToFloat(Callable):
             return Self.O()
 
 
+@fieldwise_init
+struct FtoS(Callable):
+    alias I = Float32
+    alias O = String
+
+    fn __call__(self, value: Self.I) -> Self.O:
+        return Self.O(value)
+
+
+@fieldwise_init
+struct StoF(Callable):
+    alias I = String
+    alias O = Float32
+
+    fn __call__(self, value: Self.I) -> Self.O:
+        try:
+            return Self.O(value)
+        except:
+            return 0.0
+
+
 fn main():
     # NOTE: Compile times could be faster if you use struct instead of functions.
     print("Building graph")
-    final_graph = (
-        Task(Fn(string_to_int))
-        >> Task(Fn(int_mul[2])) + Fn(int_to_float) + Fn(int_mul[3])
-        >> Fn(sum_tuple)
-        >> FloatToString()
-    )
+    t1 = Task(Fn(string_to_int))
+    t21 = Fn(int_mul[2])
+    t22 = Fn(int_to_float)
+    t23 = Fn(int_mul[3])
+
+    graph = Task(FtoS()) >> StoF()
+
+    # graph = Task(Fn(int_to_float)) >> FloatToString() >> Fn(string_to_int)
+
+    # final_graph = (
+    #     Task(Fn(string_to_int))
+    #     >> Task(Fn(int_mul[2])) + Fn(int_to_float) + Fn(int_mul[3])
+    #     >> Fn(sum_tuple)
+    #     >> FloatToString()
+    # )
 
     # print("Starting Graph execution")
-    result = final_graph("32")
+    # result = final_graph("32")
 
-    print(result)
+    # print(result)
