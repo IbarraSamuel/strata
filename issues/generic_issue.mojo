@@ -1,19 +1,16 @@
 trait WithAnAlias:
-    alias A: AnyType
+    alias C: AnyType
 
 
-# Struct that conforms to `WithAnAlias`
+@fieldwise_init
 struct SomeStruct(WithAnAlias):
-    alias A = Int
+    alias C = Int
 
 
-# Needs a struct that conforms to `WithAnAlias`
-# Will assing a and b automatically
 struct SomeWrapper[t: WithAnAlias, a: AnyType, b: AnyType]:
-    fn __init__(out self: SomeWrapper[t, t.A, t.A]):
+    fn __init__(out self: SomeWrapper[t, t.C, t.C]):
         pass
 
 
 fn main():
     sw = SomeWrapper[SomeStruct]()
-    # invalid initialization: could not deduce parameter 'b' of parent struct 'SomeWrapper'

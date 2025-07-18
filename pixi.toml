@@ -8,7 +8,7 @@ channels = [
     # "https://conda.modular.com/max",
     # "https://repo.prefix.dev/modular-community",
     "https://repo.prefix.dev/conda-forge",
-    "https://prefix.dev/pixi-build-backends",
+    # "https://prefix.dev/pixi-build-backends",
 ]
 
 # CHANGES
@@ -66,8 +66,8 @@ examples = { depends-on = [
     "unsafe_examples",
     # "async_immutable_task_examples",
     # "async_mutable_task_examples",
-    "generic_examples",
-    "generic_comptime_examples",
+    # "generic_examples",
+    # "generic_comptime_examples",
 ] }
 
 # Testing

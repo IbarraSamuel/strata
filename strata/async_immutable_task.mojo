@@ -13,14 +13,17 @@ struct TaskRef[T: AsyncCallable, origin: Origin](AsyncCallable):
     fn __init__(out self, ref [origin]v: T):
         self.v = Pointer(to=v)
 
+    @always_inline("nodebug")
     async fn __call__(self):
         await self.v[]()
 
+    @always_inline("nodebug")
     fn __add__[
         t: AsyncCallable, o: Origin
     ](self, ref [o]other: t) -> ParTaskPair[T, t, origin, o]:
         return {self.v[], other}
 
+    @always_inline("nodebug")
     fn __rshift__[
         t: AsyncCallable, o: Origin
     ](self, ref [o]other: t) -> SerTaskPair[T, t, origin, o]:
@@ -45,15 +48,18 @@ struct SerTaskPair[
         self.t1 = Pointer(to=t1)
         self.t2 = Pointer(to=t2)
 
+    @always_inline("nodebug")
     async fn __call__(self):
         await self.t1[]()
         await self.t2[]()
 
+    @always_inline("nodebug")
     fn __add__[
         t: AsyncCallable, s: Origin, o: Origin
     ](ref [s]self, ref [o]other: t) -> ParTaskPair[Self, t, s, o]:
         return {self, other}
 
+    @always_inline("nodebug")
     fn __rshift__[
         t: AsyncCallable, s: Origin, o: Origin
     ](ref [s]self, ref [o]other: t) -> SerTaskPair[Self, t, s, o]:
@@ -84,11 +90,13 @@ struct ParTaskPair[
         tg.create_task(self.t2[]())
         await tg
 
+    @always_inline("nodebug")
     fn __add__[
         t: AsyncCallable, s: Origin, o: Origin
     ](ref [s]self, ref [o]other: t) -> ParTaskPair[Self, t, s, o]:
         return {self, other}
 
+    @always_inline("nodebug")
     fn __rshift__[
         t: AsyncCallable, s: Origin, o: Origin
     ](ref [s]self, ref [o]other: t) -> SerTaskPair[Self, t, s, o]:
@@ -96,3 +104,20 @@ struct ParTaskPair[
 
     fn run(self):
         _run(self())
+
+
+@fieldwise_init
+struct MyTask[i: Int](AsyncCallable):
+    async fn __call__(self):
+        print("Hello From:", i)
+
+
+# fn main():
+#     t = MyTask[1]()
+#     r = (
+#         TaskRef(t)
+#         >> MyTask[2]()
+#         >> TaskRef(MyTask[3]()) + MyTask[4]()
+#         >> MyTask[5]()
+#     )
+#     r.run()
