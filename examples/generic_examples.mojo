@@ -86,23 +86,15 @@ struct StoF(Callable):
 fn main():
     # NOTE: Compile times could be faster if you use struct instead of functions.
     print("Building graph")
-    t1 = Task(Fn(string_to_int))
-    t21 = Fn(int_mul[2])
-    t22 = Fn(int_to_float)
-    t23 = Fn(int_mul[3])
 
-    graph = Task(FtoS()) >> StoF()
+    final_graph = (
+        Task(Fn(string_to_int))
+        >> Task(Fn(int_mul[2])) + Fn(int_to_float) + Fn(int_mul[3])
+        >> Fn(sum_tuple)
+        >> FloatToString()
+    )
 
-    # graph = Task(Fn(int_to_float)) >> FloatToString() >> Fn(string_to_int)
+    print("Starting Graph execution")
+    result = final_graph("32")
 
-    # final_graph = (
-    #     Task(Fn(string_to_int))
-    #     >> Task(Fn(int_mul[2])) + Fn(int_to_float) + Fn(int_mul[3])
-    #     >> Fn(sum_tuple)
-    #     >> FloatToString()
-    # )
-
-    # print("Starting Graph execution")
-    # result = final_graph("32")
-
-    # print(result)
+    print(result)
