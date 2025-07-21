@@ -32,55 +32,31 @@ fn sum_tuple(value: ((Int, Float32), Int)) -> Float32:
     return value[0][0] + value[0][1] + value[1]
 
 
-# Struct example
-@fieldwise_init
-struct FloatToString(Callable):
-    """Just an example of a struct that conforms to callable."""
-
-    alias I = Float32
-    alias O = String
-
-    fn __call__(self, value: Self.I) -> Self.O:
-        print("Float to string...")
-        sleep(time)
-        return Self.O(value)
+fn float_to_string(value: Float32) -> String:
+    print("float to string...")
+    sleep(time)
+    return String(value)
 
 
-@fieldwise_init
-struct StringToFloat(Callable):
-    """Just an example of a struct that conforms to callable."""
+# @fieldwise_init
+# struct FtoS(Callable):
+#     alias I = Float32
+#     alias O = String
 
-    alias I = String
-    alias O = Float32
-
-    fn __call__(self, value: Self.I) -> Self.O:
-        print("Float to string...")
-        sleep(time)
-        try:
-            return Self.O(value)
-        except:
-            return Self.O()
+#     fn __call__(self, value: Self.I) -> Self.O:
+#         return Self.O(value)
 
 
-@fieldwise_init
-struct FtoS(Callable):
-    alias I = Float32
-    alias O = String
+# @fieldwise_init
+# struct StoF(Callable):
+#     alias I = String
+#     alias O = Float32
 
-    fn __call__(self, value: Self.I) -> Self.O:
-        return Self.O(value)
-
-
-@fieldwise_init
-struct StoF(Callable):
-    alias I = String
-    alias O = Float32
-
-    fn __call__(self, value: Self.I) -> Self.O:
-        try:
-            return Self.O(value)
-        except:
-            return 0.0
+#     fn __call__(self, value: Self.I) -> Self.O:
+#         try:
+#             return Self.O(value)
+#         except:
+#             return 0.0
 
 
 fn main():
@@ -91,7 +67,7 @@ fn main():
         Task(Fn(string_to_int))
         >> Task(Fn(int_mul[2])) + Fn(int_to_float) + Fn(int_mul[3])
         >> Fn(sum_tuple)
-        >> FloatToString()
+        >> Fn(float_to_string)
     )
 
     print("Starting Graph execution")
