@@ -29,9 +29,7 @@ from utils._visualizers import lldb_formatter_wrapping_type
 
 
 @lldb_formatter_wrapping_type
-struct Tuple[*element_types: Copyable & Movable](
-    Copyable, Defaultable, Movable, Sized
-):
+struct Tuple[*element_types: Movable](Copyable, Defaultable, Movable, Sized):
     """The type of a literal tuple expression.
 
     A tuple consists of zero or more values, separated by commas.
@@ -42,7 +40,7 @@ struct Tuple[*element_types: Copyable & Movable](
 
     alias _mlir_type = __mlir_type[
         `!kgen.pack<:!kgen.variadic<`,
-        Copyable & Movable,
+        Movable,
         `> `,
         element_types,
         `>`,
@@ -72,7 +70,7 @@ struct Tuple[*element_types: Copyable & Movable](
     fn __init__(
         out self,
         *,
-        owned storage: VariadicPack[_, _, Copyable & Movable, *element_types],
+        owned storage: VariadicPack[_, _, Movable, *element_types],
     ):
         """Construct the tuple from a low-level internal representation.
 
@@ -104,21 +102,21 @@ struct Tuple[*element_types: Copyable & Movable](
         for i in range(Self.__len__()):
             UnsafePointer(to=self[i]).destroy_pointee()
 
-    @always_inline("nodebug")
-    fn __copyinit__(out self, existing: Self):
-        """Copy construct the tuple.
+    # @always_inline("nodebug")
+    # fn __copyinit__(out self, existing: Self):
+    #     """Copy construct the tuple.
 
-        Args:
-            existing: The value to copy from.
-        """
-        # Mark 'storage' as being initialized so we can work on it.
-        __mlir_op.`lit.ownership.mark_initialized`(
-            __get_mvalue_as_litref(self.storage)
-        )
+    #     Args:
+    #         existing: The value to copy from.
+    #     """
+    #     # Mark 'storage' as being initialized so we can work on it.
+    #     __mlir_op.`lit.ownership.mark_initialized`(
+    #         __get_mvalue_as_litref(self.storage)
+    #     )
 
-        @parameter
-        for i in range(Self.__len__()):
-            UnsafePointer(to=self[i]).init_pointee_copy(existing[i])
+    #     @parameter
+    #     for i in range(Self.__len__()):
+    #         UnsafePointer(to=self[i]).init_pointee_copy(existing[i])
 
     @always_inline
     fn copy(self) -> Self:
@@ -159,7 +157,7 @@ struct Tuple[*element_types: Copyable & Movable](
 
         @parameter
         fn variadic_size(
-            x: __mlir_type[`!kgen.variadic<`, Copyable & Movable, `>`]
+            x: __mlir_type[`!kgen.variadic<`, Movable, `>`]
         ) -> Int:
             return __mlir_op.`pop.variadic.size`(x)
 

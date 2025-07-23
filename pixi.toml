@@ -64,10 +64,10 @@ examples = { depends-on = [
     "immutable_examples",
     "mutable_examples",
     "unsafe_examples",
-    # "async_immutable_task_examples",
+    "async_immutable_task_examples",
     # "async_mutable_task_examples",
-    # "generic_examples",
-    # "generic_comptime_examples",
+    "generic_examples",
+    "generic_comptime_examples",
 ] }
 
 # Testing
