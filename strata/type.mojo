@@ -55,9 +55,7 @@ struct TypeTask[T: TypeCallable](TypeCallable):
         """Call the task."""
         T.__call__()
 
-    fn __add__[
-        t: TypeCallable
-    ](owned self, owned other: t) -> ParallelTypeTask[T, t]:
+    fn __add__[t: TypeCallable](self, other: t) -> ParallelTypeTask[T, t]:
         """Add this task pair with another task, to be executed in parallel.
         This task will keep the internal order, but meanwhile the current one is running,
         the other one could run too.
@@ -73,9 +71,7 @@ struct TypeTask[T: TypeCallable](TypeCallable):
         """
         return {}
 
-    fn __rshift__[
-        t: TypeCallable
-    ](owned self, owned other: t) -> SeriesTypeTask[T, t]:
+    fn __rshift__[t: TypeCallable](self, other: t) -> SeriesTypeTask[T, t]:
         """Add this task pair with another task, to be executed in sequence.
         This task will keep the internal order, but meanwhile the current one is running,
         the other one could run too.
@@ -105,14 +101,10 @@ struct ParallelTypeTask[*Ts: TypeCallable](TypeCallable):
         """Call the tasks based on the types in a parallel order."""
         parallel_runner[*Ts]()
 
-    fn __add__[
-        t: TypeCallable
-    ](owned self, owned other: t) -> ParallelTypeTask[Self, t]:
+    fn __add__[t: TypeCallable](self, other: t) -> ParallelTypeTask[Self, t]:
         return {}
 
-    fn __rshift__[
-        t: TypeCallable
-    ](owned self, owned other: t) -> SeriesTypeTask[Self, t]:
+    fn __rshift__[t: TypeCallable](self, other: t) -> SeriesTypeTask[Self, t]:
         return {}
 
 
@@ -129,12 +121,8 @@ struct SeriesTypeTask[*Ts: TypeCallable](TypeCallable):
         """Call the tasks based on the types on a sequence order."""
         series_runner[*Ts]()
 
-    fn __add__[
-        t: TypeCallable
-    ](owned self, owned other: t) -> ParallelTypeTask[Self, t]:
+    fn __add__[t: TypeCallable](self, other: t) -> ParallelTypeTask[Self, t]:
         return {}
 
-    fn __rshift__[
-        t: TypeCallable
-    ](owned self, owned other: t) -> SeriesTypeTask[Self, t]:
+    fn __rshift__[t: TypeCallable](self, other: t) -> SeriesTypeTask[Self, t]:
         return {}

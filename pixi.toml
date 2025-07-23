@@ -52,6 +52,7 @@ async_immutable_task_examples = "mojo examples/async_immutable_task_examples.moj
 async_mutable_task_examples = "mojo examples/async_mutable_task_examples.mojo"
 generic_examples = "mojo examples/generic_examples.mojo"
 generic_comptime_examples = "mojo examples/generic_comptime_examples.mojo"
+generic_async_examples = "mojo examples/generic_async_examples.mojo"
 mutable_examples = "mojo examples/mutable_examples.mojo"
 unsafe_examples = "mojo examples/unsafe_examples.mojo"
 immutable_examples = "mojo examples/immutable_examples.mojo"
@@ -64,10 +65,11 @@ examples = { depends-on = [
     "immutable_examples",
     "mutable_examples",
     "unsafe_examples",
-    "async_immutable_task_examples",
-    # "async_mutable_task_examples",
     "generic_examples",
     "generic_comptime_examples",
+    # "generic_async_examples",
+    # "async_immutable_task_examples",
+    # "async_mutable_task_examples",
 ] }
 
 # Testing

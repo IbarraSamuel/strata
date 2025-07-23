@@ -5,6 +5,7 @@ alias time = 0.1
 
 
 @fieldwise_init
+@register_passable("trivial")
 struct MyTypeTask[name: StringLiteral](TypeCallable):
     @staticmethod
     fn __call__():
