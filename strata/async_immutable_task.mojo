@@ -30,7 +30,7 @@ struct TaskRef[T: AsyncCallable, origin: Origin](AsyncCallable):
         return {self.v[], other}
 
     fn run(self):
-        _run(self())
+        _run(self.__call__())
 
 
 struct SerTaskPair[
@@ -66,7 +66,7 @@ struct SerTaskPair[
         return {self, other}
 
     fn run(self):
-        _run(self())
+        _run(self.__call__())
 
 
 struct ParTaskPair[
@@ -84,6 +84,7 @@ struct ParTaskPair[
         self.t1 = Pointer(to=t1)
         self.t2 = Pointer(to=t2)
 
+    @always_inline("nodebug")
     async fn __call__(self):
         tg = TaskGroup()
         tg.create_task(self.t1[]())
@@ -103,13 +104,17 @@ struct ParTaskPair[
         return {self, other}
 
     fn run(self):
-        _run(self())
+        _run(self.__call__())
 
 
-@fieldwise_init
-struct MyTask[i: Int](AsyncCallable):
-    async fn __call__(self):
-        print("Hello From:", i)
+# from time import sleep
+
+
+# @fieldwise_init
+# struct MyTask[i: Int](AsyncCallable):
+#     async fn __call__(self):
+#         print("Hello From:", i)
+#         sleep(0.5)
 
 
 # fn main():

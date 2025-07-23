@@ -38,27 +38,6 @@ fn float_to_string(value: Float32) -> String:
     return String(value)
 
 
-# @fieldwise_init
-# struct FtoS(Callable):
-#     alias I = Float32
-#     alias O = String
-
-#     fn __call__(self, value: Self.I) -> Self.O:
-#         return Self.O(value)
-
-
-# @fieldwise_init
-# struct StoF(Callable):
-#     alias I = String
-#     alias O = Float32
-
-#     fn __call__(self, value: Self.I) -> Self.O:
-#         try:
-#             return Self.O(value)
-#         except:
-#             return 0.0
-
-
 fn main():
     # NOTE: Compile times could be faster if you use struct instead of functions.
     print("Building graph")

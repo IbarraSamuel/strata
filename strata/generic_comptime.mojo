@@ -1,4 +1,4 @@
-from memory.pointer import Pointer
+# from memory.pointer import Pointer
 from runtime.asyncrt import TaskGroup, _run
 from strata.custom_tuple import Tuple
 
