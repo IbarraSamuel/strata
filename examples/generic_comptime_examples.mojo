@@ -1,4 +1,4 @@
-from strata.generic_comptime import Task, Callable, Tuple, Fn
+from strata.generic_comptime import Tuple, Fn
 import os
 from time import sleep
 
@@ -33,9 +33,7 @@ fn sum_tuple(value: ((Int, Float32), Int)) -> Float32:
 
 
 # Struct example
-@fieldwise_init
-@register_passable("trivial")
-struct FloatToString(Callable):
+struct FloatToString:
     """Just an example of a struct that conforms to callable."""
 
     alias I = Float32
@@ -48,56 +46,43 @@ struct FloatToString(Callable):
         return Self.O(value)
 
 
-@fieldwise_init
-@register_passable("trivial")
-struct FtoS(Callable):
-    alias I = Float32
-    alias O = String
-
-    @staticmethod
-    fn call(value: Self.I) -> Self.O:
-        print("Float to string...")
-        sleep(time)
-        return Self.O(value)
-
-
-@fieldwise_init
-@register_passable("trivial")
-struct StoF(Callable):
-    alias I = String
-    alias O = Float32
-
-    @staticmethod
-    fn call(value: Self.I) -> Self.O:
-        print("Float to string...")
-        sleep(time)
-        try:
-            return Self.O(value)
-        except:
-            return 0
-
-
 fn main():
-    # NOTE: Compile times could be faster if you use struct instead of functions.
     print("Building graph")
 
     # NOTE 2: We need to instanciate because there is no way to implement
     # __rshift__ and __add__ without a struct instance.
 
     # Functions need to be wrapped in a Fn struct.
-    # Structs that implements __call__ need to be wrapped in a Task struct, if the task is the first within a group.
-    # a = Fn[string_to_int]() >> Fn[int_mul[2]]()
-    # v = Fn[int_mul[2]]()
-    # v2 = Fn[int_mul[3]]()
-
+    # Structs could give any @staticmehtod to be wrapped in a Fn struct.
     alias final_graph = (
         Fn[string_to_int]()
         >> Fn[int_mul[2]]() + Fn[int_to_float]() + Fn[int_mul[3]]()
+        >> Fn[sum_tuple]()
+        >> Fn[FloatToString.call]()
     )
-    # (final_graph >> Fn[sum_tuple]() >> FloatToString())
+
+    # Reduce the need of Fn by using a
+    alias chain_graph = (
+        Fn[string_to_int]()
+        .sequential[
+            f = Fn[int_mul[2]]()
+            .parallel[f=int_to_float]()
+            .parallel[f = int_mul[3]]()
+            .F
+        ]()
+        .sequential[f=sum_tuple]()
+        .sequential[f = FloatToString.call]()
+    )
 
     print("Starting Graph execution")
-    alias O = final_graph.O
-    result = final_graph.call("32")
+    final_result = final_graph.F("32")
+    print(final_result)
 
-    print(result)
+    # You can use .F on the Fn object
+    chain_result = chain_graph.F("32")
+    print(chain_result)
+
+    # Or alias F to see the whole graph.
+    alias chain_fn = chain_graph.F
+    chain_result = chain_fn("32")
+    print(chain_result)
