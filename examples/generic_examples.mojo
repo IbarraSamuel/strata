@@ -43,8 +43,8 @@ fn main():
     print("Building graph")
 
     final_graph = (
-        Task(Fn(string_to_int))
-        >> Task(Fn(int_mul[2])) + Fn(int_to_float) + Fn(int_mul[3])
+        Task(string_to_int)
+        >> Task(int_mul[2]) + Fn(int_to_float) + Fn(int_mul[3])
         >> Fn(sum_tuple)
         >> Fn(float_to_string)
     )
