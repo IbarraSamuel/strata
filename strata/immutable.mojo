@@ -90,11 +90,11 @@ struct FnTask(Callable):
 
 struct SerTaskPairRef[
     m1: Bool,
-    m2: Bool, //,
+    m2: Bool,
+    o1: Origin[m1],
+    o2: Origin[m2], //,
     T1: Callable,
     T2: Callable,
-    o1: Origin[m1],
-    o2: Origin[m2],
 ](Callable):
     var t1: Pointer[T1, o1]
     var t2: Pointer[T2, o2]
@@ -108,22 +108,26 @@ struct SerTaskPairRef[
 
     fn __add__[
         t: Callable, s: Origin, o: Origin
-    ](ref [s]self, ref [o]other: t) -> ParTaskPairRef[Self, t, s, o]:
+    ](ref [s]self, ref [o]other: t) -> ParTaskPairRef[
+        m1 = s.mut, m2 = o.mut, o1=s, o2=o, Self, t
+    ]:
         return {self, other}
 
     fn __rshift__[
         t: Callable, s: Origin, o: Origin
-    ](ref [s]self, ref [o]other: t) -> SerTaskPairRef[Self, t, s, o]:
+    ](ref [s]self, ref [o]other: t) -> SerTaskPairRef[
+        m1 = s.mut, m2 = o.mut, o1=s, o2=o, Self, t
+    ]:
         return {self, other}
 
 
 struct ParTaskPairRef[
     m1: Bool,
-    m2: Bool, //,
+    m2: Bool,
+    o1: Origin[m1],
+    o2: Origin[m2], //,
     T1: Callable,
     T2: Callable,
-    o1: Origin[m1],
-    o2: Origin[m2],
 ](Callable):
     var t1: Pointer[T1, o1]
     var t2: Pointer[T2, o2]
@@ -137,16 +141,20 @@ struct ParTaskPairRef[
 
     fn __add__[
         t: Callable, s: Origin, o: Origin
-    ](ref [s]self, ref [o]other: t) -> ParTaskPairRef[Self, t, s, o]:
+    ](ref [s]self, ref [o]other: t) -> ParTaskPairRef[
+        m1 = s.mut, m2 = o.mut, o1=s, o2=o, Self, t
+    ]:
         return {self, other}
 
     fn __rshift__[
         t: Callable, s: Origin, o: Origin
-    ](ref [s]self, ref [o]other: t) -> SerTaskPairRef[Self, t, s, o]:
+    ](ref [s]self, ref [o]other: t) -> SerTaskPairRef[
+        m1 = s.mut, m2 = o.mut, o1=s, o2=o, Self, t
+    ]:
         return {self, other}
 
 
-struct ImmTaskRef[T: Callable, origin: Origin](Callable):
+struct ImmTaskRef[origin: Origin, //, T: Callable](Callable):
     var inner: Pointer[T, origin]
 
     @implicit
@@ -157,18 +165,24 @@ struct ImmTaskRef[T: Callable, origin: Origin](Callable):
         self.inner[]()
 
     fn __add__[
-        t: Callable, o: Origin
-    ](self, ref [o]other: t) -> ParTaskPairRef[T, t, origin, o]:
+        t: Callable, o: Origin, //
+    ](self, ref [o]other: t) -> ParTaskPairRef[
+        m1 = origin.mut, m2 = o.mut, o1=origin, o2=o, T, t
+    ]:
         return {self.inner[], other}
 
     fn __rshift__[
-        t: Callable, o: Origin
-    ](self, ref [o]other: t) -> SerTaskPairRef[T, t, origin, o]:
+        t: Callable, o: Origin, //
+    ](self, ref [o]other: t) -> SerTaskPairRef[
+        m1 = origin.mut, m2 = o.mut, o1=origin, o2=o, T, t
+    ]:
         return {self.inner[], other}
 
 
 # Variadic Parallel
-struct ParallelTask[origin: Origin, *Ts: Callable](Callable):
+struct ParallelTask[mut: Bool, origin: Origin[mut], //, *Ts: Callable](
+    Callable
+):
     """Collection of immutable tasks to run in Parallel.
 
     Parameters:
@@ -180,7 +194,12 @@ struct ParallelTask[origin: Origin, *Ts: Callable](Callable):
     var callables: CallablePack[origin, *Ts]
     """Underlying storage for tasks pointers."""
 
-    fn __init__(out self: ParallelTask[args.origin, *Ts], *args: *Ts):
+    fn __init__(
+        out self: ParallelTask[
+            mut = args.origin.mut, origin = args.origin, *Ts
+        ],
+        *args: *Ts,
+    ):
         """Create a Parallel group, using the args provided. Origin need to be casted.
 
         Args:
@@ -194,7 +213,7 @@ struct ParallelTask[origin: Origin, *Ts: Callable](Callable):
 
 
 # # Variadic Series
-struct SeriesTask[origin: Origin, *Ts: Callable](Callable):
+struct SeriesTask[mut: Bool, origin: Origin[mut], //, *Ts: Callable](Callable):
     """Collection of immutable tasks to run in Series.
 
     Parameters:
@@ -206,7 +225,10 @@ struct SeriesTask[origin: Origin, *Ts: Callable](Callable):
     var callables: CallablePack[origin, *Ts]
     """Underlying storage for tasks pointers."""
 
-    fn __init__(out self: SeriesTask[args.origin, *Ts], *args: *Ts):
+    fn __init__(
+        out self: SeriesTask[mut = args.origin.mut, origin = args.origin, *Ts],
+        *args: *Ts,
+    ):
         """Create a Series group, using the args provided. Origin need to be casted.
 
         Args:

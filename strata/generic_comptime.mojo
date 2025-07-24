@@ -106,8 +106,8 @@ fn seq_fn[
 @always_inline("nodebug")
 fn par_fn[
     In: AnyType,
-    O1: Movable,
-    O2: Movable, //,
+    O1: AnyType,
+    O2: AnyType, //,
     f: fn (In) -> O1,
     l: fn (In) -> O2,
 ](val: In) -> Tuple[O1, O2]:
@@ -132,11 +132,11 @@ fn par_fn[
     tg.create_task(task_2())
 
     tg.wait()
-    return (r1^, r2^)
+    return Tuple(r1, r2)
 
 
 @register_passable("trivial")
-struct Fn[i: AnyType, o: Movable, //, F: fn (i) -> o]:
+struct Fn[i: AnyType, o: AnyType, //, F: fn (i) -> o]:
     alias I = i
     alias O = o
 
@@ -146,28 +146,18 @@ struct Fn[i: AnyType, o: Movable, //, F: fn (i) -> o]:
 
     @staticmethod
     @always_inline("builtin")
-    fn sequential[O: Movable, //, f: fn (o) -> O]() -> Fn[seq_fn[F, f]]:
-        return {}
-
-    # @staticmethod
-    # @always_inline("builtin")
-    # fn sequential[next: Fn[i=o]]() -> Fn[seq_fn[F, next.F]]:
-    #     return {}
+    fn sequential[O: AnyType, //, f: fn (o) -> O]() -> Fn[seq_fn[F, f]]:
+        return Fn[seq_fn[F, f]]()
 
     @staticmethod
     @always_inline("builtin")
-    fn parallel[O: Movable, //, f: fn (i) -> O]() -> Fn[par_fn[F, f]]:
-        return {}
-
-    # @staticmethod
-    # @always_inline("builtin")
-    # fn parallel[alongside: Fn[i=i]]() -> Fn[par_fn[F, alongside.F]]:
-    #     return {}
+    fn parallel[O: AnyType, //, f: fn (i) -> O]() -> Fn[par_fn[F, f]]:
+        return Fn[par_fn[F, f]]()
 
     @always_inline("builtin")
     fn __rshift__(self, other: Fn[i=o, _]) -> Fn[seq_fn[F, other.F]]:
-        return {}
+        return Fn[seq_fn[F, other.F]]()
 
     @always_inline("builtin")
     fn __add__(self, other: Fn[i=i, _]) -> Fn[par_fn[F, other.F]]:
-        return {}
+        return Fn[par_fn[F, other.F]]()

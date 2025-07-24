@@ -115,12 +115,12 @@ struct SerTaskPair[T1: MutCallable & Movable, T2: MutCallable & Movable](
     # ---- FOR MUTABLE VERSIONS -----
     fn __add__(
         owned self, owned other: TaskRef
-    ) -> ParTaskPair[Self, TaskRef[other.T, other.origin]]:
+    ) -> ParTaskPair[Self, TaskRef[origin = other.origin, other.T]]:
         return {self^, other^}
 
     fn __rshift__(
         owned self, owned other: TaskRef
-    ) -> SerTaskPair[Self, TaskRef[other.T, other.origin]]:
+    ) -> SerTaskPair[Self, TaskRef[origin = other.origin, other.T]]:
         return {self^, other^}
 
     # ---- FOR MUTABLE MOVABLE VERSIONS -----
@@ -148,12 +148,12 @@ struct ParTaskPair[T1: MutCallable & Movable, T2: MutCallable & Movable](
     # ---- FOR MUTABLE VERSIONS -----
     fn __add__(
         owned self, owned other: TaskRef
-    ) -> ParTaskPair[Self, TaskRef[other.T, other.origin]]:
+    ) -> ParTaskPair[Self, TaskRef[origin = other.origin, other.T]]:
         return {self^, other^}
 
     fn __rshift__(
         owned self, owned other: TaskRef
-    ) -> SerTaskPair[Self, TaskRef[other.T, other.origin]]:
+    ) -> SerTaskPair[Self, TaskRef[origin = other.origin, other.T]]:
         return {self^, other^}
 
     # ---- FOR MUTABLE MOVABLE VERSIONS -----
@@ -168,7 +168,7 @@ struct ParTaskPair[T1: MutCallable & Movable, T2: MutCallable & Movable](
         return {self^, other^}
 
 
-struct TaskRef[T: MutCallable, origin: MutableOrigin](Movable, MutCallable):
+struct TaskRef[origin: MutableOrigin, //, T: MutCallable](Movable, MutCallable):
     var inner: Pointer[T, origin]
 
     @implicit
@@ -181,12 +181,12 @@ struct TaskRef[T: MutCallable, origin: MutableOrigin](Movable, MutCallable):
     # ---- FOR MUTABLE VERSIONS -----
     fn __add__(
         owned self, owned other: TaskRef
-    ) -> ParTaskPair[Self, TaskRef[other.T, other.origin]]:
+    ) -> ParTaskPair[Self, TaskRef[origin = other.origin, other.T]]:
         return {self^, other^}
 
     fn __rshift__(
         owned self, owned other: TaskRef
-    ) -> SerTaskPair[Self, TaskRef[other.T, other.origin]]:
+    ) -> SerTaskPair[Self, TaskRef[origin = other.origin, other.T]]:
         return {self^, other^}
 
     # ---- FOR MUTABLE MOVABLE VERSIONS -----
