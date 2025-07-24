@@ -9,15 +9,6 @@ trait Callable:
         ...
 
 
-struct InWrapper[T: Callable, o: ImmutableOrigin, In: Copyable & Movable]:
-    var value: Pointer[T, o]
-
-    @implicit
-    fn __init__(out self: InWrapper[T, o, T.I], ref [o]value: T):
-        self.value = Pointer(to=value)
-
-
-# @register_passable("trivial")
 struct Task[
     origin: ImmutableOrigin,
     T: Callable, //,
@@ -29,23 +20,18 @@ struct Task[
 
     var inner: Pointer[T, origin]
 
-    # fn __init__(
-    #     out self: Task[T, T.I, Out, origin],
-    #     var task: OutWrapper[T, origin, Out],
-    # ):
-    #     self.inner = Pointer(to=task.value[])
-
+    @always_inline("nodebug")
     fn __init__(
-        out self: Task[origin=origin, T=T, In, T.O],
-        var task: InWrapper[T, origin, In],
-    ):
-        self.inner = Pointer(to=task.value[])
-
-    fn __init__(
-        out self: Task[origin=origin, T = Fn[In, Out], In, T.O],
-        ref [origin]task: Fn[In, Out],
+        out self: Task[origin=origin, T=T, T.I, T.O], ref [origin]task: T
     ):
         self.inner = Pointer(to=task)
+
+    @always_inline("nodebug")
+    fn __init__(
+        out self: Task[origin=ImmutableAnyOrigin, T = Fn[In, Out], In, Out],
+        ref task: fn (In) -> Out,
+    ):
+        self.inner = Pointer[origin=ImmutableAnyOrigin](to=Fn(task))
 
     @always_inline("nodebug")
     fn __call__(self, arg: Self.I) -> Self.O:
@@ -158,10 +144,8 @@ struct ParallelPair[
     o2: ImmutableOrigin,
     T1: Callable,
     T2: Callable, //,
-    In: Copyable & Movable = T2.I,
-    Out: Copyable & Movable = (T1.O, T2.O),
-    # o1: ImmutableOrigin = ImmutableAnyOrigin,
-    # o2: ImmutableOrigin = ImmutableAnyOrigin,
+    In: Copyable & Movable,
+    Out: Copyable & Movable,
 ](Callable, Movable):
     alias I = In
     alias O = Out
@@ -172,10 +156,18 @@ struct ParallelPair[
     alias FromSeq[I: Copyable & Movable] = SequentialPair[In=I, **_]
     alias FromPar[I: Copyable & Movable] = ParallelPair[In=I, **_]
 
+    alias WithOutput[o: Copyable & Movable] = ParallelPair[
+        o1=o1, o2=o2, T1=T1, T2=T2, In=In, Out=o
+    ]
+
     var t1: Pointer[T1, o1]
     var t2: Pointer[T2, o2]
 
-    fn __init__(out self, var t1: Self.Task1, var t2: Self.Task2):
+    fn __init__(
+        out self: Self.WithOutput[(t1.Out, t2.Out)],
+        var t1: Self.Task1,
+        var t2: Self.Task2,
+    ):
         self.t1 = t1.inner
         self.t2 = t2.inner
 
