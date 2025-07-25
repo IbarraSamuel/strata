@@ -13,7 +13,7 @@ alias MutCallablePack = VariadicPack[False, _, MutCallable, *_]
 
 
 fn series_runner[
-    o: MutableOrigin, *ts: MutCallable
+    o: MutableOrigin, //, *ts: MutCallable
 ](callables: MutCallablePack[o, *ts]):
     alias size = len(VariadicList(ts))
 
@@ -39,7 +39,7 @@ fn series_runner[*ts: MutCallable](mut*callables: *ts):
 
 
 fn parallel_runner[
-    o: MutableOrigin, *ts: MutCallable
+    o: MutableOrigin, //, *ts: MutCallable
 ](callables: MutCallablePack[o, *ts]):
     alias size = len(VariadicList(ts))
 
@@ -74,20 +74,20 @@ fn parallel_runner[*ts: MutCallable](mut*callables: *ts):
     sync_parallelize[exec](size)
 
 
-struct SeriesTask[o: MutableOrigin, *ts: MutCallable](MutCallable):
+struct SeriesTask[o: MutableOrigin, //, *ts: MutCallable](MutCallable):
     var storage: MutCallablePack[o, *ts]
 
-    fn __init__(out self: SeriesTask[args.origin, *ts], mut*args: *ts):
+    fn __init__(out self: SeriesTask[o = args.origin, *ts], mut*args: *ts):
         self.storage = MutCallablePack(args._value)
 
     fn __call__(mut self):
         series_runner(self.storage)
 
 
-struct ParallelTask[o: MutableOrigin, *ts: MutCallable](MutCallable):
+struct ParallelTask[o: MutableOrigin, //, *ts: MutCallable](MutCallable):
     var storage: MutCallablePack[o, *ts]
 
-    fn __init__(out self: ParallelTask[args.origin, *ts], mut*args: *ts):
+    fn __init__(out self: ParallelTask[o = args.origin, *ts], mut*args: *ts):
         self.storage = MutCallablePack(args._value)
 
     fn __call__(mut self):
