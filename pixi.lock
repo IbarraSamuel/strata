@@ -6,17 +6,17 @@ environments:
     - url: https://repo.prefix.dev/conda-forge/
     packages:
       linux-64:
-      - conda: https://conda.modular.com/max-nightly/linux-64/mojo-25.5.0.dev2025072705-release.conda
+      - conda: https://conda.modular.com/max-nightly/linux-64/mojo-25.5.0.dev2025072805-release.conda
       osx-arm64:
-      - conda: https://conda.modular.com/max-nightly/osx-arm64/mojo-25.5.0.dev2025072705-release.conda
+      - conda: https://conda.modular.com/max-nightly/osx-arm64/mojo-25.5.0.dev2025072805-release.conda
 packages:
-- conda: https://conda.modular.com/max-nightly/linux-64/mojo-25.5.0.dev2025072705-release.conda
-  sha256: afad28c1e6b5938a678236fb6507aadd62973ce744c769e392c8e5cff3d1dc4d
+- conda: https://conda.modular.com/max-nightly/linux-64/mojo-25.5.0.dev2025072805-release.conda
+  sha256: 7f0bfa9ed2f803f2205bdab5560e2a28ba1da1acf62fbb23963a100f0730dc08
   license: LicenseRef-Modular-Proprietary
-  size: 78182267
-  timestamp: 1753593756081
-- conda: https://conda.modular.com/max-nightly/osx-arm64/mojo-25.5.0.dev2025072705-release.conda
-  sha256: be47821c119926be5445da7a871e2d86ac2205a26d2b04ae4ba176cb0a8b2e14
+  size: 78190498
+  timestamp: 1753680256329
+- conda: https://conda.modular.com/max-nightly/osx-arm64/mojo-25.5.0.dev2025072805-release.conda
+  sha256: 6a4d67e4b7c081ab0f927f2715397ec6d9f2a9a17dbc8e660f8bb206a66de9e3
   license: LicenseRef-Modular-Proprietary
-  size: 58971654
-  timestamp: 1753595235966
+  size: 58975408
+  timestamp: 1753681642678
