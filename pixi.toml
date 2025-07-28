@@ -24,7 +24,7 @@ channels = [
 
 # [package.run-dependencies]
 # max = "*"
-max = "*"
+mojo = "*"
 # [package.build]
 # backend = { name = "pixi-build-rattler-build", version = "0.1.*" }
 # END OF CHANGES
