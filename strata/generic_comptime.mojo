@@ -1,6 +1,7 @@
 # from memory.pointer import Pointer
 from runtime.asyncrt import TaskGroup, _run
-from strata.custom_tuple import Tuple
+
+# from strata.custom_tuple import Tuple
 
 
 # trait Callable:
@@ -106,8 +107,8 @@ fn seq_fn[
 @always_inline("nodebug")
 fn par_fn[
     In: AnyType,
-    O1: AnyType,
-    O2: AnyType, //,
+    O1: Copyable & Movable,
+    O2: Copyable & Movable, //,
     f: fn (In) -> O1,
     l: fn (In) -> O2,
 ](val: In) -> Tuple[O1, O2]:
@@ -136,22 +137,23 @@ fn par_fn[
 
 
 @register_passable("trivial")
-struct Fn[i: AnyType, o: AnyType, //, F: fn (i) -> o]:
-    alias I = i
-    alias O = o
-
+struct Fn[i: AnyType, o: Copyable & Movable, //, F: fn (i) -> o]:
     @always_inline("builtin")
     fn __init__(out self):
         pass
 
     @staticmethod
     @always_inline("builtin")
-    fn sequential[O: AnyType, //, f: fn (o) -> O]() -> Fn[seq_fn[F, f]]:
+    fn sequential[
+        O: Copyable & Movable, //, f: fn (o) -> O
+    ]() -> Fn[seq_fn[F, f]]:
         return Fn[seq_fn[F, f]]()
 
     @staticmethod
     @always_inline("builtin")
-    fn parallel[O: AnyType, //, f: fn (i) -> O]() -> Fn[par_fn[F, f]]:
+    fn parallel[
+        O: Copyable & Movable, //, f: fn (i) -> O
+    ]() -> Fn[par_fn[F, f]]:
         return Fn[par_fn[F, f]]()
 
     @always_inline("builtin")

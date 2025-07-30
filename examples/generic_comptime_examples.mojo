@@ -1,4 +1,4 @@
-from strata.generic_comptime import Tuple, Fn
+from strata.generic_comptime import Fn
 import os
 from time import sleep
 
