@@ -30,93 +30,78 @@ from utils._visualizers import lldb_formatter_wrapping_type
 
 @lldb_formatter_wrapping_type
 struct Tuple[
-    *element_types: AnyType, origin: ImmutableOrigin = ImmutableAnyOrigin
-](Defaultable, Movable, Sized):
+    mut: Bool,
+    origin: Origin[mut],
+    is_owned: Bool, //,
+    *element_types: AnyType,
+](Movable, Sized):
     """The type of a literal tuple expression.
 
     A tuple consists of zero or more values, separated by commas.
 
     Parameters:
-        element_types: The elements type.
+        mut: If the tuple could be mutated.
         origin: The origin of the tuple.
+        is_owned: If the values are captured by the tuple.
+        element_types: The elements type.
     """
 
-    # alias _mlir_type = __mlir_type[
-    #     `!kgen.pack<:!kgen.variadic<`,
-    #     Movable,
-    #     `> `,
-    #     element_types,
-    #     `>`,
-    # ]
-
-    alias Storage[o: ImmutableOrigin] = VariadicPack[
-        False, o, AnyType, *element_types
-    ]
-    var storage: Self.Storage[origin]
+    alias Storage = VariadicPack[is_owned, origin, AnyType, *element_types]
+    var storage: Self.Storage
     """The underlying storage for the tuple."""
 
     # Overload that crushes down IR generated on the caller side.
     @always_inline("nodebug")
-    fn __init__(out self):
+    fn __init__(
+        out self: Tuple[mut=True, origin=MutableAnyOrigin, is_owned=False]
+    ):
         """Construct an empty tuple."""
         __mlir_op.`lit.ownership.mark_initialized`(
             __get_mvalue_as_litref(self.storage)
         )
 
-    # @always_inline("nodebug")
-    # fn __init__(
-    #     out self: Tuple[*element_types, origin = args.origin],
-    #     *args: *element_types,
-    # ):
-    #     """Construct the tuple.
-
-    #     Args:
-    #         args: Initial values.
-    #     """
-    #     # Delete the original origin to an ImmutableAnyOrigin
-    #     self.storage = Self.Storage[args.origin](args._value)
-
-    @always_inline("nodebug")
+    @always_inline
     fn __init__(
-        out self,
+        out self: Tuple[
+            mut = args.origin.mut,
+            origin = args.origin,
+            is_owned = args.is_owned,
+            *element_types,
+        ],
         *args: *element_types,
     ):
-        """Construct the tuple.
+        self.storage = self.Storage(args._value)
 
-        Args:
-            args: Initial values.
-        """
-        # Delete the original origin to an ImmutableAnyOrigin
-        values = rebind[Self.Storage[origin]._mlir_type](args._value)
-        self.storage = Self.Storage[origin](values)
+    fn __init__(
+        out self: Tuple[
+            mut = args.origin.mut,
+            origin = args.origin,
+            is_owned = args.is_owned,
+            *element_types,
+        ],
+        mut*args: *element_types,
+        mutable: __type_of(True),
+    ):
+        self.storage = self.Storage(args._value)
 
-    @always_inline("nodebug")
+    fn __init__(
+        out self: Tuple[
+            mut = args.origin.mut,
+            origin = args.origin,
+            is_owned = args.is_owned,
+            *element_types,
+        ],
+        var *args: *element_types,
+        is_owned: __type_of(True),
+    ):
+        self.storage = self.Storage(args._value)
+
     fn __init__(
         out self,
         *,
-        owned storage: VariadicPack[False, origin, AnyType, *element_types],
+        storage: Self.Storage,
     ):
-        """Construct the tuple from a low-level internal representation.
-
-        Args:
-            storage: The variadic pack storage to construct from.
-        """
-
-        # Mark 'self.storage' as being initialized so we can work on it.
-        self.storage = storage^
-        # __mlir_op.`lit.ownership.mark_initialized`(
-        #     __get_mvalue_as_litref(self.storage)
-        # )
-
-        # # Move each element into the tuple storage.
-        # @parameter
-        # for i in range(Self.__len__()):
-        #     UnsafePointer(to=storage[i]).move_pointee_into(
-        #         UnsafePointer(to=self[i])
-        #     )
-
-        # # Do not destroy the elements when 'storage' goes away.
-        # __disable_del storage
+        self.storage = Self.Storage(storage._value)
 
     # fn __del__(owned self):
     #     """Destructor that destroys all of the elements."""
@@ -143,14 +128,14 @@ struct Tuple[
     #     for i in range(Self.__len__()):
     #         UnsafePointer(to=self[i]).init_pointee_copy(existing[i])
 
-    # @always_inline
-    # fn copy(self) -> Self:
-    #     """Explicitly construct a copy of self.
+    @always_inline
+    fn copy(out o: Self, self):
+        """Explicitly construct a copy of self.
 
-    #     Returns:
-    #         A copy of this value.
-    #     """
-    #     return self
+        Returns:
+            A copy of this value.
+        """
+        o = Self(storage=o.Storage(self.storage._value))
 
     @always_inline("nodebug")
     fn __moveinit__(out self, owned existing: Self):
@@ -211,16 +196,6 @@ struct Tuple[
         Returns:
             A reference to the specified element.
         """
-        # # Return a reference to an element at the specified index, propagating
-        # # mutability of self.
-        # var storage_kgen_ptr = UnsafePointer(to=self.storage).address
-
-        # # KGenPointer to the element.
-        # var elt_kgen_ptr = __mlir_op.`kgen.pack.gep`[index = idx.value](
-        #     storage_kgen_ptr
-        # )
-        # # Use an immortal mut reference, which converts to self's origin.
-        # return UnsafePointer(elt_kgen_ptr)[]
         return self.storage[idx]
 
     @always_inline("nodebug")
@@ -256,3 +231,17 @@ struct Tuple[
                     return True
 
         return False
+
+
+fn run():
+    val1 = String(32)
+    val2 = String(432)
+
+    imm_tuple = Tuple(val1, val2)
+    print(imm_tuple[0])
+    mut_tuple = Tuple(val1, val2, mutable=True)
+    mut_tuple[0] += "sam"
+    print(mut_tuple[0])
+
+    owned_tuple = Tuple(val1^, val2^, is_owned=True)
+    _ = owned_tuple^
