@@ -15,7 +15,7 @@ struct MyTask[job: StringLiteral](Callable):
 
 fn main():
     print("\n\nHey! Running Immutable Examples...")
-    from strata.immutable import SeriesTask as IS
+    from strata.immutable import SequentialTask as IS
     from strata.immutable import ParallelTask as IP
 
     init = MyTask["Initialize"]("Setting up...")
@@ -37,7 +37,7 @@ fn main():
     graph_1()
 
     # Airflow Syntax
-    from strata.immutable import ImmTaskRef as IT
+    from strata.immutable import TaskRef as IT
 
     graph_2 = (
         IT(init)

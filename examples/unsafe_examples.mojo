@@ -101,7 +101,7 @@ fn main():
     f = UT(final)
 
     # Using Immutable Group Types
-    from strata.immutable import SeriesTask as S, ParallelTask as P
+    from strata.immutable import SequentialTask as S, ParallelTask as P
 
     print("Type graph...")
     imm_type_graph = S(i, P(S(g11, g12), S(g21, g22)), f)
@@ -111,7 +111,7 @@ fn main():
     # NOTE: This one could cause confution because the UnsafeTaskRef itself contains
     # it's own airflow syntax, and could be mixed up by mistake with the Immutable airflow syntax
     # if you don't properly type the graph
-    from strata.immutable import ImmTaskRef as IT
+    from strata.immutable import TaskRef as IT
 
     print("Airflow graph...")
     imm_graph = IT(i) >> (IT(g11) >> g12) + (IT(g21) >> g22) >> f

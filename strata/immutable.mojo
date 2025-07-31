@@ -88,7 +88,7 @@ struct FnTask(Callable):
         self.func()
 
 
-struct SerTaskPairRef[
+struct SequentialTaskPairRef[
     m1: Bool,
     m2: Bool,
     o1: Origin[m1],
@@ -108,20 +108,20 @@ struct SerTaskPairRef[
 
     fn __add__[
         t: Callable, s: Origin, o: Origin
-    ](ref [s]self, ref [o]other: t) -> ParTaskPairRef[
+    ](ref [s]self, ref [o]other: t) -> ParallelTaskPairRef[
         m1 = s.mut, m2 = o.mut, o1=s, o2=o, Self, t
     ]:
         return {self, other}
 
     fn __rshift__[
         t: Callable, s: Origin, o: Origin
-    ](ref [s]self, ref [o]other: t) -> SerTaskPairRef[
+    ](ref [s]self, ref [o]other: t) -> SequentialTaskPairRef[
         m1 = s.mut, m2 = o.mut, o1=s, o2=o, Self, t
     ]:
         return {self, other}
 
 
-struct ParTaskPairRef[
+struct ParallelTaskPairRef[
     m1: Bool,
     m2: Bool,
     o1: Origin[m1],
@@ -141,20 +141,20 @@ struct ParTaskPairRef[
 
     fn __add__[
         t: Callable, s: Origin, o: Origin
-    ](ref [s]self, ref [o]other: t) -> ParTaskPairRef[
+    ](ref [s]self, ref [o]other: t) -> ParallelTaskPairRef[
         m1 = s.mut, m2 = o.mut, o1=s, o2=o, Self, t
     ]:
         return {self, other}
 
     fn __rshift__[
         t: Callable, s: Origin, o: Origin
-    ](ref [s]self, ref [o]other: t) -> SerTaskPairRef[
+    ](ref [s]self, ref [o]other: t) -> SequentialTaskPairRef[
         m1 = s.mut, m2 = o.mut, o1=s, o2=o, Self, t
     ]:
         return {self, other}
 
 
-struct ImmTaskRef[origin: Origin, //, T: Callable](Callable):
+struct TaskRef[origin: Origin, //, T: Callable](Callable):
     var inner: Pointer[T, origin]
 
     @implicit
@@ -166,14 +166,14 @@ struct ImmTaskRef[origin: Origin, //, T: Callable](Callable):
 
     fn __add__[
         t: Callable, o: Origin, //
-    ](self, ref [o]other: t) -> ParTaskPairRef[
+    ](self, ref [o]other: t) -> ParallelTaskPairRef[
         m1 = origin.mut, m2 = o.mut, o1=origin, o2=o, T, t
     ]:
         return {self.inner[], other}
 
     fn __rshift__[
         t: Callable, o: Origin, //
-    ](self, ref [o]other: t) -> SerTaskPairRef[
+    ](self, ref [o]other: t) -> SequentialTaskPairRef[
         m1 = origin.mut, m2 = o.mut, o1=origin, o2=o, T, t
     ]:
         return {self.inner[], other}
@@ -213,7 +213,9 @@ struct ParallelTask[mut: Bool, origin: Origin[mut], //, *Ts: Callable](
 
 
 # # Variadic Series
-struct SeriesTask[mut: Bool, origin: Origin[mut], //, *Ts: Callable](Callable):
+struct SequentialTask[mut: Bool, origin: Origin[mut], //, *Ts: Callable](
+    Callable
+):
     """Collection of immutable tasks to run in Series.
 
     Parameters:
@@ -226,7 +228,9 @@ struct SeriesTask[mut: Bool, origin: Origin[mut], //, *Ts: Callable](Callable):
     """Underlying storage for tasks pointers."""
 
     fn __init__(
-        out self: SeriesTask[mut = args.origin.mut, origin = args.origin, *Ts],
+        out self: SequentialTask[
+            mut = args.origin.mut, origin = args.origin, *Ts
+        ],
         *args: *Ts,
     ):
         """Create a Series group, using the args provided. Origin need to be casted.
