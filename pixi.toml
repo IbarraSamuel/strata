@@ -3,13 +3,7 @@ description = "Series/Parallel Runner on top of mojo asyncrt"
 authors = ["Samuel Ibarra <ing.samuelibarra@gmail.com>"]
 platforms = ["linux-64", "osx-arm64"]
 
-channels = [
-    "https://conda.modular.com/max-nightly",
-    # "https://conda.modular.com/max",
-    # "https://repo.prefix.dev/modular-community",
-    "https://repo.prefix.dev/conda-forge",
-    # "https://prefix.dev/pixi-build-backends",
-]
+channels = ["https://repo.prefix.dev/max-nightly", "https://repo.prefix.dev/conda-forge"]
 
 # CHANGES
 # preview = ["pixi-build"]
