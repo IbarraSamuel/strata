@@ -1,5 +1,4 @@
 from strata.generic_comptime import Fn
-import os
 from time import sleep
 
 alias time = 0.1
@@ -34,16 +33,19 @@ fn sum_tuple(value: ((Int, Float32), Int)) -> Float32:
 
 # Struct example
 struct FloatToString:
-    """Just an example of a struct that conforms to callable."""
-
-    alias I = Float32
-    alias O = String
-
     @staticmethod
-    fn call(value: Self.I) -> Self.O:
+    fn call(value: Float32) -> String:
         print("Float to string...")
         sleep(time)
-        return Self.O(value)
+        return String(value)
+
+
+async fn async_itof(v: Int) -> Float32:
+    return v
+
+
+async fn async_ftoi(v: Float32) -> Int:
+    return Int(v)
 
 
 fn main():
@@ -86,3 +88,16 @@ fn main():
     alias chain_fn = chain_graph.F
     chain_result = chain_fn("32")
     print(chain_result)
+
+    # # For async functions
+    # from runtime.asyncrt import create_task
+    # from strata.generic_comptime import AsyncFn
+
+    # alias async_graph = AsyncFn[async_itof]().parallel[f=async_itof]().parallel[
+    #     f=async_itof
+    # ]().F
+
+    # coro = async_graph(32)
+    # task = create_task(coro^)
+    # result = task.wait()
+    # print(result[0][1], result[0][0], result[1])
