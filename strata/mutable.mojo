@@ -113,15 +113,19 @@ struct SequentialTaskPair[T1: MutCallable & Movable, T2: MutCallable & Movable](
         series_runner(self.t1, self.t2)
 
     # ---- FOR MUTABLE VERSIONS -----
-    fn __add__(
-        var self, var other: TaskRef
-    ) -> ParallelTaskPair[Self, TaskRef[origin = other.origin, other.T]]:
-        return {self^, other^}
+    fn __add__[
+        o: MutableOrigin, t: MutCallable, //
+    ](var self, ref [o]other: t) -> ParallelTaskPair[
+        Self, TaskRef[origin=o, t]
+    ]:
+        return {self^, TaskRef(other)}
 
-    fn __rshift__(
-        var self, var other: TaskRef
-    ) -> SequentialTaskPair[Self, TaskRef[origin = other.origin, other.T]]:
-        return {self^, other^}
+    fn __rshift__[
+        o: MutableOrigin, t: MutCallable, //
+    ](var self, ref [o]other: t) -> SequentialTaskPair[
+        Self, TaskRef[origin=o, t]
+    ]:
+        return {self^, TaskRef(other)}
 
     # ---- FOR MUTABLE MOVABLE VERSIONS -----
     fn __add__[
@@ -146,15 +150,19 @@ struct ParallelTaskPair[T1: MutCallable & Movable, T2: MutCallable & Movable](
         parallel_runner(self.t1, self.t2)
 
     # ---- FOR MUTABLE VERSIONS -----
-    fn __add__(
-        var self, var other: TaskRef
-    ) -> ParallelTaskPair[Self, TaskRef[origin = other.origin, other.T]]:
-        return {self^, other^}
+    fn __add__[
+        o: MutableOrigin, t: MutCallable, //
+    ](var self, ref [o]other: t) -> ParallelTaskPair[
+        Self, TaskRef[origin=o, t]
+    ]:
+        return {self^, TaskRef(other)}
 
-    fn __rshift__(
-        var self, var other: TaskRef
-    ) -> SequentialTaskPair[Self, TaskRef[origin = other.origin, other.T]]:
-        return {self^, other^}
+    fn __rshift__[
+        o: MutableOrigin, t: MutCallable, //
+    ](var self, ref [o]other: t) -> SequentialTaskPair[
+        Self, TaskRef[origin=o, t]
+    ]:
+        return {self^, TaskRef(other)}
 
     # ---- FOR MUTABLE MOVABLE VERSIONS -----
     fn __add__[
@@ -168,10 +176,10 @@ struct ParallelTaskPair[T1: MutCallable & Movable, T2: MutCallable & Movable](
         return {self^, other^}
 
 
+@register_passable("trivial")
 struct TaskRef[origin: MutableOrigin, //, T: MutCallable](Movable, MutCallable):
     var inner: Pointer[T, origin]
 
-    @implicit
     fn __init__(out self, ref [origin]inner: T):
         self.inner = Pointer(to=inner)
 
@@ -179,23 +187,27 @@ struct TaskRef[origin: MutableOrigin, //, T: MutCallable](Movable, MutCallable):
         self.inner[]()
 
     # ---- FOR MUTABLE VERSIONS -----
-    fn __add__(
-        var self, var other: TaskRef
-    ) -> ParallelTaskPair[Self, TaskRef[origin = other.origin, other.T]]:
-        return {self^, other^}
+    fn __add__[
+        o: MutableOrigin, t: MutCallable, //
+    ](var self, ref [o]other: t) -> ParallelTaskPair[
+        Self, TaskRef[origin=o, t]
+    ]:
+        return {self, TaskRef(other)}
 
-    fn __rshift__(
-        var self, var other: TaskRef
-    ) -> SequentialTaskPair[Self, TaskRef[origin = other.origin, other.T]]:
-        return {self^, other^}
+    fn __rshift__[
+        o: MutableOrigin, t: MutCallable, //
+    ](var self, ref [o]other: t) -> SequentialTaskPair[
+        Self, TaskRef[origin=o, t]
+    ]:
+        return {self, TaskRef(other)}
 
     # ---- FOR MUTABLE MOVABLE VERSIONS -----
     fn __add__[
         t: MutCallable & Movable
     ](var self, var other: t) -> ParallelTaskPair[Self, t]:
-        return {self^, other^}
+        return {self, other^}
 
     fn __rshift__[
         t: MutCallable & Movable
     ](var self, var other: t) -> SequentialTaskPair[Self, t]:
-        return {self^, other^}
+        return {self, other^}

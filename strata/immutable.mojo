@@ -4,10 +4,9 @@ alias CallablePack = VariadicPack[False, _, Callable, *_]
 
 
 trait Callable:
-    """The struct should contain a fn __call__ method."""
+    """The struct should contain a fn `__call__` method."""
 
     fn __call__(self):
-        """Run a task with the possibility to mutate internal state."""
         ...
 
 
@@ -88,6 +87,8 @@ struct FnTask(Callable):
         self.func()
 
 
+@fieldwise_init
+@register_passable("trivial")
 struct SequentialTaskPairRef[
     m1: Bool,
     m2: Bool,
@@ -121,6 +122,8 @@ struct SequentialTaskPairRef[
         return {self, other}
 
 
+@fieldwise_init
+@register_passable("trivial")
 struct ParallelTaskPairRef[
     m1: Bool,
     m2: Bool,
@@ -154,10 +157,10 @@ struct ParallelTaskPairRef[
         return {self, other}
 
 
+@register_passable("trivial")
 struct TaskRef[origin: Origin, //, T: Callable](Callable):
     var inner: Pointer[T, origin]
 
-    @implicit
     fn __init__(out self, ref [origin]value: T):
         self.inner = Pointer(to=value)
 
@@ -166,17 +169,17 @@ struct TaskRef[origin: Origin, //, T: Callable](Callable):
 
     fn __add__[
         t: Callable, o: Origin, //
-    ](self, ref [o]other: t) -> ParallelTaskPairRef[
+    ](deinit self, ref [o]other: t) -> ParallelTaskPairRef[
         m1 = origin.mut, m2 = o.mut, o1=origin, o2=o, T, t
     ]:
-        return {self.inner[], other}
+        return {self.inner, Pointer(to=other)}
 
     fn __rshift__[
         t: Callable, o: Origin, //
-    ](self, ref [o]other: t) -> SequentialTaskPairRef[
+    ](deinit self, ref [o]other: t) -> SequentialTaskPairRef[
         m1 = origin.mut, m2 = o.mut, o1=origin, o2=o, T, t
     ]:
-        return {self.inner[], other}
+        return {self.inner, Pointer(to=other)}
 
 
 # Variadic Parallel
