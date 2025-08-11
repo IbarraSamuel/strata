@@ -68,7 +68,7 @@ struct UnsafeParTaskPair[T1: Callable & Movable, T2: Callable & Movable](
         return {self^, other^}
 
 
-# THIS ALLOW US TO CREATE
+@register_passable("trivial")
 struct UnsafeTaskRef[T: MutCallable](Callable, Movable, MutCallable):
     """This structure will treat MutableCallables as Immutable Callables.
     Is a way of casting a MutableCallable into a Callable.
@@ -84,10 +84,10 @@ struct UnsafeTaskRef[T: MutCallable](Callable, Movable, MutCallable):
 
     var inner: UnsafePointer[T]
 
-    @implicit
     fn __init__(out self, ref inner: T):
         self.inner = UnsafePointer(to=inner)
 
+    @always_inline("nodebug")
     fn __call__(self):
         # WARNING: There is no guarrantee on what is made inside the task.
         # Since could be mutable, and the caller doesn't need mutability.
@@ -98,20 +98,20 @@ struct UnsafeTaskRef[T: MutCallable](Callable, Movable, MutCallable):
     fn __add__[
         t: MutCallable, o: MutableOrigin
     ](var self, ref [o]other: t) -> UnsafeParTaskPair[Self, UnsafeTaskRef[t]]:
-        return {self^, UnsafeTaskRef(other)}
+        return {self, UnsafeTaskRef(other)}
 
     fn __rshift__[
         t: MutCallable, o: MutableOrigin
     ](var self, ref [o]other: t) -> UnsafeSerTaskPair[Self, UnsafeTaskRef[t]]:
-        return {self^, UnsafeTaskRef(other)}
+        return {self, UnsafeTaskRef(other)}
 
     # # ---- FOR IMMUTABLE VERSIONS -----
     fn __add__[
         t: Callable & Movable
     ](var self, var other: t) -> UnsafeParTaskPair[Self, t]:
-        return {self^, other^}
+        return {self, other^}
 
     fn __rshift__[
         t: Callable & Movable
     ](var self, var other: t) -> UnsafeSerTaskPair[Self, t]:
-        return {self^, other^}
+        return {self, other^}

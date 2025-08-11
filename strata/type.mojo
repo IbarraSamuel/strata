@@ -59,7 +59,9 @@ struct TypeTask[T: TypeCallable](TypeCallable):
         T.__call__()
 
     @always_inline("nodebug")
-    fn __add__[t: TypeCallable](self, other: t) -> ParallelTypeTask[T, t]:
+    fn __add__[
+        t: TypeCallable
+    ](deinit self, other: t) -> ParallelTypeTask[T, t]:
         """Add this task pair with another task, to be executed in parallel.
         This task will keep the internal order, but meanwhile the current one is running,
         the other one could run too.
@@ -76,7 +78,9 @@ struct TypeTask[T: TypeCallable](TypeCallable):
         return {}
 
     @always_inline("nodebug")
-    fn __rshift__[t: TypeCallable](self, other: t) -> SeriesTypeTask[T, t]:
+    fn __rshift__[
+        t: TypeCallable
+    ](deinit self, other: t) -> SeriesTypeTask[T, t]:
         """Add this task pair with another task, to be executed in sequence.
         This task will keep the internal order, but meanwhile the current one is running,
         the other one could run too.
@@ -109,11 +113,15 @@ struct ParallelTypeTask[*Ts: TypeCallable](TypeCallable):
         parallel_runner[*Ts]()
 
     @always_inline("nodebug")
-    fn __add__[t: TypeCallable](self, other: t) -> ParallelTypeTask[Self, t]:
+    fn __add__[
+        t: TypeCallable
+    ](deinit self, other: t) -> ParallelTypeTask[Self, t]:
         return {}
 
     @always_inline("nodebug")
-    fn __rshift__[t: TypeCallable](self, other: t) -> SeriesTypeTask[Self, t]:
+    fn __rshift__[
+        t: TypeCallable
+    ](deinit self, other: t) -> SeriesTypeTask[Self, t]:
         return {}
 
 
@@ -133,9 +141,13 @@ struct SeriesTypeTask[*Ts: TypeCallable](TypeCallable):
         series_runner[*Ts]()
 
     @always_inline("nodebug")
-    fn __add__[t: TypeCallable](self, other: t) -> ParallelTypeTask[Self, t]:
+    fn __add__[
+        t: TypeCallable
+    ](deinit self, other: t) -> ParallelTypeTask[Self, t]:
         return {}
 
     @always_inline("nodebug")
-    fn __rshift__[t: TypeCallable](self, other: t) -> SeriesTypeTask[Self, t]:
+    fn __rshift__[
+        t: TypeCallable
+    ](deinit self, other: t) -> SeriesTypeTask[Self, t]:
         return {}

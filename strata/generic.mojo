@@ -9,6 +9,7 @@ trait Callable:
         ...
 
 
+@register_passable("trivial")
 struct Task[
     origin: ImmutableOrigin,
     T: Callable, //,
@@ -45,7 +46,7 @@ struct Task[
         var self: Task[origin=origin, T=T, In = T.I, Out = t.I],
         ref [o]other: t,
     ) -> SequentialPair[o1=origin, o2=o, T1=T, T2=t, T.I, t.O]:
-        return SequentialPair(self^, Task(other))
+        return SequentialPair(self, Task(other))
 
     @always_inline("nodebug")
     fn __add__[
@@ -54,7 +55,7 @@ struct Task[
         var self: Task[origin=origin, T=T, In = t.I, Out = T.O],
         ref [o]other: t,
     ) -> ParallelPair[o1=origin, o2=o, T1=T, T2=t, t.I, (T.O, t.O)]:
-        return ParallelPair(self^, Task(other))
+        return ParallelPair(self, Task(other))
 
 
 # @register_passable("trivial")
@@ -72,9 +73,6 @@ struct SequentialPair[
     alias Task1 = Task[origin=o1, T=T1, In=In, Out = T2.I]
     alias Task2 = Task[origin=o2, T=T2, In = T2.I, Out=Out]
 
-    alias FromSeq[O: Copyable & Movable] = SequentialPair[In=In, Out=O, **_]
-    alias FromPar[O: Copyable & Movable] = ParallelPair[In=In, Out=O, **_]
-
     var t1: Pointer[T1, o1]
     var t2: Pointer[T2, o2]
 
@@ -86,7 +84,7 @@ struct SequentialPair[
         out self: SequentialPair[
             o1=o1, o2=o2, T1 = __type_of(t1), T2=T2, t1.I, t2.O
         ],
-        ref [o1]t1: Self.FromSeq[T2.I],
+        ref [o1]t1: SequentialPair[In=In, Out = T2.I],
         var t2: Self.Task2,
     ):
         self.t1 = Pointer(to=t1)
@@ -96,7 +94,7 @@ struct SequentialPair[
         out self: SequentialPair[
             o1=o1, o2=o2, T1 = __type_of(t1), T2=T2, t1.I, t2.O
         ],
-        ref [o1]t1: Self.FromPar[T2.I],
+        ref [o1]t1: ParallelPair[In=In, Out = T2.I],
         var t2: Self.Task2,
     ):
         self.t1 = Pointer(to=t1)
@@ -153,9 +151,6 @@ struct ParallelPair[
     alias Task1 = Task[origin=o1, T=T1, In=In, Out = T1.O]
     alias Task2 = Task[origin=o2, T=T2, In=In, Out = T2.O]
 
-    alias FromSeq[I: Copyable & Movable] = SequentialPair[In=I, **_]
-    alias FromPar[I: Copyable & Movable] = ParallelPair[In=I, **_]
-
     alias WithOutput[o: Copyable & Movable] = ParallelPair[
         o1=o1, o2=o2, T1=T1, T2=T2, In=In, Out=o
     ]
@@ -175,7 +170,7 @@ struct ParallelPair[
         out self: ParallelPair[
             o1=o1, o2=o2, T1 = __type_of(t1), T2=T2, In, (t1.O, t2.O)
         ],
-        ref [o1]t1: Self.FromSeq[T2.I],
+        ref [o1]t1: SequentialPair[In = T2.I],
         var t2: Self.Task2,
     ):
         self.t1 = Pointer(to=t1)
@@ -185,7 +180,7 @@ struct ParallelPair[
         out self: ParallelPair[
             o1=o1, o2=o2, T1 = __type_of(t1), T2=T2, In, (t1.O, t2.O)
         ],
-        ref [o1]t1: Self.FromPar[T2.I],
+        ref [o1]t1: ParallelPair[In = T2.I],
         var t2: Self.Task2,
     ):
         self.t1 = Pointer(to=t1)
