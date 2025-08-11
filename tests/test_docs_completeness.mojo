@@ -7,7 +7,7 @@ alias CMD = "magic run mojo doc --diagnose-missing-doc-strings --validate-doc-st
 fn test_docs_completeness() raises:
     var package = Path("strata")
     files = List[Path]()
-    _flatten_files(package, files)
+    _flatten_files(package^, files)
 
     for file in files:
         path = String(file)
@@ -17,7 +17,7 @@ fn test_docs_completeness() raises:
             raise Error(res)
 
 
-fn _flatten_files(owned path: Path, mut files: List[Path]) raises:
+fn _flatten_files(var path: Path, mut files: List[Path]) raises:
     if path.is_file():
         files.append(path)
         return

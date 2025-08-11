@@ -42,7 +42,7 @@ struct Task[
     fn __rshift__[
         t: Callable, o: ImmutableOrigin, //
     ](
-        owned self: Task[origin=origin, T=T, In = T.I, Out = t.I],
+        var self: Task[origin=origin, T=T, In = T.I, Out = t.I],
         ref [o]other: t,
     ) -> SequentialPair[o1=origin, o2=o, T1=T, T2=t, T.I, t.O]:
         return SequentialPair(self^, Task(other))
@@ -51,7 +51,7 @@ struct Task[
     fn __add__[
         t: Callable, o: ImmutableOrigin, //
     ](
-        owned self: Task[origin=origin, T=T, In = t.I, Out = T.O],
+        var self: Task[origin=origin, T=T, In = t.I, Out = T.O],
         ref [o]other: t,
     ) -> ParallelPair[o1=origin, o2=o, T1=T, T2=t, t.I, (T.O, t.O)]:
         return ParallelPair(self^, Task(other))

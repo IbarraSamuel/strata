@@ -19,23 +19,23 @@ struct TaskRef[T: AsyncCallable, origin: MutableOrigin](AsyncCallable, Movable):
     fn __add__[
         t: AsyncCallable,
         o: MutableOrigin,
-    ](owned self, ref [o]other: t) -> ParTaskPair[Self, TaskRef[t, o]]:
+    ](var self, ref [o]other: t) -> ParTaskPair[Self, TaskRef[t, o]]:
         return {self^, TaskRef(other)}
 
     fn __add__[
         t: AsyncCallable & Movable
-    ](owned self, owned other: t) -> ParTaskPair[Self, t]:
+    ](var self, var other: t) -> ParTaskPair[Self, t]:
         return {self^, other^}
 
     fn __rshift__[
         t: AsyncCallable,
         o: MutableOrigin,
-    ](owned self, ref [o]other: t) -> SerTaskPair[Self, TaskRef[t, o]]:
+    ](var self, ref [o]other: t) -> SerTaskPair[Self, TaskRef[t, o]]:
         return {self^, TaskRef(other)}
 
     fn __rshift__[
         t: AsyncCallable & Movable
-    ](owned self, owned other: t) -> SerTaskPair[Self, t]:
+    ](var self, var other: t) -> SerTaskPair[Self, t]:
         return {self^, other^}
 
     fn run(self):
@@ -56,23 +56,23 @@ struct SerTaskPair[T1: AsyncCallable & Movable, T2: AsyncCallable & Movable](
     fn __add__[
         t: AsyncCallable,
         o: MutableOrigin,
-    ](owned self, ref [o]other: t) -> ParTaskPair[Self, TaskRef[t, o]]:
+    ](var self, ref [o]other: t) -> ParTaskPair[Self, TaskRef[t, o]]:
         return {self^, TaskRef(other)}
 
     fn __add__[
         t: AsyncCallable & Movable
-    ](owned self, owned other: t) -> ParTaskPair[Self, t]:
+    ](var self, var other: t) -> ParTaskPair[Self, t]:
         return {self^, other^}
 
     fn __rshift__[
         t: AsyncCallable,
         o: MutableOrigin,
-    ](owned self, ref [o]other: t) -> SerTaskPair[Self, TaskRef[t, o]]:
+    ](var self, ref [o]other: t) -> SerTaskPair[Self, TaskRef[t, o]]:
         return {self^, TaskRef(other)}
 
     fn __rshift__[
         t: AsyncCallable & Movable
-    ](owned self, owned other: t) -> SerTaskPair[Self, t]:
+    ](var self, var other: t) -> SerTaskPair[Self, t]:
         return {self^, other^}
 
     fn run(mut self):
@@ -95,23 +95,23 @@ struct ParTaskPair[T1: AsyncCallable & Movable, T2: AsyncCallable & Movable](
     fn __add__[
         t: AsyncCallable,
         o: MutableOrigin,
-    ](owned self, ref [o]other: t) -> ParTaskPair[Self, TaskRef[t, o]]:
+    ](var self, ref [o]other: t) -> ParTaskPair[Self, TaskRef[t, o]]:
         return {self^, TaskRef(other)}
 
     fn __add__[
         t: AsyncCallable & Movable
-    ](owned self, owned other: t) -> ParTaskPair[Self, t]:
+    ](var self, var other: t) -> ParTaskPair[Self, t]:
         return {self^, other^}
 
     fn __rshift__[
         t: AsyncCallable,
         o: MutableOrigin,
-    ](owned self, ref [o]other: t) -> SerTaskPair[Self, TaskRef[t, o]]:
+    ](var self, ref [o]other: t) -> SerTaskPair[Self, TaskRef[t, o]]:
         return {self^, TaskRef(other)}
 
     fn __rshift__[
         t: AsyncCallable & Movable
-    ](owned self, owned other: t) -> SerTaskPair[Self, t]:
+    ](var self, var other: t) -> SerTaskPair[Self, t]:
         return {self^, other^}
 
     fn run(mut self):

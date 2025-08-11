@@ -15,23 +15,23 @@ struct UnsafeSerTaskPair[T1: Callable & Movable, T2: Callable & Movable](
     # ---- FOR MUTABLE VERSIONS -----
     fn __add__[
         t: MutCallable, o: MutableOrigin
-    ](owned self, ref [o]other: t) -> UnsafeParTaskPair[Self, UnsafeTaskRef[t]]:
+    ](var self, ref [o]other: t) -> UnsafeParTaskPair[Self, UnsafeTaskRef[t]]:
         return {self^, UnsafeTaskRef(other)}
 
     fn __rshift__[
         t: MutCallable, o: MutableOrigin
-    ](owned self, ref [o]other: t) -> UnsafeSerTaskPair[Self, UnsafeTaskRef[t]]:
+    ](var self, ref [o]other: t) -> UnsafeSerTaskPair[Self, UnsafeTaskRef[t]]:
         return {self^, UnsafeTaskRef(other)}
 
     # ---- FOR IMMUTABLE VERSIONS -----
     fn __add__[
         t: Callable & Movable
-    ](owned self, owned other: t) -> UnsafeParTaskPair[Self, t]:
+    ](var self, var other: t) -> UnsafeParTaskPair[Self, t]:
         return {self^, other^}
 
     fn __rshift__[
         t: Callable & Movable
-    ](owned self, owned other: t) -> UnsafeSerTaskPair[Self, t]:
+    ](var self, var other: t) -> UnsafeSerTaskPair[Self, t]:
         return {self^, other^}
 
 
@@ -48,23 +48,23 @@ struct UnsafeParTaskPair[T1: Callable & Movable, T2: Callable & Movable](
     # ---- FOR MUTABLE VERSIONS -----
     fn __add__[
         t: MutCallable, o: MutableOrigin
-    ](owned self, ref [o]other: t) -> UnsafeParTaskPair[Self, UnsafeTaskRef[t]]:
+    ](var self, ref [o]other: t) -> UnsafeParTaskPair[Self, UnsafeTaskRef[t]]:
         return {self^, UnsafeTaskRef(other)}
 
     fn __rshift__[
         t: MutCallable, o: MutableOrigin
-    ](owned self, ref [o]other: t) -> UnsafeSerTaskPair[Self, UnsafeTaskRef[t]]:
+    ](var self, ref [o]other: t) -> UnsafeSerTaskPair[Self, UnsafeTaskRef[t]]:
         return {self^, UnsafeTaskRef(other)}
 
     # ---- FOR IMMUTABLE VERSIONS -----
     fn __add__[
         t: Callable & Movable
-    ](owned self, owned other: t) -> UnsafeParTaskPair[Self, t]:
+    ](var self, var other: t) -> UnsafeParTaskPair[Self, t]:
         return {self^, other^}
 
     fn __rshift__[
         t: Callable & Movable
-    ](owned self, owned other: t) -> UnsafeSerTaskPair[Self, t]:
+    ](var self, var other: t) -> UnsafeSerTaskPair[Self, t]:
         return {self^, other^}
 
 
@@ -76,7 +76,7 @@ struct UnsafeTaskRef[T: MutCallable](Callable, Movable, MutCallable):
     we cannot use full references as it is on the Immutable version. Basically,
     because it will require to create this Ref, and the ref will have no origin,
     since it's created on the fly. Because of that, we will use a `mixed` approach.
-    The first part will be a reference to a "immutable" task, and the second a owned
+    The first part will be a reference to a "immutable" task, and the second a var
     version of this UnsafeTaskRef.
 
     We should avoid using this one, the most we can.
@@ -97,21 +97,21 @@ struct UnsafeTaskRef[T: MutCallable](Callable, Movable, MutCallable):
     # ---- FOR MUTABLE VERSIONS -----
     fn __add__[
         t: MutCallable, o: MutableOrigin
-    ](owned self, ref [o]other: t) -> UnsafeParTaskPair[Self, UnsafeTaskRef[t]]:
+    ](var self, ref [o]other: t) -> UnsafeParTaskPair[Self, UnsafeTaskRef[t]]:
         return {self^, UnsafeTaskRef(other)}
 
     fn __rshift__[
         t: MutCallable, o: MutableOrigin
-    ](owned self, ref [o]other: t) -> UnsafeSerTaskPair[Self, UnsafeTaskRef[t]]:
+    ](var self, ref [o]other: t) -> UnsafeSerTaskPair[Self, UnsafeTaskRef[t]]:
         return {self^, UnsafeTaskRef(other)}
 
     # # ---- FOR IMMUTABLE VERSIONS -----
     fn __add__[
         t: Callable & Movable
-    ](owned self, owned other: t) -> UnsafeParTaskPair[Self, t]:
+    ](var self, var other: t) -> UnsafeParTaskPair[Self, t]:
         return {self^, other^}
 
     fn __rshift__[
         t: Callable & Movable
-    ](owned self, owned other: t) -> UnsafeSerTaskPair[Self, t]:
+    ](var self, var other: t) -> UnsafeSerTaskPair[Self, t]:
         return {self^, other^}

@@ -7,7 +7,7 @@ alias time = 0.1
 struct MyTask[job: StringLiteral](AsyncCallable):
     var some_data: String
 
-    fn __init__(out self, owned some_data: StringLiteral):
+    fn __init__(out self, var some_data: StringLiteral):
         self.some_data = some_data
 
     async fn __call__(self):
