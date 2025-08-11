@@ -99,7 +99,7 @@ struct ParallelTask[o: MutableOrigin, //, *ts: MutCallable](MutCallable):
 # Because a value that should be mutated, needs to have a origin,
 # and seems like the origin cannot be anonymous. In that case,
 # to chain correctly these two concepts, we need to own the object.
-# And have a case for owned values, another for existing values.
+# And have a case for var values, another for existing values.
 
 
 @fieldwise_init
@@ -114,24 +114,24 @@ struct SequentialTaskPair[T1: MutCallable & Movable, T2: MutCallable & Movable](
 
     # ---- FOR MUTABLE VERSIONS -----
     fn __add__(
-        owned self, owned other: TaskRef
+        var self, var other: TaskRef
     ) -> ParallelTaskPair[Self, TaskRef[origin = other.origin, other.T]]:
         return {self^, other^}
 
     fn __rshift__(
-        owned self, owned other: TaskRef
+        var self, var other: TaskRef
     ) -> SequentialTaskPair[Self, TaskRef[origin = other.origin, other.T]]:
         return {self^, other^}
 
     # ---- FOR MUTABLE MOVABLE VERSIONS -----
     fn __add__[
         t: MutCallable & Movable
-    ](owned self, owned other: t) -> ParallelTaskPair[Self, t]:
+    ](var self, var other: t) -> ParallelTaskPair[Self, t]:
         return {self^, other^}
 
     fn __rshift__[
         t: MutCallable & Movable
-    ](owned self, owned other: t) -> SequentialTaskPair[Self, t]:
+    ](var self, var other: t) -> SequentialTaskPair[Self, t]:
         return {self^, other^}
 
 
@@ -147,24 +147,24 @@ struct ParallelTaskPair[T1: MutCallable & Movable, T2: MutCallable & Movable](
 
     # ---- FOR MUTABLE VERSIONS -----
     fn __add__(
-        owned self, owned other: TaskRef
+        var self, var other: TaskRef
     ) -> ParallelTaskPair[Self, TaskRef[origin = other.origin, other.T]]:
         return {self^, other^}
 
     fn __rshift__(
-        owned self, owned other: TaskRef
+        var self, var other: TaskRef
     ) -> SequentialTaskPair[Self, TaskRef[origin = other.origin, other.T]]:
         return {self^, other^}
 
     # ---- FOR MUTABLE MOVABLE VERSIONS -----
     fn __add__[
         t: MutCallable & Movable
-    ](owned self, owned other: t) -> ParallelTaskPair[Self, t]:
+    ](var self, var other: t) -> ParallelTaskPair[Self, t]:
         return {self^, other^}
 
     fn __rshift__[
         t: MutCallable & Movable
-    ](owned self, owned other: t) -> SequentialTaskPair[Self, t]:
+    ](var self, var other: t) -> SequentialTaskPair[Self, t]:
         return {self^, other^}
 
 
@@ -180,22 +180,22 @@ struct TaskRef[origin: MutableOrigin, //, T: MutCallable](Movable, MutCallable):
 
     # ---- FOR MUTABLE VERSIONS -----
     fn __add__(
-        owned self, owned other: TaskRef
+        var self, var other: TaskRef
     ) -> ParallelTaskPair[Self, TaskRef[origin = other.origin, other.T]]:
         return {self^, other^}
 
     fn __rshift__(
-        owned self, owned other: TaskRef
+        var self, var other: TaskRef
     ) -> SequentialTaskPair[Self, TaskRef[origin = other.origin, other.T]]:
         return {self^, other^}
 
     # ---- FOR MUTABLE MOVABLE VERSIONS -----
     fn __add__[
         t: MutCallable & Movable
-    ](owned self, owned other: t) -> ParallelTaskPair[Self, t]:
+    ](var self, var other: t) -> ParallelTaskPair[Self, t]:
         return {self^, other^}
 
     fn __rshift__[
         t: MutCallable & Movable
-    ](owned self, owned other: t) -> SequentialTaskPair[Self, t]:
+    ](var self, var other: t) -> SequentialTaskPair[Self, t]:
         return {self^, other^}

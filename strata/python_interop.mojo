@@ -52,7 +52,7 @@ struct Graph(PythonType):
     fn _call(self, v: PythonObject) raises -> PythonObject:
         return self.elems._call(v)
 
-    fn _capture_elems(mut self, owned elems: TaskGroup) raises:
+    fn _capture_elems(mut self, var elems: TaskGroup) raises:
         self.elems = elems^
 
     @staticmethod

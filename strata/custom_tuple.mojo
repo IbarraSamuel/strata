@@ -138,7 +138,7 @@ struct Tuple[
         o = Self(storage=o.Storage(self.storage._value))
 
     @always_inline("nodebug")
-    fn __moveinit__(out self, owned existing: Self):
+    fn __moveinit__(out self, deinit existing: Self):
         """Move construct the tuple.
 
         Args:
