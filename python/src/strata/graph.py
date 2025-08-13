@@ -3,7 +3,7 @@ from __future__ import annotations
 from enum import IntEnum
 from typing import Protocol, cast
 
-from . import mojo_strata
+from strata import mojo_strata
 
 
 class GroupMode(IntEnum):
@@ -63,8 +63,7 @@ class TaskGroup[I, O]:
     inner: mojo_strata.TaskGroup[I, O]
 
     def __init__(self, task: Task[I, O]) -> None:
-        self.inner = cast("mojo_strata.TaskGroup[I, O]", mojo_strata.TaskGroup())
-        self.inner.from_single_task(task)
+        self.inner = mojo_strata.TaskGroup(task=task)
 
     def __rshift__[T](
         self, other: Task[O, T] | ParTaskGroup[O, T] | mojo_strata.TaskGroup[O, T]
@@ -87,28 +86,42 @@ class TaskGroup[I, O]:
 
 
 class Graph[I = object, O = object]:
-    inner: mojo_strata.Graph[I, O]
-
-    def __init__(self) -> None:
-        self.inner = cast("mojo_strata.Graph[I, O]", mojo_strata.Graph())
-
     @staticmethod
     def __lshift__[In, Out](
         other: SerTaskGroup[In, Out]
         | ParTaskGroup[In, Out]
         | TaskGroup[In, Out]
         | Task[In, Out],
-    ) -> Graph[In, Out]:
-        graph = Graph[In, Out]()
+    ) -> BuildedGraph[In, Out]:
         # It's not a group
         if not isinstance(other, (TaskGroup, SerTaskGroup, ParTaskGroup)):
             other = TaskGroup(other)  # ty: ignore[invalid-argument-type]
 
-        graph.inner.capture_elems(other.inner)
-        return graph
+        return BuildedGraph(elements=other.inner)  # ty: ignore[invalid-return-type]
+
+    @classmethod
+    def build[In, Out](
+        cls,
+        other: SerTaskGroup[In, Out]
+        | ParTaskGroup[In, Out]
+        | TaskGroup[In, Out]
+        | Task[In, Out],
+    ) -> BuildedGraph[In, Out]:
+        # It's not a group
+        if not isinstance(other, (TaskGroup, SerTaskGroup, ParTaskGroup)):
+            other = TaskGroup(other)  # ty: ignore[invalid-argument-type]
+
+        return BuildedGraph(elements=other.inner)  # ty: ignore[invalid-return-type]
+
+
+class BuildedGraph[I = object, O = object]:
+    inner: mojo_strata.TaskGroup[I, O]
+
+    def __init__(self, elements: mojo_strata.TaskGroup[I, O]) -> None:
+        self.inner = elements
 
     def __call__(self, msg: I) -> O:
-        return self.inner.call_task(msg)
+        return self.inner.call(msg)
 
 
 class Combinable(Protocol):
@@ -199,5 +212,11 @@ graph = Graph() << (
     >> int_to_str
 )
 
+graph2 = Graph.build(
+    str_to_int
+    >> (add_one_task_1 + add_one_task_2 + add_one_task_3)
+    >> sum_tuple
+    >> int_to_str
+)
 res = graph("4")
 print(res)

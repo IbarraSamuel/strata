@@ -9,23 +9,19 @@ fn PyInit_mojo_strata() -> PythonObject:
     try:
         var strata = PythonModuleBuilder("mojo_strata")
 
-        _ = (
-            strata.add_type[Graph]("Graph")
-            .def_method[Graph.call_task](
-                "call_task", "Execute the graph and return the result."
-            )
-            .def_method[Graph.capture_elems](
-                "capture_elems", "Capture the tasks in the graph."
-            )
-        )
+        # _ = (
+        #     strata.add_type[Graph]("Graph")
+        #     .def_py_init[Graph.capture_elems]()
+        #     .def_method[Graph.call_task](
+        #         "call_task", "Execute the graph and return the result."
+        #     )
+        # )
 
         _ = (
             strata.add_type[TaskGroup]("TaskGroup")
+            .def_py_init[TaskGroup.from_single_task]()
             .def_method[TaskGroup.add_task](
                 "add_task", "Add a task to the group."
-            )
-            .def_method[TaskGroup.from_single_task](
-                "from_single_task", "Add a single task to the group."
             )
             .def_method[TaskGroup.call]("call", "Make this group callable.")
         )
@@ -40,34 +36,44 @@ fn PyInit_mojo_strata() -> PythonObject:
 alias PythonType = Representable
 
 
-struct Graph(PythonType):
-    var elems: TaskGroup
+# struct Graph(ExplicitlyCopyable, Movable, PythonType):
+#     var elems: TaskGroup
 
-    fn __init__(out self):
-        self.elems = TaskGroup()
+#     fn __init__(out self, var elems: TaskGroup):
+#         self.elems = elems^
 
-    fn __repr__(self) -> String:
-        return String("Graph(...)")
+#     fn copy(out self, other: Self):
+#         self.elems =
 
-    fn _call(self, v: PythonObject) raises -> PythonObject:
-        return self.elems._call(v)
+#     fn __repr__(self) -> String:
+#         return String("Graph(...)")
 
-    fn _capture_elems(mut self, var elems: TaskGroup) raises:
-        self.elems = elems^
+#     fn _call(self, v: PythonObject) raises -> PythonObject:
+#         return self.elems._call(v)
 
-    @staticmethod
-    fn call_task(
-        self_ptr: UnsafePointer[Self], v: PythonObject
-    ) raises -> PythonObject:
-        return self_ptr[]._call(v)
+#     fn _capture_elems(mut self, var elems: TaskGroup) raises:
+#         self.elems = elems^
 
-    @staticmethod
-    fn capture_elems(self_ptr: UnsafePointer[Self], elems: PythonObject) raises:
-        e = elems.downcast_value_ptr[TaskGroup]()
-        self_ptr[]._capture_elems(e[])
+#     @staticmethod
+#     fn call_task(
+#         self_ptr: UnsafePointer[Self], v: PythonObject
+#     ) raises -> PythonObject:
+#         return self_ptr[]._call(v)
+
+#     # @staticmethod
+#     # fn capture_elems(self_ptr: UnsafePointer[Self], elems: PythonObject) raises:
+#     #     e = elems.downcast_value_ptr[TaskGroup]()
+#     #     self_ptr[]._capture_elems(e[])
+
+#     @staticmethod
+#     fn capture_elems(
+#         out self: Self, args: PythonObject, kwargs: PythonObject
+#     ) raises:
+#         ref elems = kwargs["elements"].downcast_value_ptr[TaskGroup]()[]
+#         self = Self(elems=elems.copy())
 
 
-struct TaskGroup(Copyable, Movable, PythonType):
+struct TaskGroup(Movable, PythonType):
     alias undefined = TaskGroup(-1)
     alias Serial = TaskGroup(0)
     alias Parallel = TaskGroup(1)
@@ -75,9 +81,21 @@ struct TaskGroup(Copyable, Movable, PythonType):
     var mode: Int
     var objects: List[PythonObject]
 
-    fn __init__(out self):
+    # fn __init__(out self):
+    #     self.mode = -1
+    #     self.objects = []
+
+    fn __init__(out self, task: PythonObject):
         self.mode = -1
+        self.objects = [task]
+
+    fn __init__(out self, mode: Int):
+        self.mode = mode
         self.objects = []
+
+    fn copy(self, out o: Self):
+        o = Self(mode=self.mode)
+        o.objects = self.objects.copy()
 
     fn __repr__(self) -> String:
         objs = "[" + String(", ").join(self.objects) + "]"
@@ -88,10 +106,6 @@ struct TaskGroup(Copyable, Movable, PythonType):
         )
         return String("TaskGroup(mode:", mode, ", objects:", objs, ")")
 
-    fn __init__(out self, mode: Int):
-        self.mode = mode
-        self.objects = []
-
     fn add(mut self, t: PythonObject, mode: Int) raises:
         if self.mode == Self.undefined.mode:
             self.mode = mode
@@ -101,7 +115,7 @@ struct TaskGroup(Copyable, Movable, PythonType):
             return
 
         new_group = TaskGroup(mode=mode)
-        new_group.objects.append(PythonObject(alloc=self))
+        new_group.objects.append(PythonObject(alloc=self.copy()))
         new_group.objects.append(t)
         self = new_group^
 
@@ -178,8 +192,11 @@ struct TaskGroup(Copyable, Movable, PythonType):
         return tp
 
     @staticmethod
-    fn from_single_task(self_ptr: UnsafePointer[Self], t: PythonObject) raises:
-        self_ptr[].objects.append(t)
+    fn from_single_task(
+        out self: Self, args: PythonObject, kwargs: PythonObject
+    ) raises:
+        single_task = kwargs["task"]
+        self = Self(task=single_task)
 
     @staticmethod
     fn add_task(
