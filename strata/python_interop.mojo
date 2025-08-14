@@ -1,5 +1,6 @@
 from os import abort
 from python import PythonObject, Python
+from python._cpython import GILReleased
 from python.bindings import PythonModuleBuilder
 from runtime.asyncrt import TaskGroup as TG
 
@@ -8,14 +9,6 @@ from runtime.asyncrt import TaskGroup as TG
 fn PyInit_mojo_strata() -> PythonObject:
     try:
         var strata = PythonModuleBuilder("mojo_strata")
-
-        # _ = (
-        #     strata.add_type[Graph]("Graph")
-        #     .def_py_init[Graph.capture_elems]()
-        #     .def_method[Graph.call_task](
-        #         "call_task", "Execute the graph and return the result."
-        #     )
-        # )
 
         _ = (
             strata.add_type[TaskGroup]("TaskGroup")
@@ -33,47 +26,7 @@ fn PyInit_mojo_strata() -> PythonObject:
         )
 
 
-alias PythonType = Representable
-
-
-# struct Graph(ExplicitlyCopyable, Movable, PythonType):
-#     var elems: TaskGroup
-
-#     fn __init__(out self, var elems: TaskGroup):
-#         self.elems = elems^
-
-#     fn copy(out self, other: Self):
-#         self.elems =
-
-#     fn __repr__(self) -> String:
-#         return String("Graph(...)")
-
-#     fn _call(self, v: PythonObject) raises -> PythonObject:
-#         return self.elems._call(v)
-
-#     fn _capture_elems(mut self, var elems: TaskGroup) raises:
-#         self.elems = elems^
-
-#     @staticmethod
-#     fn call_task(
-#         self_ptr: UnsafePointer[Self], v: PythonObject
-#     ) raises -> PythonObject:
-#         return self_ptr[]._call(v)
-
-#     # @staticmethod
-#     # fn capture_elems(self_ptr: UnsafePointer[Self], elems: PythonObject) raises:
-#     #     e = elems.downcast_value_ptr[TaskGroup]()
-#     #     self_ptr[]._capture_elems(e[])
-
-#     @staticmethod
-#     fn capture_elems(
-#         out self: Self, args: PythonObject, kwargs: PythonObject
-#     ) raises:
-#         ref elems = kwargs["elements"].downcast_value_ptr[TaskGroup]()[]
-#         self = Self(elems=elems.copy())
-
-
-struct TaskGroup(Movable, PythonType):
+struct TaskGroup(Movable, Representable):
     alias undefined = TaskGroup(-1)
     alias Serial = TaskGroup(0)
     alias Parallel = TaskGroup(1)
@@ -159,31 +112,35 @@ struct TaskGroup(Movable, PythonType):
             values[i] = task.__call__(msg)
 
         # TODO: Turn on when NO GIL is possible
-        # @parameter
-        # @always_inline
-        # fn run_task(i: Int):
-        #     tsk = self.objects.unsafe_get(i)
-        #     try:
-        #         grp = tsk._try_downcast_value[TaskGroup]()
-        #         if grp:
-        #             values[i] = grp.value()[]._call(msg)
-        #             return
+        # RELEASE GIL
+        # var python = Python()
+        # with GILReleased(python):
 
-        #         values[i] = tsk.__call__(msg)
-        #     except:
-        #         print("Task Failed!")
-        #         values[i] = PythonObject(None)
+        #     @parameter
+        #     @always_inline
+        #     fn run_task(i: Int):
+        #         tsk = self.objects.unsafe_get(i)
+        #         try:
+        #             grp = tsk._try_downcast_value[TaskGroup]()
+        #             if grp:
+        #                 values[i] = grp.value()[]._call(msg)
+        #                 return
 
-        # @parameter
-        # @always_inline
-        # async fn run_async(i: Int):
-        #     run_task(i)
+        #             values[i] = tsk.__call__(msg)
+        #         except:
+        #             print("Task Failed!")
+        #             values[i] = PythonObject(None)
 
-        # tg = TG()
-        # for idx in range(len(self.objects)):
-        #     tg.create_task(run_async(idx))
+        #     @parameter
+        #     @always_inline
+        #     async fn run_async(i: Int):
+        #         run_task(i)
 
-        # tg.wait()
+        #     tg = TG()
+        #     for idx in range(len(self.objects)):
+        #         tg.create_task(run_async(idx))
+
+        #     tg.wait()
 
         print("Done!..")
         tp = Python.tuple()
