@@ -1,4 +1,5 @@
 from algorithm import sync_parallelize
+from builtin import variadic_size
 
 alias CallablePack = VariadicPack[False, _, Callable, *_]
 
@@ -19,7 +20,7 @@ fn series_runner[*Ts: Callable](callables: CallablePack[_, *Ts]):
     Args:
         callables: A `CallablePack` collection of types.
     """
-    alias size = len(VariadicList(Ts))
+    alias size = variadic_size(Ts)
 
     @parameter
     for i in range(size):
@@ -50,7 +51,7 @@ fn parallel_runner[*Ts: Callable](callables: CallablePack[_, *Ts]):
     Args:
         callables: A `CallablePack` collection of types.
     """
-    alias size = len(VariadicList(Ts))
+    alias size = variadic_size(Ts)
 
     @parameter
     fn exec(i: Int):
