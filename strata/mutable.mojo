@@ -1,4 +1,5 @@
 from algorithm import sync_parallelize
+from builtin import variadic_size
 
 
 trait MutCallable:
@@ -15,7 +16,7 @@ alias MutCallablePack = VariadicPack[False, _, MutCallable, *_]
 fn series_runner[
     o: MutableOrigin, //, *ts: MutCallable
 ](callables: MutCallablePack[o, *ts]):
-    alias size = len(VariadicList(ts))
+    alias size = variadic_size(ts)
 
     @parameter
     for i in range(size):
@@ -31,7 +32,7 @@ fn series_runner[*ts: MutCallable](mut*callables: *ts):
     Args:
         callables: A `CallablePack` collection of types.
     """
-    alias size = len(VariadicList(ts))
+    alias size = variadic_size(ts)
 
     @parameter
     for i in range(size):
@@ -41,7 +42,7 @@ fn series_runner[*ts: MutCallable](mut*callables: *ts):
 fn parallel_runner[
     o: MutableOrigin, //, *ts: MutCallable
 ](callables: MutCallablePack[o, *ts]):
-    alias size = len(VariadicList(ts))
+    alias size = variadic_size(ts)
 
     @parameter
     fn exec(i: Int):
@@ -62,7 +63,7 @@ fn parallel_runner[*ts: MutCallable](mut*callables: *ts):
     Args:
         callables: A `VariadicPack` collection of types.
     """
-    alias size = len(VariadicList(ts))
+    alias size = variadic_size(ts)
 
     @parameter
     fn exec(i: Int):

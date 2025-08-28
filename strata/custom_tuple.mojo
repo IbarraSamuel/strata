@@ -23,7 +23,7 @@ These are Mojo built-ins, so you don't need to import them.
 
 
 from sys.intrinsics import _type_is_eq
-
+from builtin import variadic_size
 
 from utils._visualizers import lldb_formatter_wrapping_type
 
@@ -222,8 +222,10 @@ struct Tuple[
             True if the value is in the tuple, False otherwise.
         """
 
+        alias size = variadic_size(element_types)
+
         @parameter
-        for i in range(len(VariadicList(element_types))):
+        for i in range(size):
 
             @parameter
             if _type_is_eq[element_types[i], T]():

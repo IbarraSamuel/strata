@@ -1,4 +1,5 @@
 from algorithm import sync_parallelize
+from builtin import variadic_size
 
 
 trait TypeCallable:
@@ -13,7 +14,7 @@ fn parallel_runner[*Ts: TypeCallable]():
     Parameters:
         Ts: Variadic `CallableDefaltable` types.
     """
-    alias size = len(VariadicList(Ts))
+    alias size = variadic_size(Ts)
 
     @parameter
     fn exec(i: Int):
@@ -31,7 +32,7 @@ fn series_runner[*Ts: TypeCallable]():
     Parameters:
         Ts: Variadic `CallableDefaltable` types.
     """
-    alias size = len(VariadicList(Ts))
+    alias size = variadic_size(Ts)
 
     @parameter
     for i in range(size):
