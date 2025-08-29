@@ -53,10 +53,9 @@ fn main():
     # You can just wrap the initial struct with a MutableTask and do operations.
 
     # For tasks with independent values:
-    from strata.mutable import TaskRef as T
 
     print("Airflow graph...")
-    graph = T(task1) >> T(task2) + task3 >> task4
+    graph = task1 >> task2 + task3 >> task4
     graph()
 
     # NOTE: This will not work if you want to do cross references to other tasks in the graph.

@@ -1,15 +1,15 @@
-from strata.unsafe import MutCallable
+from strata.mutable import MutCallable
 from time import sleep
 
 alias time = 0.1
 
 
-trait TaskWithValue(MutCallable):
+trait TaskWithValue:
     fn get_value(self) -> Int:
         ...
 
 
-struct InitTask[name: String = "Init"](TaskWithValue):
+struct InitTask[name: String = "Init"](MutCallable, TaskWithValue):
     var value: Int
 
     fn __init__(out self):
@@ -27,7 +27,7 @@ struct InitTask[name: String = "Init"](TaskWithValue):
 
 # Just ensure your struct has fn __call__(mut self):
 struct MyTask[name: StringLiteral, t: TaskWithValue, o: ImmutableOrigin](
-    TaskWithValue
+    TaskWithValue & MutCallable
 ):
     var task: Pointer[t, o]
     var value: Int
@@ -107,27 +107,7 @@ fn main():
     imm_type_graph = S(i, P(S(g11, g12), S(g21, g22)), f)
     imm_type_graph()
 
-    # Using Immutable Ref for airflow Syntax
-    # NOTE: This one could cause confution because the UnsafeTaskRef itself contains
-    # it's own airflow syntax, and could be mixed up by mistake with the Immutable airflow syntax
-    # if you don't properly type the graph
-    from strata.immutable import TaskRef as IT
-
+    # Airflow syntax will treat them as unsafe as default.
     print("Airflow graph...")
-    imm_graph = IT(i) >> (IT(g11) >> g12) + (IT(g21) >> g22) >> f
-    imm_graph()
-
-    # If you don't want to take this step first (casting all tasks first and creating
-    # those variables just to be able to use it) , then use the unsafe api, just
-    # casting the first element in the group. The tasks will be treated as immutable
-    # (as before), but you will be able to skip the casting for all elements.
-    # WARNING: It could increase compile time.
-
-    # Using unsafe directly
-    print("Unsafe airflow graph...")
-    mutable_graph = (
-        UT(initial)
-        >> (UT(group1_1) >> group1_2) + (UT(group2_1) >> group2_2)
-        >> final
-    )
-    mutable_graph()
+    mut_graph = i >> (g11 >> g12) + (g21 >> g22) >> f
+    mut_graph()
