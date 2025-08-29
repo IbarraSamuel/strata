@@ -37,12 +37,11 @@ fn main():
     graph_1()
 
     # Airflow Syntax
-    from strata.immutable import TaskRef as IT
 
     graph_2 = (
-        IT(init)
+        init
         >> load
-        >> IT(find_min) + find_max + find_mean + find_median
+        >> find_min + find_max + find_mean + find_median
         >> merge_results
     )
     print("[GRAPH 2]...")
@@ -80,7 +79,7 @@ fn main():
     p2 = Fn(parallel2)
     lt = Fn(last_task)
     print("[ Function Graph ]...")
-    fn_graph = IT(ft) >> IT(p1) + p2 >> lt
+    fn_graph = ft >> p1 + p2 >> lt
     fn_graph()
 
     # Hey, but these things are not useful, because you cannot mutate anything.

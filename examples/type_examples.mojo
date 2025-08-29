@@ -37,12 +37,11 @@ fn main():
     TypesGraph.__call__()
 
     # # Airflow Syntax.
-    from strata.type import TypeTask as DT
 
     alias airflow_graph = (
-        DT[Initialize]()
+        Initialize()
         >> LoadData()
-        >> DT[FindMin]() + FindMax() + FindMean() + FindMedian()
+        >> FindMin() + FindMax() + FindMean() + FindMedian()
         >> MergeResults()
     )
     print("[Airflow Graph]...")

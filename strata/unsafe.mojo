@@ -1,75 +1,75 @@
 from strata.immutable import series_runner, parallel_runner, Callable
-from strata.mutable import MutCallable
+from strata.mutable import MutCallable, MovableMutCallable
 
 
-@fieldwise_init
-struct UnsafeSerTaskPair[T1: Callable & Movable, T2: Callable & Movable](
-    Callable, Movable, MutCallable
-):
-    var t1: T1
-    var t2: T2
+# @fieldwise_init
+# struct UnsafeSerTaskPair[T1: Callable & Movable, T2: Callable & Movable](
+#     Callable, MovableMutCallable
+# ):
+#     var t1: T1
+#     var t2: T2
 
-    fn __call__(self):
-        series_runner(self.t1, self.t2)
+#     fn __call__(self):
+#         series_runner(self.t1, self.t2)
 
-    # ---- FOR MUTABLE VERSIONS -----
-    fn __add__[
-        t: MutCallable, o: MutableOrigin
-    ](var self, ref [o]other: t) -> UnsafeParTaskPair[Self, UnsafeTaskRef[t]]:
-        return {self^, UnsafeTaskRef(other)}
+#     # ---- FOR MUTABLE VERSIONS -----
+#     fn __add__[
+#         t: MutCallable, o: MutableOrigin
+#     ](var self, ref [o]other: t) -> UnsafeParTaskPair[Self, UnsafeTaskRef[t]]:
+#         return {self^, UnsafeTaskRef(other)}
 
-    fn __rshift__[
-        t: MutCallable, o: MutableOrigin
-    ](var self, ref [o]other: t) -> UnsafeSerTaskPair[Self, UnsafeTaskRef[t]]:
-        return {self^, UnsafeTaskRef(other)}
+#     fn __rshift__[
+#         t: MutCallable, o: MutableOrigin
+#     ](var self, ref [o]other: t) -> UnsafeSerTaskPair[Self, UnsafeTaskRef[t]]:
+#         return {self^, UnsafeTaskRef(other)}
 
-    # ---- FOR IMMUTABLE VERSIONS -----
-    fn __add__[
-        t: Callable & Movable
-    ](var self, var other: t) -> UnsafeParTaskPair[Self, t]:
-        return {self^, other^}
+#     # ---- FOR IMMUTABLE VERSIONS -----
+#     fn __add__[
+#         t: Callable & Movable
+#     ](var self, var other: t) -> UnsafeParTaskPair[Self, t]:
+#         return {self^, other^}
 
-    fn __rshift__[
-        t: Callable & Movable
-    ](var self, var other: t) -> UnsafeSerTaskPair[Self, t]:
-        return {self^, other^}
+#     fn __rshift__[
+#         t: Callable & Movable
+#     ](var self, var other: t) -> UnsafeSerTaskPair[Self, t]:
+#         return {self^, other^}
 
 
-@fieldwise_init
-struct UnsafeParTaskPair[T1: Callable & Movable, T2: Callable & Movable](
-    Callable, Movable, MutCallable
-):
-    var t1: T1
-    var t2: T2
+# @fieldwise_init
+# struct UnsafeParTaskPair[T1: Callable & Movable, T2: Callable & Movable](
+#     Callable, MovableMutCallable
+# ):
+#     var t1: T1
+#     var t2: T2
 
-    fn __call__(self):
-        parallel_runner(self.t1, self.t2)
+#     fn __call__(self):
+#         parallel_runner(self.t1, self.t2)
 
-    # ---- FOR MUTABLE VERSIONS -----
-    fn __add__[
-        t: MutCallable, o: MutableOrigin
-    ](var self, ref [o]other: t) -> UnsafeParTaskPair[Self, UnsafeTaskRef[t]]:
-        return {self^, UnsafeTaskRef(other)}
+#     # ---- FOR MUTABLE VERSIONS -----
+#     fn __add__[
+#         t: MutCallable, o: MutableOrigin
+#     ](var self, ref [o]other: t) -> UnsafeParTaskPair[Self, UnsafeTaskRef[t]]:
+#         return {self^, UnsafeTaskRef(other)}
 
-    fn __rshift__[
-        t: MutCallable, o: MutableOrigin
-    ](var self, ref [o]other: t) -> UnsafeSerTaskPair[Self, UnsafeTaskRef[t]]:
-        return {self^, UnsafeTaskRef(other)}
+#     fn __rshift__[
+#         t: MutCallable, o: MutableOrigin
+#     ](var self, ref [o]other: t) -> UnsafeSerTaskPair[Self, UnsafeTaskRef[t]]:
+#         return {self^, UnsafeTaskRef(other)}
 
-    # ---- FOR IMMUTABLE VERSIONS -----
-    fn __add__[
-        t: Callable & Movable
-    ](var self, var other: t) -> UnsafeParTaskPair[Self, t]:
-        return {self^, other^}
+#     # ---- FOR IMMUTABLE VERSIONS -----
+#     fn __add__[
+#         t: Callable & Movable
+#     ](var self, var other: t) -> UnsafeParTaskPair[Self, t]:
+#         return {self^, other^}
 
-    fn __rshift__[
-        t: Callable & Movable
-    ](var self, var other: t) -> UnsafeSerTaskPair[Self, t]:
-        return {self^, other^}
+#     fn __rshift__[
+#         t: Callable & Movable
+#     ](var self, var other: t) -> UnsafeSerTaskPair[Self, t]:
+#         return {self^, other^}
 
 
 @register_passable("trivial")
-struct UnsafeTaskRef[T: MutCallable](Callable, Movable, MutCallable):
+struct UnsafeTaskRef[T: MutCallable](Callable, MovableMutCallable):
     """This structure will treat MutableCallables as Immutable Callables.
     Is a way of casting a MutableCallable into a Callable.
     Since we might need to operate with other MutableCallables in the future,
@@ -95,23 +95,23 @@ struct UnsafeTaskRef[T: MutCallable](Callable, Movable, MutCallable):
         self.inner[]()
 
     # ---- FOR MUTABLE VERSIONS -----
-    fn __add__[
-        t: MutCallable, o: MutableOrigin
-    ](var self, ref [o]other: t) -> UnsafeParTaskPair[Self, UnsafeTaskRef[t]]:
-        return {self, UnsafeTaskRef(other)}
+    # fn __add__[
+    #     t: MutCallable, o: MutableOrigin
+    # ](var self, ref [o]other: t) -> UnsafeParTaskPair[Self, UnsafeTaskRef[t]]:
+    #     return {self, UnsafeTaskRef(other)}
 
-    fn __rshift__[
-        t: MutCallable, o: MutableOrigin
-    ](var self, ref [o]other: t) -> UnsafeSerTaskPair[Self, UnsafeTaskRef[t]]:
-        return {self, UnsafeTaskRef(other)}
+    # fn __rshift__[
+    #     t: MutCallable, o: MutableOrigin
+    # ](var self, ref [o]other: t) -> UnsafeSerTaskPair[Self, UnsafeTaskRef[t]]:
+    #     return {self, UnsafeTaskRef(other)}
 
-    # # ---- FOR IMMUTABLE VERSIONS -----
-    fn __add__[
-        t: Callable & Movable
-    ](var self, var other: t) -> UnsafeParTaskPair[Self, t]:
-        return {self, other^}
+    # # # ---- FOR IMMUTABLE VERSIONS -----
+    # fn __add__[
+    #     t: Callable & Movable
+    # ](var self, var other: t) -> UnsafeParTaskPair[Self, t]:
+    #     return {self, other^}
 
-    fn __rshift__[
-        t: Callable & Movable
-    ](var self, var other: t) -> UnsafeSerTaskPair[Self, t]:
-        return {self, other^}
+    # fn __rshift__[
+    #     t: Callable & Movable
+    # ](var self, var other: t) -> UnsafeSerTaskPair[Self, t]:
+    #     return {self, other^}
