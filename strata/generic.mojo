@@ -5,7 +5,7 @@ trait Callable:
     alias I: Copyable & Movable  # Because tuple
     alias O: Copyable & Movable  # Beacuse tuple
 
-    fn __call__(self, arg: I) -> O:
+    fn __call__(self, arg: Self.I) -> Self.O:
         ...
 
 

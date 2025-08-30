@@ -185,9 +185,7 @@ struct Tuple[
         return Self.__len__()
 
     @always_inline("nodebug")
-    fn __getitem__[
-        idx: Int
-    ](ref self) -> ref [self.origin] element_types[idx.value]:
+    fn __getitem__[idx: Int](ref self) -> ref [self.origin] element_types[idx]:
         """Get a reference to an element in the tuple.
 
         Parameters:
