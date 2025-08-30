@@ -41,7 +41,10 @@ trait PythonCallable:
     alias S: AnyType
 
     @staticmethod
-    def __call__(py_self: UnsafePointer[S], args: PythonObject) -> PythonObject:
+    def __call__(
+        py_self: UnsafePointer[Self.S],
+        args: PythonObject,
+    ) -> PythonObject:
         ...
 
 
