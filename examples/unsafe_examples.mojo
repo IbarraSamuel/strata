@@ -26,14 +26,14 @@ struct InitTask[name: String = "Init"](MutCallable, TaskWithValue):
 
 
 # Just ensure your struct has fn __call__(mut self):
-struct MyTask[name: StringLiteral, t: TaskWithValue, o: ImmutableOrigin](
+struct MyTask[name: StringLiteral, t: TaskWithValue, origin: ImmutableOrigin](
     TaskWithValue & MutCallable
 ):
-    var task: Pointer[t, o]
+    var task: Pointer[t, origin]
     var value: Int
     var additional: Int
 
-    fn __init__(out self, ref [o]task: t, additional: Int):
+    fn __init__(out self, ref [origin]task: t, additional: Int):
         self.task = Pointer(to=task)
         self.additional = additional
         self.value = 0
