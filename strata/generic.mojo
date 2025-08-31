@@ -1,17 +1,12 @@
 from runtime.asyncrt import _run, TaskGroup
 
 
-trait SimpleCallable:
+trait Callable:
     alias I: Copyable & Movable  # Because tuple
     alias O: Copyable & Movable  # Beacuse tuple
 
     fn __call__(self, arg: Self.I) -> Self.O:
         ...
-
-
-trait Callable(SimpleCallable):
-    # TODO: Use this trait to have default aggr implementations.
-    pass
 
 
 @register_passable("trivial")
