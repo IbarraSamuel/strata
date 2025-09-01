@@ -72,7 +72,7 @@ fn main():
     # don't want to do it right now. It will require to duplicate a lot of functions and
     # structs. But this is how I did for Mutable ones.
 
-    from strata.immutable import FnTask as Fn
+    from strata.immutable import Fn
 
     ft = Fn(first_task)
     p1 = Fn(parallel1)

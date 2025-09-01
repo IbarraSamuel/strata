@@ -17,7 +17,6 @@ struct MyTask[job: StringLiteral](AsyncCallable):
 
 fn main():
     print("\n\nHey! Running Async Immutable Examples...")
-    from strata.async_immutable_task import TaskRef as IT
 
     init = MyTask["Initialize"]("Setting up...")
     load = MyTask["Load Data"]("Reading from some place...")
@@ -28,9 +27,9 @@ fn main():
     merge_results = MyTask["Merge Results"]("Getting all together...")
 
     airflow_graph = (
-        IT(init)
+        init
         >> load
-        >> IT(find_min) + find_max + find_mean + find_median
+        >> find_min + find_max + find_mean + find_median
         >> merge_results
     )
     print("[GRAPH 2]...")

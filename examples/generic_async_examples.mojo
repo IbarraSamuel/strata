@@ -61,29 +61,12 @@ fn main():
         >> Fn[FloatToString.call]()
     )
 
-    # Reduce the need of Fn by using a
-    alias chain_graph = (
-        Fn[string_to_int]()
-        .sequential[
-            f = Fn[int_mul[2]]().parallel[f=int_to_float]()
-            # .parallel[f = int_mul[3]]()
-            .F
-        ]()
-        .sequential[f=sum_tuple]()
-        .sequential[f = FloatToString.call]()
-    )
-
     print("Starting Graph execution")
     final_result = final_graph.run("32")
     print(final_result)
 
-    # You can use .run(input) on the Fn object, and use mojo.runtime.asyncrt
-    chain_result = chain_graph.run("32")
-    print(chain_result)
-
-    # Or use the runtime
+    # Or use the runtime you want
     from runtime.asyncrt import _run
 
-    alias chain_fn = chain_graph.F
-    chain_result = _run(chain_fn("32"))
-    print(chain_result)
+    result_2 = _run(final_graph.F("32"))
+    print(result_2)

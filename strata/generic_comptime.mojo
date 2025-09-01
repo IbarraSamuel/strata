@@ -1,11 +1,4 @@
-from runtime.asyncrt import (
-    create_task,
-    _AsyncContext,
-    _init_asyncrt_chain,
-    _async_wait,
-    _del_asyncrt_chain,
-    _async_execute,
-)
+from runtime.asyncrt import create_task
 from strata.custom_tuple import Tuple as _Tuple
 
 
@@ -23,7 +16,7 @@ fn par_fn[
     O2: Copyable & Movable, //,
     f: fn (In) -> O1,
     l: fn (In) -> O2,
-](val: In) -> Tuple[O1, O2]:
+](val: In) -> (O1, O2):
     @parameter
     async fn task_1() -> O1:
         return f(val)
@@ -38,7 +31,7 @@ fn par_fn[
     ref r1 = t1.wait()
     ref r2 = t2.wait()
 
-    return Tuple(r1, r2)  # The tuple will make a copy of the values
+    return (r1, r2)  # The tuple will make a copy of the values
 
 
 @register_passable("trivial")
