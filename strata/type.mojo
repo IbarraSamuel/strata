@@ -51,27 +51,6 @@ fn series_runner[*Ts: TypeCallable]():
         Ts[i].__call__()
 
 
-# @fieldwise_init
-# @register_passable("trivial")
-# struct TypeTask[T: TypeCallable](TypeCallable):
-#     """Refers to a task that can be instanciated in the future, because it's defaultable.
-
-#     Parameters:
-#         T: Type that conforms to `CallableDefaultable`.
-#     """
-
-#     @implicit
-#     @always_inline("nodebug")
-#     fn __init__(out self, _task: T):
-#         pass
-
-#     @staticmethod
-#     @always_inline("nodebug")
-#     fn __call__():
-#         """Call the task."""
-#         T.__call__()
-
-
 @fieldwise_init
 @register_passable("trivial")
 struct ParallelTypeTask[*Ts: TypeCallable](TypeCallable):

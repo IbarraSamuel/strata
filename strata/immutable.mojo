@@ -27,6 +27,7 @@ trait Callable:
         return {self, other}
 
 
+@always_inline
 fn series_runner[*Ts: Callable](callables: CallablePack[_, *Ts]):
     """Run Runnable structs in sequence.
 
@@ -58,6 +59,7 @@ fn series_runner[*ts: Callable](*callables: *ts):
 # Execute tasks in parallel
 
 
+@always_inline
 fn parallel_runner[*Ts: Callable](callables: CallablePack[_, *Ts]):
     """Run Runnable structs in parallel.
 
@@ -92,7 +94,7 @@ fn parallel_runner[*ts: Callable](*callables: *ts):
 
 
 @fieldwise_init("implicit")
-struct FnTask(Callable):
+struct Fn(Callable):
     """This function takes any function with a signature: `fn() -> None` and hold it to later call it using `__call__()`.
     """
 
@@ -124,20 +126,6 @@ struct SequentialTaskPairRef[
     fn __call__(self):
         series_runner(self.t1[], self.t2[])
 
-    # fn __add__[
-    #     t: Callable, s: Origin, o: Origin
-    # ](ref [s]self, ref [o]other: t) -> ParallelTaskPairRef[
-    #     m1 = s.mut, m2 = o.mut, o1=s, o2=o, Self, t
-    # ]:
-    #     return {self, other}
-
-    # fn __rshift__[
-    #     t: Callable, s: Origin, o: Origin
-    # ](ref [s]self, ref [o]other: t) -> SequentialTaskPairRef[
-    #     m1 = s.mut, m2 = o.mut, o1=s, o2=o, Self, t
-    # ]:
-    #     return {self, other}
-
 
 @fieldwise_init
 @register_passable("trivial")
@@ -158,45 +146,6 @@ struct ParallelTaskPairRef[
 
     fn __call__(self):
         parallel_runner(self.t1[], self.t2[])
-
-    # fn __add__[
-    #     t: Callable, s: Origin, o: Origin
-    # ](ref [s]self, ref [o]other: t) -> ParallelTaskPairRef[
-    #     m1 = s.mut, m2 = o.mut, o1=s, o2=o, Self, t
-    # ]:
-    #     return {self, other}
-
-    # fn __rshift__[
-    #     t: Callable, s: Origin, o: Origin
-    # ](ref [s]self, ref [o]other: t) -> SequentialTaskPairRef[
-    #     m1 = s.mut, m2 = o.mut, o1=s, o2=o, Self, t
-    # ]:
-    #     return {self, other}
-
-
-# @register_passable("trivial")
-# struct TaskRef[origin: Origin, //, T: Callable](Callable):
-#     var inner: Pointer[T, origin]
-
-#     fn __init__(out self, ref [origin]value: T):
-#         self.inner = Pointer(to=value)
-
-#     fn __call__(self):
-#         self.inner[]()
-
-#     fn __add__[
-#         t: Callable, o: Origin, //
-#     ](deinit self, ref [o]other: t) -> ParallelTaskPairRef[
-#         m1 = origin.mut, m2 = o.mut, o1=origin, o2=o, T, t
-#     ]:
-#         return {self.inner, Pointer(to=other)}
-
-#     fn __rshift__[
-#         t: Callable, o: Origin, //
-#     ](deinit self, ref [o]other: t) -> SequentialTaskPairRef[
-#         m1 = origin.mut, m2 = o.mut, o1=origin, o2=o, T, t
-#     ]:
-#         return {self.inner, Pointer(to=other)}
 
 
 # Variadic Parallel
