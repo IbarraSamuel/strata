@@ -5,7 +5,11 @@ description = "Series/Parallel Runner on top of mojo asyncrt"
 authors = ["Samuel Ibarra <ing.samuelibarra@gmail.com>"]
 platforms = ["linux-64", "osx-arm64"]
 
-channels = ["https://repo.prefix.dev/max-nightly", "https://repo.prefix.dev/conda-forge"]
+channels = [
+    "https://prefix.dev/max-nightly",
+    "https://prefix.dev/conda-forge",
+    "https://prefix.dev/pixi-build-backends"
+]
 
 # CHANGES
 preview = ["pixi-build"]
@@ -18,7 +22,16 @@ version = "0.0.1"
 mojo = "<1.0.0"
 
 [package.build]
-backend = { name = "pixi-build-rattler-build", version = "*" }
+backend = { name = "pixi-build-mojo", version = "0.1.*" }
+
+[package.host-dependencies]
+mojo-compiler = "<1.0.0"
+
+[package.build-dependencies]
+mojo-compiler = "<1.0.0"
+
+[package.run-dependencies]
+mojo-compiler = "<1.0.0"
 
 [tasks]
 # Build
