@@ -66,7 +66,7 @@ examples = { depends-on = [
 # Testing
 
 # -- Python testing
-python_test = {cmd = "cd python && uv run pytest && cd ..", depends-on = ["prepare_python"] }
+python_test = {cmd = "cd python && uv run --group test pytest && cd ..", depends-on = ["prepare_python"] }
 tests = { depends-on = ["examples", "python_test"] }  #, "test_docs"] }
 test_docs = "mojo test --diagnose-missing-doc-strings --validate-doc-strings"
 
