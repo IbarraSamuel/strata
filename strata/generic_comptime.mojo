@@ -31,7 +31,7 @@ fn par_fn[
     ref r1 = t1.wait()
     ref r2 = t2.wait()
 
-    return (r1, r2)  # The tuple will make a copy of the values
+    return (r1.copy(), r2.copy())  # The tuple will make a copy of the values
 
 
 @register_passable("trivial")

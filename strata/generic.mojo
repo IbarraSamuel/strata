@@ -3,7 +3,7 @@ from sys.intrinsics import _type_is_eq
 
 
 trait SimpleCallable:
-    alias I: Copyable & Movable  # Because tuple
+    alias I: AnyType  # Because tuple
     alias O: Copyable & Movable  # Beacuse tuple
 
     fn __call__(self, arg: Self.I) -> Self.O:
@@ -38,7 +38,7 @@ trait Callable(SimpleCallable):
 
 @fieldwise_init("implicit")
 struct Fn[
-    In: Copyable & Movable,
+    In: AnyType,
     Out: Copyable & Movable, //,
 ](Callable, Movable):
     alias I = In
@@ -53,7 +53,7 @@ struct Fn[
 struct Task[
     origin: ImmutableOrigin,
     T: Callable, //,
-    In: Copyable & Movable = T.I,
+    In: AnyType = T.I,
     Out: Copyable & Movable = T.O,
 ](Callable, Movable):
     alias I = In
@@ -68,7 +68,9 @@ struct Task[
 
     @always_inline("nodebug")
     fn __call__(self, arg: Self.I) -> Self.O:
-        return rebind[Self.O](self.inner[].__call__(rebind[T.I](arg)))
+        ref input = rebind[T.I](arg)
+        var res = self.inner[].__call__(input)
+        return rebind[Self.O](res).copy()
 
 
 struct Group[
@@ -76,7 +78,7 @@ struct Group[
     o2: ImmutableOrigin, //,
     T1: Callable,
     T2: Callable,
-    In: Copyable & Movable,
+    In: AnyType,
     Out: Copyable & Movable,
 ](Callable, Movable):
     alias I = In
@@ -112,7 +114,7 @@ struct Group[
         ref r1 = self.t1[].__call__(a1)
         ref a2 = rebind[T2.I](r1)
         ref r2 = self.t2[].__call__(a2)
-        return rebind[Out](r2)
+        return rebind[Out](r2).copy()
 
     # Call for a ParallelPair
     fn parallel_call(
@@ -121,8 +123,8 @@ struct Group[
     ) -> Self.O:
         tg = TaskGroup()
 
-        v1: T1.O
-        v2: T2.O
+        var v1: T1.O
+        var v2: T2.O
 
         @parameter
         async fn task_1():
@@ -141,7 +143,7 @@ struct Group[
 
         tg.wait()
 
-        return rebind[Out]((v1, v2))
+        return rebind[Out]((v1^, v2^)).copy()
 
     # Call for a SequentialPair
     fn __call__(self, arg: Self.I) -> Self.O:
@@ -151,10 +153,10 @@ struct Group[
                 rebind[
                     Group[o1=o1, o2=o2, T1=T1, T2=T2, In = T1.I, Out = T2.O]
                 ](self).sequential_call(rebind[T1.I](arg))
-            )
+            ).copy()
         else:
             return rebind[Self.O](
                 rebind[
                     Group[o1=o1, o2=o2, T1=T1, T2=T2, In=In, Out = (T1.O, T2.O)]
                 ](self).parallel_call(arg)
-            )
+            ).copy()
