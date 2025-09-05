@@ -19,9 +19,9 @@ async fn par_fn[
 ](val: In) -> (O1, O2):
     t1 = create_task(f(val))
     t2 = create_task(l(val))
-    r1 = await t1
-    r2 = await t2
-    return (r1, r2)
+    ref r1 = await t1
+    ref r2 = await t2
+    return (r1.copy(), r2.copy())
 
 
 @register_passable("trivial")

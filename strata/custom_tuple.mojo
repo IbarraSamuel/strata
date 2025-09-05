@@ -129,7 +129,7 @@ struct Tuple[
     #         UnsafePointer(to=self[i]).init_pointee_copy(existing[i])
 
     @always_inline
-    fn copy(out o: Self, self):
+    fn copy(self, out o: Self):
         """Explicitly construct a copy of self.
 
         Returns:
@@ -166,14 +166,7 @@ struct Tuple[
             The tuple length.
         """
 
-        @parameter
-        fn variadic_size(
-            x: __mlir_type[`!kgen.variadic<`, AnyType, `>`]
-        ) -> Int:
-            return __mlir_op.`pop.variadic.size`(x)
-
-        alias result = variadic_size(element_types)
-        return result
+        return variadic_size(element_types)
 
     @always_inline("nodebug")
     fn __len__(self) -> Int:
@@ -233,7 +226,7 @@ struct Tuple[
         return False
 
 
-fn run():
+fn test_compile():
     val1 = String(32)
     val2 = String(432)
 

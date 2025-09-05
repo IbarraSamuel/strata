@@ -5,15 +5,13 @@ trait AsyncCallable:
     async fn __call__(self):
         ...
 
-    @always_inline("nodebug")
     fn __add__[
-        t: AsyncCallable, s: Origin, o: Origin
+        s: Origin, o: Origin, t: AsyncCallable
     ](ref [s]self, ref [o]other: t) -> ParTaskPair[Self, t, s, o]:
         return {self, other}
 
-    @always_inline("nodebug")
     fn __rshift__[
-        t: AsyncCallable, s: Origin, o: Origin
+        s: Origin, o: Origin, t: AsyncCallable
     ](ref [s]self, ref [o]other: t) -> SerTaskPair[Self, t, s, o]:
         return {self, other}
 
