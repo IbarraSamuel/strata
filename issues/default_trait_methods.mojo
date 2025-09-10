@@ -1,7 +1,11 @@
 trait T:
-    fn func[t: AnyType](self):
+    fn func(self, ref other: Some[AnyType]):
         print("hi")
 
 
-struct S[t: AnyType](T):
+struct S(T):
+    pass
+
+
+fn main():
     pass
