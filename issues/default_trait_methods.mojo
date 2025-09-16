@@ -1,5 +1,5 @@
 trait T:
-    fn func(self, ref other: Some[AnyType]):
+    fn func(self, ref other: Bool):
         print("hi")
 
 
