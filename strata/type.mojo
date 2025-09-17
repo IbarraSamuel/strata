@@ -8,18 +8,19 @@ trait TypeCallable:
         ...
 
     @always_inline("nodebug")
-    fn __rshift__(
-        deinit self, other: Some[TypeCallable]
-    ) -> SeriesTypeTask[Self, __type_of(other)]:
+    fn __rshift__[
+        t: TypeCallable, //
+    ](var self, other: t) -> SeriesTypeTask[Self, t]:
         return {}
 
     @always_inline("nodebug")
-    fn __add__(
-        deinit self, other: Some[TypeCallable]
-    ) -> ParallelTypeTask[Self, __type_of(other)]:
+    fn __add__[
+        t: TypeCallable, //
+    ](var self, other: t) -> ParallelTypeTask[Self, t]:
         return {}
 
 
+@always_inline("nodebug")
 fn parallel_runner[*Ts: TypeCallable]():
     """Run Runnable structs in parallel.
 
@@ -38,6 +39,7 @@ fn parallel_runner[*Ts: TypeCallable]():
     sync_parallelize[exec](size)
 
 
+@always_inline("nodebug")
 fn series_runner[*Ts: TypeCallable]():
     """Run Runnable structs in sequence.
 

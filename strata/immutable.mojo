@@ -12,17 +12,17 @@ trait Callable:
 
     @always_inline("nodebug")
     fn __add__[
-        s: Origin, o: Origin
-    ](ref [s]self, ref [o]other: Some[Callable]) -> ParallelTaskPairRef[
-        m1 = s.mut, m2 = o.mut, o1=s, o2=o, Self, __type_of(other)
+        s: Origin, o: Origin, t: Callable, //
+    ](ref [s]self, ref [o]other: t) -> ParallelTaskPairRef[
+        m1 = s.mut, m2 = o.mut, o1=s, o2=o, Self, t
     ]:
         return {self, other}
 
     @always_inline("nodebug")
     fn __rshift__[
-        s: Origin, o: Origin
-    ](ref [s]self, ref [o]other: Some[Callable]) -> SequentialTaskPairRef[
-        m1 = s.mut, m2 = o.mut, o1=s, o2=o, Self, __type_of(other)
+        s: Origin, o: Origin, t: Callable, //
+    ](ref [s]self, ref [o]other: t) -> SequentialTaskPairRef[
+        m1 = s.mut, m2 = o.mut, o1=s, o2=o, Self, t
     ]:
         return {self, other}
 
