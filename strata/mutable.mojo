@@ -10,62 +10,62 @@ trait _SimpleMutCallable:
 trait MutCallable(_SimpleMutCallable):
     # ---- FOR MUTABLE VERSIONS -----
     fn __add__[
-        s: MutableOrigin, o: MutableOrigin, //
-    ](ref [s]self, ref [o]other: Some[_SimpleMutCallable]) -> ParallelTaskPair[
-        _TaskRef[origin=s, Self], _TaskRef[origin=o, __type_of(other)]
+        s: MutableOrigin, o: MutableOrigin, t: _SimpleMutCallable, //
+    ](ref [s]self, ref [o]other: t) -> ParallelTaskPair[
+        _TaskRef[origin=s, Self], _TaskRef[origin=o, t]
     ]:
         return {_TaskRef(self), _TaskRef(other)}
 
     fn __rshift__[
-        s: MutableOrigin, o: MutableOrigin, //
-    ](
-        ref [s]self, ref [o]other: Some[_SimpleMutCallable]
-    ) -> SequentialTaskPair[
-        _TaskRef[origin=s, Self], _TaskRef[origin=o, __type_of(other)]
+        s: MutableOrigin, o: MutableOrigin, t: _SimpleMutCallable, //
+    ](ref [s]self, ref [o]other: t) -> SequentialTaskPair[
+        _TaskRef[origin=s, Self], _TaskRef[origin=o, t]
     ]:
         return {_TaskRef(self), _TaskRef(other)}
 
     # ---- FOR MUTABLE MOVABLE VERSIONS -----
     fn __add__[
-        s: MutableOrigin, //
-    ](
-        ref [s]self, var other: Some[Movable & _SimpleMutCallable]
-    ) -> ParallelTaskPair[_TaskRef[origin=s, Self], __type_of(other)]:
+        s: MutableOrigin, t: Movable & _SimpleMutCallable, //
+    ](ref [s]self, var other: t) -> ParallelTaskPair[
+        _TaskRef[origin=s, Self], t
+    ]:
         return {_TaskRef(self), other^}
 
     fn __rshift__[
-        s: MutableOrigin, //
-    ](
-        ref [s]self, var other: Some[Movable & _SimpleMutCallable]
-    ) -> SequentialTaskPair[_TaskRef[origin=s, Self], __type_of(other)]:
+        s: MutableOrigin, t: Movable & _SimpleMutCallable, //
+    ](ref [s]self, var other: t) -> SequentialTaskPair[
+        _TaskRef[origin=s, Self], t
+    ]:
         return {_TaskRef(self), other^}
 
 
+# NOTE: This could be eliminated by requires clause, to conditionally add default methods based on self signature
+# NOTE: Currently Movable & MutCallable is only used internally
 trait _MovableMutCallable(Movable, MutCallable):
     # ---- FOR MUTABLE VERSIONS -----
     fn __add__[
-        o: MutableOrigin, //
-    ](var self, ref [o]other: Some[_SimpleMutCallable]) -> ParallelTaskPair[
-        Self, _TaskRef[origin=o, __type_of(other)]
+        o: MutableOrigin, t: _SimpleMutCallable, //
+    ](var self, ref [o]other: t) -> ParallelTaskPair[
+        Self, _TaskRef[origin=o, t]
     ]:
         return {self^, _TaskRef(other)}
 
     fn __rshift__[
-        o: MutableOrigin, //
-    ](var self, ref [o]other: Some[_SimpleMutCallable]) -> SequentialTaskPair[
-        Self, _TaskRef[origin=o, __type_of(other)]
+        o: MutableOrigin, t: _SimpleMutCallable, //
+    ](var self, ref [o]other: t) -> SequentialTaskPair[
+        Self, _TaskRef[origin=o, t]
     ]:
         return {self^, _TaskRef(other)}
 
     # ---- FOR MUTABLE MOVABLE VERSIONS -----
-    fn __add__(
-        var self, var other: Some[Movable & _SimpleMutCallable]
-    ) -> ParallelTaskPair[Self, __type_of(other)]:
+    fn __add__[
+        t: Movable & _SimpleMutCallable, //
+    ](var self, var other: t) -> ParallelTaskPair[Self, t]:
         return {self^, other^}
 
-    fn __rshift__(
-        var self, var other: Some[Movable & _SimpleMutCallable]
-    ) -> SequentialTaskPair[Self, __type_of(other)]:
+    fn __rshift__[
+        t: Movable & _SimpleMutCallable, //
+    ](var self, var other: t) -> SequentialTaskPair[Self, t]:
         return {self^, other^}
 
 
