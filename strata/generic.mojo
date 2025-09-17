@@ -2,24 +2,22 @@ from runtime.asyncrt import _run, TaskGroup
 from sys.intrinsics import _type_is_eq
 
 
-trait SimpleCallable:
-    alias I: AnyType  # Because tuple
+trait Callable:
+    alias I: AnyType
     alias O: Copyable & Movable  # Beacuse tuple
 
     fn __call__(self, arg: Self.I) -> Self.O:
         ...
 
-
-trait Callable(SimpleCallable):
     fn __rshift__[
         s: ImmutableOrigin, t: Callable, //
     ](
         ref [s]self,
-        var other: Task[T=t, In = Self.O],
+        var other: _Task[T=t, In = Self.O],
     ) -> Group[
         o1=s, o2 = other.origin, T1=Self, T2=t, In = Self.I, Out = t.O
     ]:
-        return Group(Task(self), other^)
+        return Group(_Task(self), other^)
 
     # TODO: task with a Parallel Group in front to avoid a Task layer
 
@@ -27,11 +25,11 @@ trait Callable(SimpleCallable):
         s: ImmutableOrigin, t: Callable, //
     ](
         ref [s]self,
-        var other: Task[T=t, In = Self.I],
+        var other: _Task[T=t, In = Self.I],
     ) -> Group[
         o1=s, o2 = other.origin, T1=Self, T2=t, In = Self.I, Out = (Self.O, t.O)
     ]:
-        return Group(Task(self), other^)
+        return Group(_Task(self), other^)
 
     # TODO: task with a Sequential Group in front to avoid a Task layer
 
@@ -50,7 +48,7 @@ struct Fn[
         return self.func(arg)
 
 
-struct Task[
+struct _Task[
     origin: ImmutableOrigin,
     T: Callable, //,
     In: AnyType = T.I,
@@ -63,14 +61,14 @@ struct Task[
 
     @always_inline("nodebug")
     @implicit  # To be able to parametrize the trait
-    fn __init__(out self: Task[origin=origin, T=T], ref [origin]task: T):
+    fn __init__(out self: _Task[origin=origin, T=T], ref [origin]task: T):
         self.inner = Pointer(to=task)
 
     @always_inline("nodebug")
     fn __call__(self, arg: Self.I) -> Self.O:
         ref input = rebind[T.I](arg)
-        var res = self.inner[].__call__(input)
-        return rebind[Self.O](res).copy()
+        o = self.inner[].__call__(input)
+        return rebind[Self.O](o^).copy()
 
 
 struct Group[
@@ -90,8 +88,8 @@ struct Group[
     # # Init to be a SequentialPair
     fn __init__(
         out self: Group[o1=o1, o2=o2, T1=T1, T2=T2, In = T1.I, Out = T2.O],
-        var t1: Task[origin=o1, T=T1, In = T1.I, Out = T1.O],
-        var t2: Task[origin=o2, T=T2, In = T1.O, Out = T2.O],
+        var t1: _Task[origin=o1, T=T1, In = T1.I, Out = T1.O],
+        var t2: _Task[origin=o2, T=T2, In = T1.O, Out = T2.O],
     ):
         self.t1 = t1.inner
         self.t2 = t2.inner
@@ -99,8 +97,8 @@ struct Group[
     # Init to be a ParallelPair
     fn __init__(
         out self: Group[o1=o1, o2=o2, T1=T1, T2=T2, In=In, Out = (T1.O, T2.O)],
-        var t1: Task[origin=o1, T=T1, In=In, Out = T1.O],
-        var t2: Task[origin=o2, T=T2, In=In, Out = T2.O],
+        var t1: _Task[origin=o1, T=T1, In=In, Out = T1.O],
+        var t2: _Task[origin=o2, T=T2, In=In, Out = T2.O],
     ):
         self.t1 = t1.inner
         self.t2 = t2.inner
