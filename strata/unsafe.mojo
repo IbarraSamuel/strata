@@ -1,9 +1,9 @@
 from strata.immutable import Callable
-from strata.mutable import _SimpleMutCallable, _MovableMutCallable
+from strata.mutable import MutCallable, _MovableMutCallable
 
 
 @register_passable("trivial")
-struct UnsafeTaskRef[T: _SimpleMutCallable](Callable, _MovableMutCallable):
+struct UnsafeTaskRef[T: MutCallable](Callable, _MovableMutCallable):
     """This structure will treat MutableCallables as Immutable Callables.
     Is a way of casting a MutableCallable into a Callable.
     Since we might need to operate with other MutableCallables in the future,

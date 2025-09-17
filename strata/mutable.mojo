@@ -2,22 +2,20 @@ from algorithm import sync_parallelize
 from builtin import variadic_size
 
 
-trait _SimpleMutCallable:
+trait MutCallable:
     fn __call__(mut self):
         ...
 
-
-trait MutCallable(_SimpleMutCallable):
     # ---- FOR MUTABLE VERSIONS -----
     fn __add__[
-        s: MutableOrigin, o: MutableOrigin, t: _SimpleMutCallable, //
+        s: MutableOrigin, o: MutableOrigin, t: MutCallable, //
     ](ref [s]self, ref [o]other: t) -> ParallelTaskPair[
         _TaskRef[origin=s, Self], _TaskRef[origin=o, t]
     ]:
         return {_TaskRef(self), _TaskRef(other)}
 
     fn __rshift__[
-        s: MutableOrigin, o: MutableOrigin, t: _SimpleMutCallable, //
+        s: MutableOrigin, o: MutableOrigin, t: MutCallable, //
     ](ref [s]self, ref [o]other: t) -> SequentialTaskPair[
         _TaskRef[origin=s, Self], _TaskRef[origin=o, t]
     ]:
@@ -25,14 +23,14 @@ trait MutCallable(_SimpleMutCallable):
 
     # ---- FOR MUTABLE MOVABLE VERSIONS -----
     fn __add__[
-        s: MutableOrigin, t: Movable & _SimpleMutCallable, //
+        s: MutableOrigin, t: Movable & MutCallable, //
     ](ref [s]self, var other: t) -> ParallelTaskPair[
         _TaskRef[origin=s, Self], t
     ]:
         return {_TaskRef(self), other^}
 
     fn __rshift__[
-        s: MutableOrigin, t: Movable & _SimpleMutCallable, //
+        s: MutableOrigin, t: Movable & MutCallable, //
     ](ref [s]self, var other: t) -> SequentialTaskPair[
         _TaskRef[origin=s, Self], t
     ]:
@@ -44,14 +42,14 @@ trait MutCallable(_SimpleMutCallable):
 trait _MovableMutCallable(Movable, MutCallable):
     # ---- FOR MUTABLE VERSIONS -----
     fn __add__[
-        o: MutableOrigin, t: _SimpleMutCallable, //
+        o: MutableOrigin, t: MutCallable, //
     ](var self, ref [o]other: t) -> ParallelTaskPair[
         Self, _TaskRef[origin=o, t]
     ]:
         return {self^, _TaskRef(other)}
 
     fn __rshift__[
-        o: MutableOrigin, t: _SimpleMutCallable, //
+        o: MutableOrigin, t: MutCallable, //
     ](var self, ref [o]other: t) -> SequentialTaskPair[
         Self, _TaskRef[origin=o, t]
     ]:
@@ -59,17 +57,17 @@ trait _MovableMutCallable(Movable, MutCallable):
 
     # ---- FOR MUTABLE MOVABLE VERSIONS -----
     fn __add__[
-        t: Movable & _SimpleMutCallable, //
+        t: Movable & MutCallable, //
     ](var self, var other: t) -> ParallelTaskPair[Self, t]:
         return {self^, other^}
 
     fn __rshift__[
-        t: Movable & _SimpleMutCallable, //
+        t: Movable & MutCallable, //
     ](var self, var other: t) -> SequentialTaskPair[Self, t]:
         return {self^, other^}
 
 
-alias MutCallablePack = VariadicPack[False, _, _SimpleMutCallable, *_]
+alias MutCallablePack = VariadicPack[False, _, MutCallable, *_]
 
 
 # ====================== SAFE VERSION =======================
@@ -77,7 +75,7 @@ alias MutCallablePack = VariadicPack[False, _, _SimpleMutCallable, *_]
 
 @always_inline
 fn series_runner[
-    o: MutableOrigin, //, *ts: _SimpleMutCallable
+    o: MutableOrigin, //, *ts: MutCallable
 ](callables: MutCallablePack[o, *ts]):
     alias size = variadic_size(ts)
 
@@ -86,7 +84,7 @@ fn series_runner[
         callables[i]()
 
 
-fn series_runner[*ts: _SimpleMutCallable](mut*callables: *ts):
+fn series_runner[*ts: MutCallable](mut*callables: *ts):
     """Run Runnable structs in sequence.
 
     Parameters:
@@ -100,7 +98,7 @@ fn series_runner[*ts: _SimpleMutCallable](mut*callables: *ts):
 
 @always_inline
 fn parallel_runner[
-    o: MutableOrigin, //, *ts: _SimpleMutCallable
+    o: MutableOrigin, //, *ts: MutCallable
 ](callables: MutCallablePack[o, *ts]):
     alias size = variadic_size(ts)
 
@@ -114,7 +112,7 @@ fn parallel_runner[
     sync_parallelize[exec](size)
 
 
-fn parallel_runner[*ts: _SimpleMutCallable](mut*callables: *ts):
+fn parallel_runner[*ts: MutCallable](mut*callables: *ts):
     """Run Runnable structs in parallel.
 
     Parameters:
@@ -126,9 +124,7 @@ fn parallel_runner[*ts: _SimpleMutCallable](mut*callables: *ts):
     parallel_runner(callables)
 
 
-struct SeriesTask[o: MutableOrigin, //, *ts: _SimpleMutCallable](
-    _SimpleMutCallable
-):
+struct SeriesTask[o: MutableOrigin, //, *ts: MutCallable](MutCallable):
     var storage: MutCallablePack[o, *ts]
 
     fn __init__(out self: SeriesTask[o = args.origin, *ts], mut*args: *ts):
@@ -138,9 +134,7 @@ struct SeriesTask[o: MutableOrigin, //, *ts: _SimpleMutCallable](
         series_runner(self.storage)
 
 
-struct ParallelTask[o: MutableOrigin, //, *ts: _SimpleMutCallable](
-    _SimpleMutCallable
-):
+struct ParallelTask[o: MutableOrigin, //, *ts: MutCallable](MutCallable):
     var storage: MutCallablePack[o, *ts]
 
     fn __init__(out self: ParallelTask[o = args.origin, *ts], mut*args: *ts):
@@ -151,9 +145,9 @@ struct ParallelTask[o: MutableOrigin, //, *ts: _SimpleMutCallable](
 
 
 @fieldwise_init
-struct SequentialTaskPair[
-    T1: Movable & _SimpleMutCallable, T2: Movable & _SimpleMutCallable
-](_MovableMutCallable):
+struct SequentialTaskPair[T1: Movable & MutCallable, T2: Movable & MutCallable](
+    _MovableMutCallable
+):
     var t1: T1
     var t2: T2
 
@@ -162,9 +156,9 @@ struct SequentialTaskPair[
 
 
 @fieldwise_init
-struct ParallelTaskPair[
-    T1: Movable & _SimpleMutCallable, T2: Movable & _SimpleMutCallable
-](_MovableMutCallable):
+struct ParallelTaskPair[T1: Movable & MutCallable, T2: Movable & MutCallable](
+    _MovableMutCallable
+):
     var t1: T1
     var t2: T2
 
@@ -173,9 +167,7 @@ struct ParallelTaskPair[
 
 
 @register_passable("trivial")
-struct _TaskRef[origin: MutableOrigin, //, T: _SimpleMutCallable](
-    _MovableMutCallable
-):
+struct _TaskRef[origin: MutableOrigin, //, T: MutCallable](_MovableMutCallable):
     var inner: Pointer[T, origin]
 
     fn __init__(out self, ref [origin]inner: T):
