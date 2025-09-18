@@ -1,4 +1,4 @@
-from runtime.asyncrt import create_task
+from runtime.asyncrt import Task, TaskGroup
 from strata.custom_tuple import Tuple as _Tuple
 
 
@@ -17,21 +17,29 @@ fn par_fn[
     f: fn (In) -> O1,
     l: fn (In) -> O2,
 ](val: In) -> (O1, O2):
-    @parameter
-    async fn task_1() -> O1:
-        return f(val)
+    tg = TaskGroup()
+
+    var v1: O1
+    var v2: O2
 
     @parameter
-    async fn task_2() -> O2:
-        return l(val)
+    async fn task_1():
+        v1 = f(val)
 
-    t1 = create_task(task_1())
-    t2 = create_task(task_2())
+    @parameter
+    async fn task_2():
+        v2 = l(val)
 
-    ref r1 = t1.wait()
-    ref r2 = t2.wait()
+    # This is safe because the variables will be initialized at the return.
+    __mlir_op.`lit.ownership.mark_initialized`(__get_mvalue_as_litref(v1))
+    __mlir_op.`lit.ownership.mark_initialized`(__get_mvalue_as_litref(v2))
 
-    return (r1.copy(), r2.copy())  # The tuple will make a copy of the values
+    tg.create_task(task_1())
+    tg.create_task(task_2())
+
+    tg.wait()
+
+    return (v1^, v2^)
 
 
 @register_passable("trivial")
