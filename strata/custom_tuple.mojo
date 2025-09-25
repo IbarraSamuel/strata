@@ -92,7 +92,7 @@ struct Tuple[
             *element_types,
         ],
         var *args: *element_types,
-        is_owned: __type_of(True),
+        own_elements: __type_of(True),
     ):
         self.storage = self.Storage(args._value)
 
@@ -236,5 +236,5 @@ fn test_compile():
     mut_tuple[0] += "sam"
     print(mut_tuple[0])
 
-    owned_tuple = Tuple(val1^, val2^, is_owned=True)
+    owned_tuple = Tuple(val1^, val2^, own_elements=True)
     _ = owned_tuple^
