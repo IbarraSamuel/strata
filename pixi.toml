@@ -72,7 +72,7 @@ examples = { depends-on = [
     "generic_examples",
     "generic_comptime_examples",
     # "generic_async_examples",
-    # "async_immutable_task_examples",
+    "async_immutable_task_examples",
     # "async_mutable_task_examples",
 ] }
 
