@@ -1,7 +1,7 @@
 from random import random_float64
 
 
-struct Point[origin: Origin]:
+struct Point:
     var x: Float64
     var y: Float64
 
@@ -12,30 +12,27 @@ struct Point[origin: Origin]:
 
 struct PointBox[
     point_origin: Origin,
-    origin: Origin,
 ](Movable):
-    var point_ptr: Pointer[Point[origin], point_origin]
+    var point_ptr: Pointer[Point, point_origin]
 
     fn __init__(
         out self,
-        ref [point_origin]point: Point[origin],
+        ref [point_origin]point: Point,
     ):
         self.point_ptr = Pointer(to=point)
 
 
 fn random_pointer[
-    o: Origin, origin: Origin
+    o: Origin = MutableOrigin.empty
 ](
-    ref [o]point: Point[origin] = Point[origin](
-        x=random_float64(), y=random_float64()
-    )
-) -> PointBox[o, origin]:
-    var point_box = PointBox(
-        point=point,
-    )
-    return point_box^
+    ref [o]point: Point = Point(x=random_float64(), y=random_float64())
+) -> PointBox[o]:
+    return PointBox(point=point)
 
 
 fn main():
-    res_2 = random_pointer[MutableAnyOrigin, MutableAnyOrigin]()
-    print(res_2.point_ptr[].x)
+    print("hi")
+    var res_2 = random_pointer[MutableOrigin.empty]()
+    var ptr = res_2.point_ptr[]
+    print(ptr)
+    print("bye")
