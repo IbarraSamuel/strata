@@ -27,7 +27,7 @@ trait Callable:
         ref [s]self,
         var other: _Task[T=t, In = Self.I],
     ) -> Group[
-        o1=s, o2 = other.origin, T1=Self, T2=t, In = Self.I, Out = (Self.O, t.O)
+        o1=s, o2 = other.origin, T1=Self, T2=t, In = Self.I, Out = Tuple[Self.O, t.O]
     ]:
         return Group(_Task(self), other^)
 
@@ -96,7 +96,7 @@ struct Group[
 
     # Init to be a ParallelPair
     fn __init__(
-        out self: Group[o1=o1, o2=o2, T1=T1, T2=T2, In=In, Out = (T1.O, T2.O)],
+        out self: Group[o1=o1, o2=o2, T1=T1, T2=T2, In=In, Out = Tuple[T1.O, T2.O]],
         var t1: _Task[origin=o1, T=T1, In=In, Out = T1.O],
         var t2: _Task[origin=o2, T=T2, In=In, Out = T2.O],
     ):
@@ -116,7 +116,7 @@ struct Group[
 
     # Call for a ParallelPair
     fn parallel_call(
-        self: Group[o1=o1, o2=o2, T1=T1, T2=T2, In=In, Out = (T1.O, T2.O)],
+        self: Group[o1=o1, o2=o2, T1=T1, T2=T2, In=In, Out = Tuple[T1.O, T2.O]],
         arg: Self.I,
     ) -> Self.O:
         tg = TaskGroup()
@@ -155,6 +155,6 @@ struct Group[
         else:
             return rebind[Self.O](
                 rebind[
-                    Group[o1=o1, o2=o2, T1=T1, T2=T2, In=In, Out = (T1.O, T2.O)]
+                    Group[o1=o1, o2=o2, T1=T1, T2=T2, In=In, Out = Tuple[T1.O, T2.O]]
                 ](self).parallel_call(arg)
             ).copy()

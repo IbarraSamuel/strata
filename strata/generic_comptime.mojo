@@ -16,7 +16,7 @@ fn par_fn[
     O2: Copyable & Movable, //,
     f: fn (In) -> O1,
     l: fn (In) -> O2,
-](val: In) -> (O1, O2):
+](val: In) -> Tuple[O1, O2]:
     tg = TaskGroup()
 
     var v1: O1
