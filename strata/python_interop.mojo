@@ -98,7 +98,7 @@ struct TaskGroup(Movable, Representable):
             return iv  # Before, here we had a tuple
 
         var values = List[PythonObject](
-            length=len(self.objects), fill=PythonObject()
+            length=UInt(len(self.objects)), fill=PythonObject()
         )
 
         # WORKAROUND:

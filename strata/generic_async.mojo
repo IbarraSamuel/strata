@@ -16,7 +16,7 @@ async fn par_fn[
     In: AnyType, O1: Copyable & Movable, O2: Copyable & Movable, //, f:
     async fn (In) -> O1, l:
     async fn (In) -> O2,
-](val: In) -> (O1, O2):
+](val: In) -> Tuple[O1, O2]:
     t1 = create_task(f(val))
     t2 = create_task(l(val))
     ref r1 = await t1
