@@ -25,7 +25,7 @@ fn int_mul[by: Int](value: Int) -> Int:
     return value * by
 
 
-fn sum_tuple(value: ((Int, Float32), Int)) -> Float32:
+fn sum_tuple(value: Tuple[Tuple[Int, Float32], Int]) -> Float32:
     print("Sum tuple...")
     sleep(time)
     return value[0][0] + value[0][1] + value[1]

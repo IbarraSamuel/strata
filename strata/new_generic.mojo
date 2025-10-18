@@ -10,19 +10,16 @@ trait Callable:
         ...
 
     fn __rshift__[
-        s: ImmutableOrigin, o: ImmutableOrigin, t: Callable where _type_is_eq_parse_time[Self.O, t.I](), //
-    ](ref[s] self, ref[o] other: t) -> SequentialGroup[
-        o1=s, o2=o, T1=Self, T2=t
+        C: Callable where _type_is_eq_parse_time[Self.O, C.I](), //,
+    ](ref self, ref other: C) -> SequentialGroup[
+        o1 = origin_of(self), o2 = origin_of(other), T1=Self, T2=C
     ]:
         return {self, other}
 
     fn __add__[
-        s: ImmutableOrigin, o: ImmutableOrigin, t: Callable where _type_is_eq_parse_time[Self.I, t.I](), //
-    ](
-        ref[s] self,
-        ref[o] other: t
-    ) -> ParallelGroup[
-        o1=s, o2=o, T1=Self, T2=t
+        t: Callable where _type_is_eq_parse_time[Self.I, t.I](), //,
+    ](ref self, ref other: t) -> ParallelGroup[
+        o1 = origin_of(self), o2 = origin_of(other), T1=Self, T2=t
     ]:
         return {self, other}
 
@@ -78,7 +75,7 @@ struct ParallelGroup[
         self.t2 = Pointer(to=t2)
 
     fn __call__(self, arg: Self.I) -> Self.O:
-        tg = TaskGroup()
+        var tg = TaskGroup()
 
         var v1: T1.O
         var v2: T2.O
@@ -118,8 +115,8 @@ struct ParallelGroup[
 #     var callable = Fn(do_some)
 #     var parcall = Fn(do_par)
 #     var sercall = Fn(do_ser)
-    # SequentialGroup(callable, sercall)
-    # callable >> sercall
-    # callable >> parcall
-    # callable + sercall
-    # callable + parcall
+# SequentialGroup(callable, sercall)
+# callable >> sercall
+# callable >> parcall
+# callable + sercall
+# callable + parcall
