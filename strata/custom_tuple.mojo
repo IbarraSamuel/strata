@@ -80,7 +80,7 @@ struct Tuple[
             *element_types,
         ],
         mut*args: *element_types,
-        mutable: __type_of(True),
+        mutable: type_of(True),
     ):
         self.storage = self.Storage(args._value)
 
@@ -92,7 +92,7 @@ struct Tuple[
             *element_types,
         ],
         var *args: *element_types,
-        own_elements: __type_of(True),
+        own_elements: type_of(True),
     ):
         self.storage = self.Storage(args._value)
 

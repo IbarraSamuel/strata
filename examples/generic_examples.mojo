@@ -26,7 +26,7 @@ fn int_mul[by: Int](value: Int) -> Int:
     return value * by
 
 
-fn sum_tuple(value: ((Int, Float32), Int)) -> Float32:
+fn sum_tuple(value: Tuple[Tuple[Int, Float32], Int]) -> Float32:
     print("Sum tuple...")
     sleep(time)
     return value[0][0] + value[0][1] + value[1]
@@ -77,10 +77,10 @@ struct IntMulTask[by: Int](Callable):
 
 @fieldwise_init
 struct SumTuple(Callable):
-    alias I = ((Int, Float32), Int)
+    alias I = Tuple[Tuple[Int, Float32], Int]
     alias O = Float32
 
-    fn __call__(self, arg: ((Int, Float32), Int)) -> Float32:
+    fn __call__(self, arg: Self.I) -> Self.O:
         print("Sum tuple...")
         sleep(time)
         return arg[0][0] + arg[0][1] + arg[1]
