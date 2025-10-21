@@ -1,7 +1,9 @@
 from algorithm import sync_parallelize
 from builtin import variadic_size
 
-alias CallablePack = VariadicPack[False, _, Callable, *_]
+alias CallablePack = VariadicPack[
+    is_owned=False, origin=_, element_trait=Callable, element_types=*_
+]
 
 
 trait Callable:
@@ -25,72 +27,6 @@ trait Callable:
         m1 = s.mut, m2 = o.mut, o1=s, o2=o, Self, t
     ]:
         return {self, other}
-
-
-@always_inline
-fn series_runner[*Ts: Callable](callables: CallablePack[_, *Ts]):
-    """Run Runnable structs in sequence.
-
-    Parameters:
-        Ts: Variadic `ImmCallable` types.
-
-    Args:
-        callables: A `CallablePack` collection of types.
-    """
-    alias size = variadic_size(Ts)
-
-    @parameter
-    for i in range(size):
-        callables[i]()
-
-
-fn series_runner[*ts: Callable](*callables: *ts):
-    """Run Runnable structs in sequence.
-
-    Parameters:
-        ts: Variadic `ImmCallable` types.
-
-    Args:
-        callables: A collection of `ImmCallable` types.
-    """
-    series_runner(callables)
-
-
-# Execute tasks in parallel
-
-
-@always_inline
-fn parallel_runner[*Ts: Callable](callables: CallablePack[_, *Ts]):
-    """Run Runnable structs in parallel.
-
-    Parameters:
-        Ts: Variadic `ImmCallable` types.
-
-    Args:
-        callables: A `CallablePack` collection of types.
-    """
-    alias size = variadic_size(Ts)
-
-    @parameter
-    fn exec(i: Int):
-        @parameter
-        for ti in range(size):
-            if ti == i:
-                callables[ti]()
-
-    sync_parallelize[exec](size)
-
-
-fn parallel_runner[*ts: Callable](*callables: *ts):
-    """Run Runnable structs in parallel.
-
-    Parameters:
-        ts: Variadic `ImmCallable` types.
-
-    Args:
-        callables: A collection of `ImmCallable` types.
-    """
-    parallel_runner(callables)
 
 
 @fieldwise_init("implicit")
@@ -124,7 +60,8 @@ struct SequentialTaskPairRef[
         self.t2 = Pointer(to=t2)
 
     fn __call__(self):
-        series_runner(self.t1[], self.t2[])
+        self.t1[].__call__()
+        self.t2[].__call__()
 
 
 @fieldwise_init
@@ -145,7 +82,15 @@ struct ParallelTaskPairRef[
         self.t2 = Pointer(to=t2)
 
     fn __call__(self):
-        parallel_runner(self.t1[], self.t2[])
+        @parameter
+        fn exec(i: Int):
+            if i == 0:
+                self.t1[].__call__()
+            else:
+                self.t2[].__call__()
+
+        sync_parallelize[exec](2)
+
 
 
 # Variadic Parallel
@@ -178,8 +123,17 @@ struct ParallelTask[mut: Bool, origin: Origin[mut], //, *Ts: Callable](
 
     fn __call__(self):
         """This function executes all tasks at the same time."""
-        parallel_runner(self.callables)
+        alias size = variadic_size(Ts)
 
+        @parameter
+        fn exec(i: Int):
+            @parameter
+            for ti in range(size):
+                if ti == i:
+                    self.callables[ti].__call__()
+                    return
+
+        sync_parallelize[exec](size)
 
 # # Variadic Series
 struct SequentialTask[mut: Bool, origin: Origin[mut], //, *Ts: Callable](
@@ -211,4 +165,7 @@ struct SequentialTask[mut: Bool, origin: Origin[mut], //, *Ts: Callable](
 
     fn __call__(self):
         """This function executes all tasks in ordered sequence."""
-        series_runner(self.callables)
+        alias size = variadic_size(Ts)
+        @parameter
+        for ci in range(size):
+            self.callables[ci].__call__()

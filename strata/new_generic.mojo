@@ -10,15 +10,15 @@ trait Callable:
         ...
 
     fn __rshift__[
-        C: Callable where _type_is_eq_parse_time[Self.O, C.I](), //,
-    ](ref self, ref other: C) -> SequentialGroup[
-        o1 = origin_of(self), o2 = origin_of(other), T1=Self, T2=C
+        t: Callable where _type_is_eq_parse_time[Self.O, t.I](), //,
+    ](ref self, ref other: t) -> _SequentialGroup[
+        o1 = origin_of(self), o2 = origin_of(other), T1=Self, T2=t
     ]:
         return {self, other}
 
     fn __add__[
         t: Callable where _type_is_eq_parse_time[Self.I, t.I](), //,
-    ](ref self, ref other: t) -> ParallelGroup[
+    ](ref self, ref other: t) -> _ParallelGroup[
         o1 = origin_of(self), o2 = origin_of(other), T1=Self, T2=t
     ]:
         return {self, other}
@@ -35,7 +35,7 @@ struct Fn[In: AnyType, Out: Copyable & Movable](Callable, Movable):
         return self.func(arg)
 
 
-struct SequentialGroup[
+struct _SequentialGroup[
     o1: ImmutableOrigin,
     o2: ImmutableOrigin, //,
     T1: Callable,
@@ -57,7 +57,7 @@ struct SequentialGroup[
         return self.t2[].__call__(rebind[T2.I](r1))
 
 
-struct ParallelGroup[
+struct _ParallelGroup[
     o1: ImmutableOrigin,
     o2: ImmutableOrigin, //,
     T1: Callable,
@@ -97,26 +97,3 @@ struct ParallelGroup[
 
         tg.wait()
         return (v1^, v2^)
-
-
-# fn do_some(v: Int) -> String:
-#     return String(v)
-
-
-# fn do_par(v: Int) -> Bool:
-#     return v > 10
-
-
-# fn do_ser(v: String) -> String:
-#     return v
-
-
-# fn run():
-#     var callable = Fn(do_some)
-#     var parcall = Fn(do_par)
-#     var sercall = Fn(do_ser)
-# SequentialGroup(callable, sercall)
-# callable >> sercall
-# callable >> parcall
-# callable + sercall
-# callable + parcall
