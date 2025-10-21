@@ -1,44 +1,31 @@
 from runtime.asyncrt import _run, TaskGroup
-from sys.intrinsics import _type_is_eq
+from sys.intrinsics import _type_is_eq_parse_time
 
 
 trait Callable:
     alias I: AnyType
-    alias O: Copyable & Movable  # Beacuse tuple
+    alias O: Copyable & Movable
 
     fn __call__(self, arg: Self.I) -> Self.O:
         ...
 
     fn __rshift__[
-        s: ImmutableOrigin, t: Callable, //
-    ](
-        ref [s]self,
-        var other: _Task[T=t, In = Self.O],
-    ) -> Group[
-        o1=s, o2 = other.origin, T1=Self, T2=t, In = Self.I, Out = t.O
+        t: Callable where _type_is_eq_parse_time[Self.O, t.I](), //,
+    ](ref self, ref other: t) -> _SequentialGroup[
+        o1 = origin_of(self), o2 = origin_of(other), T1=Self, T2=t
     ]:
-        return Group(_Task(self), other^)
-
-    # TODO: task with a Parallel Group in front to avoid a Task layer
+        return {self, other}
 
     fn __add__[
-        s: ImmutableOrigin, t: Callable, //
-    ](
-        ref [s]self,
-        var other: _Task[T=t, In = Self.I],
-    ) -> Group[
-        o1=s, o2 = other.origin, T1=Self, T2=t, In = Self.I, Out = Tuple[Self.O, t.O]
+        t: Callable where _type_is_eq_parse_time[Self.I, t.I](), //,
+    ](ref self, ref other: t) -> _ParallelGroup[
+        o1 = origin_of(self), o2 = origin_of(other), T1=Self, T2=t
     ]:
-        return Group(_Task(self), other^)
-
-    # TODO: task with a Sequential Group in front to avoid a Task layer
+        return {self, other}
 
 
 @fieldwise_init("implicit")
-struct Fn[
-    In: AnyType,
-    Out: Copyable & Movable, //,
-](Callable, Movable):
+struct Fn[In: AnyType, Out: Copyable & Movable](Callable, Movable):
     alias I = In
     alias O = Out
 
@@ -48,85 +35,54 @@ struct Fn[
         return self.func(arg)
 
 
-struct _Task[
-    origin: ImmutableOrigin,
-    T: Callable, //,
-    In: AnyType = T.I,
-    Out: Copyable & Movable = T.O,
-](Callable, Movable):
-    alias I = In
-    alias O = Out
-
-    var inner: Pointer[T, origin]
-
-    @always_inline("nodebug")
-    @implicit  # To be able to parametrize the trait
-    fn __init__(out self: _Task[origin=origin, T=T], ref [origin]task: T):
-        self.inner = Pointer(to=task)
-
-    @always_inline("nodebug")
-    fn __call__(self, arg: Self.I) -> Self.O:
-        ref input = rebind[T.I](arg)
-        o = self.inner[].__call__(input)
-        return rebind[Self.O](o^).copy()
-
-
-struct Group[
+struct _SequentialGroup[
     o1: ImmutableOrigin,
     o2: ImmutableOrigin, //,
     T1: Callable,
-    T2: Callable,
-    In: AnyType,
-    Out: Copyable & Movable,
+    T2: Callable where _type_is_eq_parse_time[T1.O, T2.I](),
 ](Callable, Movable):
-    alias I = In
-    alias O = Out
+    alias I = T1.I
+    alias O = T2.O
+
+    var t1: Pointer[T1, o1]
+    var t2: Pointer[T2, o2]
+
+    # Init to be a SequentialPair
+    fn __init__(out self, ref [o1]t1: T1, ref [o2]t2: T2):
+        self.t1 = Pointer(to=t1)
+        self.t2 = Pointer(to=t2)
+
+    fn __call__(self, arg: Self.I) -> Self.O:
+        ref r1 = self.t1[].__call__(arg)
+        return self.t2[].__call__(rebind[T2.I](r1))
+
+
+struct _ParallelGroup[
+    o1: ImmutableOrigin,
+    o2: ImmutableOrigin, //,
+    T1: Callable,
+    T2: Callable where _type_is_eq_parse_time[T1.I, T2.I](),
+](Callable, Movable):
+    alias I = T1.I
+    alias O = Tuple[T1.O, T2.O]
 
     var t1: Pointer[T1, o1]
     var t2: Pointer[T2, o2]
 
     # # Init to be a SequentialPair
-    fn __init__(
-        out self: Group[o1=o1, o2=o2, T1=T1, T2=T2, In = T1.I, Out = T2.O],
-        var t1: _Task[origin=o1, T=T1, In = T1.I, Out = T1.O],
-        var t2: _Task[origin=o2, T=T2, In = T1.O, Out = T2.O],
-    ):
-        self.t1 = t1.inner
-        self.t2 = t2.inner
+    fn __init__(out self, ref [o1]t1: T1, ref [o2]t2: T2):
+        self.t1 = Pointer(to=t1)
+        self.t2 = Pointer(to=t2)
 
-    # Init to be a ParallelPair
-    fn __init__(
-        out self: Group[o1=o1, o2=o2, T1=T1, T2=T2, In=In, Out = Tuple[T1.O, T2.O]],
-        var t1: _Task[origin=o1, T=T1, In=In, Out = T1.O],
-        var t2: _Task[origin=o2, T=T2, In=In, Out = T2.O],
-    ):
-        self.t1 = t1.inner
-        self.t2 = t2.inner
-
-    # Call for a SequentialPair
-    fn sequential_call(
-        self: Group[o1=o1, o2=o2, T1=T1, T2=T2, In = T1.I, Out = T2.O],
-        arg: Self.I,
-    ) -> Self.O:
-        ref a1 = rebind[T1.I](arg)
-        ref r1 = self.t1[].__call__(a1)
-        ref a2 = rebind[T2.I](r1)
-        ref r2 = self.t2[].__call__(a2)
-        return rebind[Out](r2).copy()
-
-    # Call for a ParallelPair
-    fn parallel_call(
-        self: Group[o1=o1, o2=o2, T1=T1, T2=T2, In=In, Out = Tuple[T1.O, T2.O]],
-        arg: Self.I,
-    ) -> Self.O:
-        tg = TaskGroup()
+    fn __call__(self, arg: Self.I) -> Self.O:
+        var tg = TaskGroup()
 
         var v1: T1.O
         var v2: T2.O
 
         @parameter
         async fn task_1():
-            v1 = self.t1[].__call__(rebind[T1.I](arg))
+            v1 = self.t1[].__call__(arg)
 
         @parameter
         async fn task_2():
@@ -140,21 +96,4 @@ struct Group[
         tg.create_task(task_2())
 
         tg.wait()
-
-        return rebind[Out]((v1^, v2^)).copy()
-
-    # Call for a SequentialPair
-    fn __call__(self, arg: Self.I) -> Self.O:
-        @parameter
-        if _type_is_eq[Out, T2.O]():
-            return rebind[Self.O](
-                rebind[
-                    Group[o1=o1, o2=o2, T1=T1, T2=T2, In = T1.I, Out = T2.O]
-                ](self).sequential_call(rebind[T1.I](arg))
-            ).copy()
-        else:
-            return rebind[Self.O](
-                rebind[
-                    Group[o1=o1, o2=o2, T1=T1, T2=T2, In=In, Out = Tuple[T1.O, T2.O]]
-                ](self).parallel_call(arg)
-            ).copy()
+        return (v1^, v2^)

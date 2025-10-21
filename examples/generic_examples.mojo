@@ -1,4 +1,4 @@
-from strata.new_generic import Callable, Fn  # , Tuple
+from strata.generic import Callable, Fn  # , Tuple
 import os
 from time import sleep
 
