@@ -20,39 +20,6 @@ trait TypeCallable:
         return {}
 
 
-@always_inline("nodebug")
-fn parallel_runner[*Ts: TypeCallable]():
-    """Run Runnable structs in parallel.
-
-    Parameters:
-        Ts: Variadic `CallableDefaltable` types.
-    """
-    alias size = variadic_size(Ts)
-
-    @parameter
-    fn exec(i: Int):
-        @parameter
-        for ti in range(size):
-            if ti == i:
-                Ts[ti].__call__()
-
-    sync_parallelize[exec](size)
-
-
-@always_inline("nodebug")
-fn series_runner[*Ts: TypeCallable]():
-    """Run Runnable structs in sequence.
-
-    Parameters:
-        Ts: Variadic `CallableDefaltable` types.
-    """
-    alias size = variadic_size(Ts)
-
-    @parameter
-    for i in range(size):
-        Ts[i].__call__()
-
-
 @fieldwise_init
 @register_passable("trivial")
 struct ParallelTypeTask[*Ts: TypeCallable](TypeCallable):
@@ -66,7 +33,17 @@ struct ParallelTypeTask[*Ts: TypeCallable](TypeCallable):
     @always_inline("nodebug")
     fn __call__():
         """Call the tasks based on the types in a parallel order."""
-        parallel_runner[*Ts]()
+        alias size = variadic_size(Ts)
+
+        @parameter
+        fn exec(i: Int):
+            @parameter
+            for ti in range(size):
+                if ti == i:
+                    Ts[ti].__call__()
+                    return
+
+        sync_parallelize[exec](size)
 
 
 @fieldwise_init
@@ -82,4 +59,8 @@ struct SeriesTypeTask[*Ts: TypeCallable](TypeCallable):
     @always_inline("nodebug")
     fn __call__():
         """Call the tasks based on the types on a sequence order."""
-        series_runner[*Ts]()
+        alias size = variadic_size(Ts)
+
+        @parameter
+        for i in range(size):
+            Ts[i].__call__()
