@@ -26,10 +26,10 @@ fn int_mul[by: Int](value: Int) -> Int:
     return value * by
 
 
-fn sum_tuple(value: Tuple[Tuple[Int, Float32], Int]) -> Float32:
+fn sum_tuple(value: Tuple[Int, Float32, Int]) -> Float32:
     print("Sum tuple...")
     sleep(time)
-    return value[0][0] + value[0][1] + value[1]
+    return value[0] + value[1] + value[2]
 
 
 fn float_to_string(value: Float32) -> String:
@@ -77,13 +77,13 @@ struct IntMulTask[by: Int](Callable):
 
 @fieldwise_init
 struct SumTuple(Callable):
-    alias I = Tuple[Tuple[Int, Float32], Int]
+    alias I = Tuple[Int, Float32, Int]
     alias O = Float32
 
     fn __call__(self, arg: Self.I) -> Self.O:
         print("Sum tuple...")
         sleep(time)
-        return arg[0][0] + arg[0][1] + arg[1]
+        return arg[0] + arg[1] + arg[2]
 
 
 @fieldwise_init
@@ -99,19 +99,22 @@ struct FloatToStringTask(Callable):
 
 fn main():
     # NOTE: Compile times could be faster if you use struct instead of functions.
-    print("Building graph")
+    print("Building graph with functions...")
 
-    final_graph = (
-        Fn(string_to_int)
-        >> Fn(int_mul[2]) + Fn(int_to_float) + Fn(int_mul[3])
-        >> Fn(sum_tuple)
-        >> Fn(float_to_string)
-    )
+    stoi = Fn(string_to_int)
+    mul2 = Fn(int_mul[2])
+    mul3 = Fn(int_mul[3])
+    itof = Fn(int_to_float)
+    sum_tp = Fn(sum_tuple)
+    ftos = Fn(float_to_string)
+
+    var final_graph = stoi >> mul2 + itof + mul3 >> sum_tp >> ftos
 
     print("Starting Graph execution")
     result = final_graph("32")
 
     print(result)
+    print("Meet expected?:", result, "vs 192.0:", result == "192.0")
 
     print("Building Struct graph")
 
@@ -124,5 +127,6 @@ fn main():
 
     print("Starting Graph execution")
     result_2 = struct_graph("32")
+    print("Meet expected?:", result_2, "vs 192.0:", result_2 == "192.0")
 
     print(result_2)
