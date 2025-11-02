@@ -1,12 +1,11 @@
-from runtime.asyncrt import _run, TaskGroup
+from runtime.asyncrt import TaskGroup
 from sys.intrinsics import _type_is_eq_parse_time
 from builtin.rebind import downcast
 import os
 
-
 trait Call:
     alias I: AnyType
-    alias O: Copyable & Movable
+    alias O: Movable & Copyable
 
     fn __call__(self, arg: Self.I) -> Self.O:
         ...
@@ -14,7 +13,7 @@ trait Call:
 
 trait Callable(Call):
     fn __rshift__[
-        so: ImmutableOrigin, oo: ImmutableOrigin, o: Call, s: Call = Self
+        so: ImmutOrigin, oo: ImmutOrigin, o: Call, s: Call = Self
     ](ref [so]self, ref [oo]other: o) -> _Seq[
         O1=so, O2=oo, T1=s, T2=o, s.I, o.O
     ] where _type_is_eq_parse_time[s.O, o.I]():
@@ -23,7 +22,7 @@ trait Callable(Call):
         return {_self, other}
 
     fn __add__[
-        so: ImmutableOrigin, oo: ImmutableOrigin, o: Call, s: Call = Self
+        so: ImmutOrigin, oo: ImmutOrigin, o: Call, s: Call = Self
     ](ref [so]self, ref [oo]other: o) -> _ParGroup[
         O1=so, O2=oo, T1=s, T2=o, s.I, s.O, o.O, size=2
     ] where _type_is_eq_parse_time[s.I, o.I]():
@@ -34,12 +33,12 @@ trait Callable(Call):
 
 @fieldwise_init
 struct _Seq[
-    O1: ImmutableOrigin,
-    O2: ImmutableOrigin,
+    O1: ImmutOrigin,
+    O2: ImmutOrigin,
     T1: Call,
     T2: Call, //,
     In: AnyType,
-    Out: Copyable & Movable,
+    Out: Movable & Copyable,
 ](Call, Movable):
     alias I = T1.I
     alias O = T2.O
@@ -60,8 +59,8 @@ struct _Seq[
         return self.t2[].__call__(r1r)
 
     fn __rshift__[
-        so: ImmutableOrigin,
-        oo: ImmutableOrigin,
+        so: ImmutOrigin,
+        oo: ImmutOrigin,
         o: Call where _type_is_eq_parse_time[Self.O, o.I](),
     ](ref [so]self: Self, ref [oo]other: o) -> _Seq[
         O1=so, O2=oo, T1=Self, T2=o, T1.I, o.O
@@ -69,8 +68,8 @@ struct _Seq[
         return {self, other}
 
     fn __add__[
-        so: ImmutableOrigin,
-        oo: ImmutableOrigin,
+        so: ImmutOrigin,
+        oo: ImmutOrigin,
         o: Call where _type_is_eq_parse_time[Self.I, o.I](),
     ](ref [so]self, ref [oo]other: o) -> _ParGroup[
         O1=so, O2=oo, T1=Self, T2=o, Self.I, Self.O, o.O, size=2
@@ -79,8 +78,8 @@ struct _Seq[
 
 
 struct _ParGroup[
-    O1: ImmutableOrigin,
-    O2: ImmutableOrigin,
+    O1: ImmutOrigin,
+    O2: ImmutOrigin,
     T1: Call,
     T2: Call, //,  # Enforce conformance here once type_of() works for this one
     In: AnyType,
@@ -91,13 +90,13 @@ struct _ParGroup[
     alias O = Tuple[*Out]
 
     alias NewPar[
-        o1: ImmutableOrigin,
-        o2: ImmutableOrigin,
+        o1: ImmutOrigin,
+        o2: ImmutOrigin,
         other: Call,
         *out_types: Copyable & Movable,
     ] = _ParGroup[
-        O1 = ImmutableOrigin.cast_from[o1],
-        O2 = ImmutableOrigin.cast_from[o2],
+        O1 = ImmutOrigin.cast_from[o1],
+        O2 = ImmutOrigin.cast_from[o2],
         T1=Self,
         T2=other,
         T1.I,
@@ -116,8 +115,8 @@ struct _ParGroup[
         self.t2 = Pointer(to=t2)
 
     fn __rshift__[
-        so: ImmutableOrigin,
-        oo: ImmutableOrigin,
+        so: ImmutOrigin,
+        oo: ImmutOrigin,
         o: Call where _type_is_eq_parse_time[Self.O, o.I](),
     ](ref [so]self, ref [oo]other: o) -> _Seq[
         O1=so, O2=oo, T1=Self, T2=o, In = Self.I, Out = o.O
@@ -125,20 +124,20 @@ struct _ParGroup[
         return {self, other}
 
     # fmt: off
-    fn __add__[so: ImmutableOrigin, oo: ImmutableOrigin, t: Call](ref[so] self, ref[oo] other: t) -> Self.NewPar[so, oo, t, Out[0], Out[1], t.O] where _type_is_eq_parse_time[T1.I, t.I]() where Self.size == 2: return {self, other}
-    fn __add__[so: ImmutableOrigin, oo: ImmutableOrigin, t: Call](ref[so] self, ref[oo] other: t) -> Self.NewPar[so, oo, t, Out[0], Out[1], Out[2], t.O] where _type_is_eq_parse_time[T1.I, t.I]() where Self.size == 3: return {self, other}
-    fn __add__[so: ImmutableOrigin, oo: ImmutableOrigin, t: Call](ref[so] self, ref[oo] other: t) -> Self.NewPar[so, oo, t, Out[0], Out[1], Out[2], Out[3], t.O] where _type_is_eq_parse_time[T1.I, t.I]() where Self.size == 4: return {self, other}
-    fn __add__[so: ImmutableOrigin, oo: ImmutableOrigin, t: Call](ref[so] self, ref[oo] other: t) -> Self.NewPar[so, oo, t, Out[0], Out[1], Out[2], Out[3], Out[4], t.O] where _type_is_eq_parse_time[T1.I, t.I]() where Self.size == 5: return {self, other}
-    fn __add__[so: ImmutableOrigin, oo: ImmutableOrigin, t: Call](ref[so] self, ref[oo] other: t) -> Self.NewPar[so, oo, t, Out[0], Out[1], Out[2], Out[3], Out[4], Out[5], t.O] where _type_is_eq_parse_time[T1.I, t.I]() where Self.size == 6: return {self, other}
-    fn __add__[so: ImmutableOrigin, oo: ImmutableOrigin, t: Call](ref[so] self, ref[oo] other: t) -> Self.NewPar[so, oo, t, Out[0], Out[1], Out[2], Out[3], Out[4], Out[5], Out[6], t.O] where _type_is_eq_parse_time[T1.I, t.I]() where Self.size == 7: return {self, other}
-    fn __add__[so: ImmutableOrigin, oo: ImmutableOrigin, t: Call](ref[so] self, ref[oo] other: t) -> Self.NewPar[so, oo, t, Out[0], Out[1], Out[2], Out[3], Out[4], Out[5], Out[6], Out[7], t.O] where _type_is_eq_parse_time[T1.I, t.I]() where Self.size == 8: return {self, other}
-    fn __add__[so: ImmutableOrigin, oo: ImmutableOrigin, t: Call](ref[so] self, ref[oo] other: t) -> Self.NewPar[so, oo, t, Out[0], Out[1], Out[2], Out[3], Out[4], Out[5], Out[6], Out[7], Out[8], t.O] where _type_is_eq_parse_time[T1.I, t.I]() where Self.size == 9: return {self, other}
-    fn __add__[so: ImmutableOrigin, oo: ImmutableOrigin, t: Call](ref[so] self, ref[oo] other: t) -> Self.NewPar[so, oo, t, Out[0], Out[1], Out[2], Out[3], Out[4], Out[5], Out[6], Out[7], Out[8], Out[9], t.O] where _type_is_eq_parse_time[T1.I, t.I]() where Self.size == 10: return {self, other}
-    fn __add__[so: ImmutableOrigin, oo: ImmutableOrigin, t: Call](ref[so] self, ref[oo] other: t) -> Self.NewPar[so, oo, t, Out[0], Out[1], Out[2], Out[3], Out[4], Out[5], Out[6], Out[7], Out[8], Out[9], Out[10], t.O] where _type_is_eq_parse_time[T1.I, t.I]() where Self.size == 11: return {self, other}
-    fn __add__[so: ImmutableOrigin, oo: ImmutableOrigin, t: Call](ref[so] self, ref[oo] other: t) -> Self.NewPar[so, oo, t, Out[0], Out[1], Out[2], Out[3], Out[4], Out[5], Out[6], Out[7], Out[8], Out[9], Out[10], Out[11], t.O] where _type_is_eq_parse_time[T1.I, t.I]() where Self.size == 12: return {self, other}
-    fn __add__[so: ImmutableOrigin, oo: ImmutableOrigin, t: Call](ref[so] self, ref[oo] other: t) -> Self.NewPar[so, oo, t, Out[0], Out[1], Out[2], Out[3], Out[4], Out[5], Out[6], Out[7], Out[8], Out[9], Out[10], Out[11], Out[12], t.O] where _type_is_eq_parse_time[T1.I, t.I]() where Self.size == 13: return {self, other}
-    fn __add__[so: ImmutableOrigin, oo: ImmutableOrigin, t: Call](ref[so] self, ref[oo] other: t) -> Self.NewPar[so, oo, t, Out[0], Out[1], Out[2], Out[3], Out[4], Out[5], Out[6], Out[7], Out[8], Out[9], Out[10], Out[11], Out[12], Out[13], t.O] where _type_is_eq_parse_time[T1.I, t.I]() where Self.size == 14: return {self, other}
-    fn __add__[so: ImmutableOrigin, oo: ImmutableOrigin, t: Call](ref[so] self, ref[oo] other: t) -> Self.NewPar[so, oo, t, Out[0], Out[1], Out[2], Out[3], Out[4], Out[5], Out[6], Out[7], Out[8], Out[9], Out[10], Out[11], Out[12], Out[13], Out[14], t.O] where _type_is_eq_parse_time[T1.I, t.I]() where Self.size == 15: return {self, other}
+    fn __add__[so: ImmutOrigin, oo: ImmutOrigin, t: Call](ref[so] self, ref[oo] other: t) -> Self.NewPar[so, oo, t, Out[0], Out[1], t.O] where _type_is_eq_parse_time[T1.I, t.I]() where Self.size == 2: return {self, other}
+    fn __add__[so: ImmutOrigin, oo: ImmutOrigin, t: Call](ref[so] self, ref[oo] other: t) -> Self.NewPar[so, oo, t, Out[0], Out[1], Out[2], t.O] where _type_is_eq_parse_time[T1.I, t.I]() where Self.size == 3: return {self, other}
+    fn __add__[so: ImmutOrigin, oo: ImmutOrigin, t: Call](ref[so] self, ref[oo] other: t) -> Self.NewPar[so, oo, t, Out[0], Out[1], Out[2], Out[3], t.O] where _type_is_eq_parse_time[T1.I, t.I]() where Self.size == 4: return {self, other}
+    fn __add__[so: ImmutOrigin, oo: ImmutOrigin, t: Call](ref[so] self, ref[oo] other: t) -> Self.NewPar[so, oo, t, Out[0], Out[1], Out[2], Out[3], Out[4], t.O] where _type_is_eq_parse_time[T1.I, t.I]() where Self.size == 5: return {self, other}
+    fn __add__[so: ImmutOrigin, oo: ImmutOrigin, t: Call](ref[so] self, ref[oo] other: t) -> Self.NewPar[so, oo, t, Out[0], Out[1], Out[2], Out[3], Out[4], Out[5], t.O] where _type_is_eq_parse_time[T1.I, t.I]() where Self.size == 6: return {self, other}
+    fn __add__[so: ImmutOrigin, oo: ImmutOrigin, t: Call](ref[so] self, ref[oo] other: t) -> Self.NewPar[so, oo, t, Out[0], Out[1], Out[2], Out[3], Out[4], Out[5], Out[6], t.O] where _type_is_eq_parse_time[T1.I, t.I]() where Self.size == 7: return {self, other}
+    fn __add__[so: ImmutOrigin, oo: ImmutOrigin, t: Call](ref[so] self, ref[oo] other: t) -> Self.NewPar[so, oo, t, Out[0], Out[1], Out[2], Out[3], Out[4], Out[5], Out[6], Out[7], t.O] where _type_is_eq_parse_time[T1.I, t.I]() where Self.size == 8: return {self, other}
+    fn __add__[so: ImmutOrigin, oo: ImmutOrigin, t: Call](ref[so] self, ref[oo] other: t) -> Self.NewPar[so, oo, t, Out[0], Out[1], Out[2], Out[3], Out[4], Out[5], Out[6], Out[7], Out[8], t.O] where _type_is_eq_parse_time[T1.I, t.I]() where Self.size == 9: return {self, other}
+    fn __add__[so: ImmutOrigin, oo: ImmutOrigin, t: Call](ref[so] self, ref[oo] other: t) -> Self.NewPar[so, oo, t, Out[0], Out[1], Out[2], Out[3], Out[4], Out[5], Out[6], Out[7], Out[8], Out[9], t.O] where _type_is_eq_parse_time[T1.I, t.I]() where Self.size == 10: return {self, other}
+    fn __add__[so: ImmutOrigin, oo: ImmutOrigin, t: Call](ref[so] self, ref[oo] other: t) -> Self.NewPar[so, oo, t, Out[0], Out[1], Out[2], Out[3], Out[4], Out[5], Out[6], Out[7], Out[8], Out[9], Out[10], t.O] where _type_is_eq_parse_time[T1.I, t.I]() where Self.size == 11: return {self, other}
+    fn __add__[so: ImmutOrigin, oo: ImmutOrigin, t: Call](ref[so] self, ref[oo] other: t) -> Self.NewPar[so, oo, t, Out[0], Out[1], Out[2], Out[3], Out[4], Out[5], Out[6], Out[7], Out[8], Out[9], Out[10], Out[11], t.O] where _type_is_eq_parse_time[T1.I, t.I]() where Self.size == 12: return {self, other}
+    fn __add__[so: ImmutOrigin, oo: ImmutOrigin, t: Call](ref[so] self, ref[oo] other: t) -> Self.NewPar[so, oo, t, Out[0], Out[1], Out[2], Out[3], Out[4], Out[5], Out[6], Out[7], Out[8], Out[9], Out[10], Out[11], Out[12], t.O] where _type_is_eq_parse_time[T1.I, t.I]() where Self.size == 13: return {self, other}
+    fn __add__[so: ImmutOrigin, oo: ImmutOrigin, t: Call](ref[so] self, ref[oo] other: t) -> Self.NewPar[so, oo, t, Out[0], Out[1], Out[2], Out[3], Out[4], Out[5], Out[6], Out[7], Out[8], Out[9], Out[10], Out[11], Out[12], Out[13], t.O] where _type_is_eq_parse_time[T1.I, t.I]() where Self.size == 14: return {self, other}
+    fn __add__[so: ImmutOrigin, oo: ImmutOrigin, t: Call](ref[so] self, ref[oo] other: t) -> Self.NewPar[so, oo, t, Out[0], Out[1], Out[2], Out[3], Out[4], Out[5], Out[6], Out[7], Out[8], Out[9], Out[10], Out[11], Out[12], Out[13], Out[14], t.O] where _type_is_eq_parse_time[T1.I, t.I]() where Self.size == 15: return {self, other}
     # fmt: on
 
     fn __call__(self, arg: Self.I, out o: Self.O):
