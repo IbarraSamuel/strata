@@ -23,7 +23,7 @@ struct PointBox[
 
 
 fn random_pointer[
-    o: Origin = MutableOrigin.empty
+    o: Origin = MutOrigin.empty
 ](
     ref [o]point: Point = Point(x=random_float64(), y=random_float64())
 ) -> PointBox[o]:
@@ -32,7 +32,7 @@ fn random_pointer[
 
 fn main():
     print("hi")
-    var res_2 = random_pointer[MutableOrigin.empty]()
+    var res_2 = random_pointer[MutOrigin.empty]()
     var ptr = res_2.point_ptr[]
     print(ptr)
     print("bye")

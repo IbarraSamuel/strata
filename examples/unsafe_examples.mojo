@@ -26,7 +26,7 @@ struct InitTask[name: String = "Init"](MutCallable, TaskWithValue):
 
 
 # Just ensure your struct has fn __call__(mut self):
-struct MyTask[name: StringLiteral, t: TaskWithValue, origin: ImmutableOrigin](
+struct MyTask[name: StringLiteral, t: TaskWithValue, origin: ImmutOrigin](
     TaskWithValue & MutCallable
 ):
     var task: Pointer[t, origin]
@@ -53,8 +53,8 @@ struct MyTask[name: StringLiteral, t: TaskWithValue, origin: ImmutableOrigin](
 struct CollectResults[
     t1: TaskWithValue,
     t2: TaskWithValue,
-    o1: ImmutableOrigin,
-    o2: ImmutableOrigin,
+    o1: ImmutOrigin,
+    o2: ImmutOrigin,
 ](MutCallable):
     var result_1: Pointer[t1, o1]
     var result_2: Pointer[t2, o2]

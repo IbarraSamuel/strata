@@ -6,7 +6,7 @@ trait AsyncCallable:
         ...
 
 
-struct TaskRef[T: AsyncCallable, origin: MutableOrigin](AsyncCallable, Movable):
+struct TaskRef[T: AsyncCallable, origin: MutOrigin](AsyncCallable, Movable):
     var v: Pointer[T, origin]
 
     @implicit
@@ -18,7 +18,7 @@ struct TaskRef[T: AsyncCallable, origin: MutableOrigin](AsyncCallable, Movable):
 
     fn __add__[
         t: AsyncCallable,
-        o: MutableOrigin,
+        o: MutOrigin,
     ](var self, ref [o]other: t) -> ParTaskPair[Self, TaskRef[t, o]]:
         return {self^, TaskRef(other)}
 
@@ -29,7 +29,7 @@ struct TaskRef[T: AsyncCallable, origin: MutableOrigin](AsyncCallable, Movable):
 
     fn __rshift__[
         t: AsyncCallable,
-        o: MutableOrigin,
+        o: MutOrigin,
     ](var self, ref [o]other: t) -> SerTaskPair[Self, TaskRef[t, o]]:
         return {self^, TaskRef(other)}
 
@@ -55,7 +55,7 @@ struct SerTaskPair[T1: AsyncCallable & Movable, T2: AsyncCallable & Movable](
 
     fn __add__[
         t: AsyncCallable,
-        o: MutableOrigin,
+        o: MutOrigin,
     ](var self, ref [o]other: t) -> ParTaskPair[Self, TaskRef[t, o]]:
         return {self^, TaskRef(other)}
 
@@ -66,7 +66,7 @@ struct SerTaskPair[T1: AsyncCallable & Movable, T2: AsyncCallable & Movable](
 
     fn __rshift__[
         t: AsyncCallable,
-        o: MutableOrigin,
+        o: MutOrigin,
     ](var self, ref [o]other: t) -> SerTaskPair[Self, TaskRef[t, o]]:
         return {self^, TaskRef(other)}
 
@@ -94,7 +94,7 @@ struct ParTaskPair[T1: AsyncCallable & Movable, T2: AsyncCallable & Movable](
 
     fn __add__[
         t: AsyncCallable,
-        o: MutableOrigin,
+        o: MutOrigin,
     ](var self, ref [o]other: t) -> ParTaskPair[Self, TaskRef[t, o]]:
         return {self^, TaskRef(other)}
 
@@ -105,7 +105,7 @@ struct ParTaskPair[T1: AsyncCallable & Movable, T2: AsyncCallable & Movable](
 
     fn __rshift__[
         t: AsyncCallable,
-        o: MutableOrigin,
+        o: MutOrigin,
     ](var self, ref [o]other: t) -> SerTaskPair[Self, TaskRef[t, o]]:
         return {self^, TaskRef(other)}
 
