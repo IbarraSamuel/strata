@@ -118,7 +118,7 @@ fn main():
 
     print("Building Struct graph")
 
-    struct_graph = (
+    var struct_graph = (
         StringToIntTask()
         >> IntMulTask[2]() + IntToFloatTask() + IntMulTask[3]()
         >> SumTuple()
@@ -126,7 +126,7 @@ fn main():
     )
 
     print("Starting Graph execution")
-    result_2 = struct_graph("32")
+    var result_2 = struct_graph("32")
     print("Meet expected?:", result_2, "vs 192.0:", result_2 == "192.0")
 
     print(result_2)
