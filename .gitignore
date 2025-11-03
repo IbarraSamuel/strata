@@ -22,3 +22,6 @@ python/src/strata/*.so
 
 .vscode
 kgen.trace.*
+# pixi environments
+.pixi/*
+!.pixi/config.toml
