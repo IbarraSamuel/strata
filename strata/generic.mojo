@@ -3,6 +3,7 @@ from sys.intrinsics import _type_is_eq_parse_time
 from builtin.rebind import downcast
 import os
 
+
 trait Call:
     alias I: AnyType
     alias O: Movable & Copyable
