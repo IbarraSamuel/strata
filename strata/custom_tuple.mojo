@@ -52,9 +52,7 @@ struct Tuple[
 
     # Overload that crushes down IR generated on the caller side.
     @always_inline("nodebug")
-    fn __init__(
-        out self: Tuple[mut=True, origin=MutableAnyOrigin, is_owned=False]
-    ):
+    fn __init__(out self: Tuple[mut=True, origin=MutAnyOrigin, is_owned=False]):
         """Construct an empty tuple."""
         __mlir_op.`lit.ownership.mark_initialized`(
             __get_mvalue_as_litref(self.storage)

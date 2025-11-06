@@ -59,8 +59,8 @@ fn main():
         print("Finalize everything...")
         sleep(time)
 
-    fn parallel1():
-        print("Parallel 1...")
+    fn parallel_some():
+        print("Parallel some...")
         sleep(time)
 
     fn parallel2():
@@ -75,11 +75,11 @@ fn main():
     from strata.immutable import Fn
 
     ft = Fn(first_task)
-    p1 = Fn(parallel1)
+    ps = Fn(parallel_some)
     p2 = Fn(parallel2)
     lt = Fn(last_task)
     print("[ Function Graph ]...")
-    fn_graph = ft >> p1 + p2 >> lt
+    fn_graph = ft >> ps + p2 + ps >> lt
     fn_graph()
 
     # Hey, but these things are not useful, because you cannot mutate anything.
