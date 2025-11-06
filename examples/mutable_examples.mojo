@@ -40,13 +40,17 @@ fn main():
     from strata.mutable import SeriesTask as ST, ParallelTask as PT
 
     task1 = InitTask["first"](0)
-    task2 = InitTask["second parallel 1"](1)
-    task3 = InitTask["second parallel 2"](1)
-    task4 = InitTask["last"](2)
+    task2 = InitTask["second"](0)
+    task31 = InitTask["third parallel 1"](1)
+    task32 = InitTask["third parallel 2"](1)
+    task33 = InitTask["third parallel 2"](1)
+    task34 = InitTask["third parallel 2"](1)
+    task4 = InitTask["pre-last"](2)
+    task5 = InitTask["last"](2)
 
     print("Type graph...")
-    grp = PT(task2, task3)
-    type_graph = ST(task1, grp, task4)
+    grp = PT(task31, task32, task33, task34)
+    type_graph = ST(task1, task2, grp, task4, task5)
     type_graph()
 
     # Airflow Syntax. We solve all these problems.
@@ -55,7 +59,9 @@ fn main():
     # For tasks with independent values:
 
     print("Airflow graph...")
-    graph = task1 >> task2 + task3 >> task4
+    graph = (
+        task1 >> task2 >> task31 + task32 + task33 + task34 >> task4 >> task5
+    )
     graph()
 
     # NOTE: This will not work if you want to do cross references to other tasks in the graph.

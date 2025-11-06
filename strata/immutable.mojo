@@ -14,17 +14,17 @@ trait Callable:
 
     @always_inline("nodebug")
     fn __add__[
-        s: Origin, o: Origin, t: Callable, //
+        s: ImmutOrigin, o: ImmutOrigin, t: Callable, //
     ](ref [s]self, ref [o]other: t) -> ParallelTaskPairRef[
-        m1 = s.mut, m2 = o.mut, o1=s, o2=o, Self, t
+        o1=s, o2=o, Self, t
     ]:
         return {self, other}
 
     @always_inline("nodebug")
     fn __rshift__[
-        s: Origin, o: Origin, t: Callable, //
+        s: ImmutOrigin, o: ImmutOrigin, t: Callable, //
     ](ref [s]self, ref [o]other: t) -> SequentialTaskPairRef[
-        m1 = s.mut, m2 = o.mut, o1=s, o2=o, Self, t
+        o1=s, o2=o, Self, t
     ]:
         return {self, other}
 
@@ -45,10 +45,8 @@ struct Fn(Callable):
 @fieldwise_init
 @register_passable("trivial")
 struct SequentialTaskPairRef[
-    m1: Bool,
-    m2: Bool,
-    o1: Origin[m1],
-    o2: Origin[m2], //,
+    o1: ImmutOrigin,
+    o2: ImmutOrigin, //,
     T1: Callable,
     T2: Callable,
 ](Callable):
@@ -67,10 +65,8 @@ struct SequentialTaskPairRef[
 @fieldwise_init
 @register_passable("trivial")
 struct ParallelTaskPairRef[
-    m1: Bool,
-    m2: Bool,
-    o1: Origin[m1],
-    o2: Origin[m2], //,
+    o1: ImmutOrigin,
+    o2: ImmutOrigin, //,
     T1: Callable,
     T2: Callable,
 ](Callable):
@@ -94,13 +90,12 @@ struct ParallelTaskPairRef[
 
 
 # Variadic Parallel
-struct ParallelTask[mut: Bool, origin: Origin[mut], //, *Ts: Callable](
+struct ParallelTask[origin: ImmutOrigin, //, *Ts: Callable](
     Callable
 ):
     """Collection of immutable tasks to run in Parallel.
 
     Parameters:
-        mut: If we can mutate the elements.
         origin: The origin of the `VariadicPack` values.
         Ts: ImmutableCallable types that conforms to `ImmCallable`.
     """
@@ -110,9 +105,9 @@ struct ParallelTask[mut: Bool, origin: Origin[mut], //, *Ts: Callable](
 
     fn __init__(
         out self: ParallelTask[
-            mut = args.origin.mut, origin = args.origin, *Ts
+            origin = args.origin, *Ts
         ],
-        *args: *Ts,
+        *args: *Ts
     ):
         """Create a Parallel group, using the args provided. Origin need to be casted.
 
@@ -136,13 +131,12 @@ struct ParallelTask[mut: Bool, origin: Origin[mut], //, *Ts: Callable](
         sync_parallelize[exec](size)
 
 # # Variadic Series
-struct SequentialTask[mut: Bool, origin: Origin[mut], //, *Ts: Callable](
+struct SequentialTask[origin: ImmutOrigin, //, *Ts: Callable](
     Callable
 ):
     """Collection of immutable tasks to run in Series.
 
     Parameters:
-        mut: If the elements could be mutated.
         origin: The origin of the `VariadicPack` values.
         Ts: ImmutableCallable types that conforms to `Callable`.
     """
@@ -152,7 +146,7 @@ struct SequentialTask[mut: Bool, origin: Origin[mut], //, *Ts: Callable](
 
     fn __init__(
         out self: SequentialTask[
-            mut = args.origin.mut, origin = args.origin, *Ts
+            origin = args.origin, *Ts
         ],
         *args: *Ts,
     ):
