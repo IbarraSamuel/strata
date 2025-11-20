@@ -15,7 +15,7 @@ trait Call:
 trait Callable(Call):
     fn __rshift__[
         so: ImmutOrigin, oo: ImmutOrigin, o: Call, s: Call = Self
-    ](ref [so]self, ref [oo]other: o) -> _Seq[
+    ](ref [so]self, ref [oo]other: o) -> Sequence[
         O1=so, O2=oo, T1=s, T2=o, s.I, o.O
     ] where _type_is_eq_parse_time[s.O, o.I]():
         # TODO: Fix rebind when this is properly handled by compiler.
@@ -24,7 +24,7 @@ trait Callable(Call):
 
     fn __add__[
         so: ImmutOrigin, oo: ImmutOrigin, o: Call, s: Call = Self
-    ](ref [so]self, ref [oo]other: o) -> _ParGroup[
+    ](ref [so]self, ref [oo]other: o) -> Parallel[
         O1=so, O2=oo, T1=s, T2=o, s.I, s.O, o.O, size=2
     ] where _type_is_eq_parse_time[s.I, o.I]():
         # TODO: Fix rebind when this is properly handled by compiler.
@@ -33,7 +33,7 @@ trait Callable(Call):
 
 
 @fieldwise_init
-struct _Seq[
+struct Sequence[
     O1: ImmutOrigin,
     O2: ImmutOrigin,
     T1: Call,
@@ -63,7 +63,7 @@ struct _Seq[
         so: ImmutOrigin,
         oo: ImmutOrigin,
         o: Call where _type_is_eq_parse_time[Self.O, o.I](),
-    ](ref [so]self: Self, ref [oo]other: o) -> _Seq[
+    ](ref [so]self: Self, ref [oo]other: o) -> Sequence[
         O1=so, O2=oo, T1=Self, T2=o, Self.T1.I, o.O
     ]:
         return {self, other}
@@ -72,13 +72,13 @@ struct _Seq[
         so: ImmutOrigin,
         oo: ImmutOrigin,
         o: Call where _type_is_eq_parse_time[Self.I, o.I](),
-    ](ref [so]self, ref [oo]other: o) -> _ParGroup[
+    ](ref [so]self, ref [oo]other: o) -> Parallel[
         O1=so, O2=oo, T1=Self, T2=o, Self.I, Self.O, o.O, size=2
     ]:
         return {self, other}
 
 
-struct _ParGroup[
+struct Parallel[
     O1: ImmutOrigin,
     O2: ImmutOrigin,
     T1: Call,
@@ -95,7 +95,7 @@ struct _ParGroup[
         o2: ImmutOrigin,
         other: Call,
         *out_types: Copyable & Movable,
-    ] = _ParGroup[
+    ] = Parallel[
         O1 = ImmutOrigin.cast_from[o1],
         O2 = ImmutOrigin.cast_from[o2],
         T1=Self,
@@ -111,7 +111,7 @@ struct _ParGroup[
     fn __init__(
         out self, ref [Self.O1]t1: Self.T1, ref [Self.O2]t2: Self.T2
     ) where _type_is_eq_parse_time[Self.T1.I, Self.T2.I]():
-        """You need to provide the parameters to use this initializer"""
+        """You need to provide the parameters to use this initializer."""
         self.t1 = Pointer(to=t1)
         self.t2 = Pointer(to=t2)
 
@@ -119,7 +119,7 @@ struct _ParGroup[
         so: ImmutOrigin,
         oo: ImmutOrigin,
         o: Call where _type_is_eq_parse_time[Self.O, o.I](),
-    ](ref [so]self, ref [oo]other: o) -> _Seq[
+    ](ref [so]self, ref [oo]other: o) -> Sequence[
         O1=so, O2=oo, T1=Self, T2=o, In = Self.I, Out = o.O
     ]:
         return {self, other}
