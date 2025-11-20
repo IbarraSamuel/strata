@@ -33,14 +33,14 @@ struct ParallelTypeTask[*Ts: TypeCallable](TypeCallable):
     @always_inline("nodebug")
     fn __call__():
         """Call the tasks based on the types in a parallel order."""
-        alias size = variadic_size(Ts)
+        alias size = variadic_size(Self.Ts)
 
         @parameter
         fn exec(i: Int):
             @parameter
             for ti in range(size):
                 if ti == i:
-                    Ts[ti].__call__()
+                    Self.Ts[ti].__call__()
                     return
 
         sync_parallelize[exec](size)
@@ -59,8 +59,8 @@ struct SeriesTypeTask[*Ts: TypeCallable](TypeCallable):
     @always_inline("nodebug")
     fn __call__():
         """Call the tasks based on the types on a sequence order."""
-        alias size = variadic_size(Ts)
+        alias size = variadic_size(Self.Ts)
 
         @parameter
         for i in range(size):
-            Ts[i].__call__()
+            Self.Ts[i].__call__()

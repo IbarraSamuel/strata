@@ -51,21 +51,23 @@ struct Fn[i: AnyType, o: Copyable & Movable, //, F: fn (i) -> o]:
     @staticmethod
     @always_inline("builtin")
     fn sequential[
-        O: Copyable & Movable, //, f: fn (o) -> O
-    ]() -> Fn[seq_fn[F, f]]:
-        return Fn[seq_fn[F, f]]()
+        O: Copyable & Movable, //, f: fn (Self.o) -> O
+    ]() -> Fn[seq_fn[Self.F, f]]:
+        return Fn[seq_fn[Self.F, f]]()
 
     @staticmethod
     @always_inline("builtin")
     fn parallel[
-        O: Copyable & Movable, //, f: fn (i) -> O
-    ]() -> Fn[par_fn[F, f]]:
-        return Fn[par_fn[F, f]]()
+        O: Copyable & Movable, //, f: fn (Self.i) -> O
+    ]() -> Fn[par_fn[Self.F, f]]:
+        return Fn[par_fn[Self.F, f]]()
 
     @always_inline("builtin")
-    fn __rshift__(self, other: Fn[i=o, _]) -> Fn[seq_fn[F, other.F]]:
-        return Fn[seq_fn[F, other.F]]()
+    fn __rshift__(
+        self, other: Fn[i = Self.o, _]
+    ) -> Fn[seq_fn[Self.F, other.F]]:
+        return Fn[seq_fn[Self.F, other.F]]()
 
     @always_inline("builtin")
-    fn __add__(self, other: Fn[i=i, _]) -> Fn[par_fn[F, other.F]]:
-        return Fn[par_fn[F, other.F]]()
+    fn __add__(self, other: Fn[i = Self.i, _]) -> Fn[par_fn[Self.F, other.F]]:
+        return Fn[par_fn[Self.F, other.F]]()

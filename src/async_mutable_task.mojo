@@ -7,10 +7,10 @@ trait AsyncCallable:
 
 
 struct TaskRef[T: AsyncCallable, origin: MutOrigin](AsyncCallable, Movable):
-    var v: Pointer[T, origin]
+    var v: Pointer[Self.T, Self.origin]
 
     @implicit
-    fn __init__(out self, ref [origin]v: T):
+    fn __init__(out self, ref [Self.origin]v: Self.T):
         self.v = Pointer(to=v)
 
     async fn __call__(self):
@@ -46,8 +46,8 @@ struct TaskRef[T: AsyncCallable, origin: MutOrigin](AsyncCallable, Movable):
 struct SerTaskPair[T1: AsyncCallable & Movable, T2: AsyncCallable & Movable](
     AsyncCallable, Movable
 ):
-    var t1: T1
-    var t2: T2
+    var t1: Self.T1
+    var t2: Self.T2
 
     async fn __call__(mut self):
         await self.t1()
@@ -83,8 +83,8 @@ struct SerTaskPair[T1: AsyncCallable & Movable, T2: AsyncCallable & Movable](
 struct ParTaskPair[T1: AsyncCallable & Movable, T2: AsyncCallable & Movable](
     AsyncCallable, Movable
 ):
-    var t1: T1
-    var t2: T2
+    var t1: Self.T1
+    var t2: Self.T2
 
     async fn __call__(mut self):
         tg = TaskGroup()

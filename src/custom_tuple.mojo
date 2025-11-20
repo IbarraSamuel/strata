@@ -46,7 +46,9 @@ struct Tuple[
         element_types: The elements type.
     """
 
-    alias Storage = VariadicPack[is_owned, origin, AnyType, *element_types]
+    alias Storage = VariadicPack[
+        Self.is_owned, Self.origin, AnyType, *Self.element_types
+    ]
     var storage: Self.Storage
     """The underlying storage for the tuple."""
 
@@ -64,9 +66,9 @@ struct Tuple[
             mut = args.origin.mut,
             origin = args.origin,
             is_owned = args.is_owned,
-            *element_types,
+            *Self.element_types,
         ],
-        *args: *element_types,
+        *args: * Self.element_types,
     ):
         self.storage = self.Storage(args._value)
 
@@ -75,9 +77,9 @@ struct Tuple[
             mut = args.origin.mut,
             origin = args.origin,
             is_owned = args.is_owned,
-            *element_types,
+            *Self.element_types,
         ],
-        mut*args: *element_types,
+        mut*args: * Self.element_types,
         mutable: type_of(True),
     ):
         self.storage = self.Storage(args._value)
@@ -87,9 +89,9 @@ struct Tuple[
             mut = args.origin.mut,
             origin = args.origin,
             is_owned = args.is_owned,
-            *element_types,
+            *Self.element_types,
         ],
-        var *args: *element_types,
+        var *args: * Self.element_types,
         own_elements: type_of(True),
     ):
         self.storage = self.Storage(args._value)
@@ -164,7 +166,7 @@ struct Tuple[
             The tuple length.
         """
 
-        return variadic_size(element_types)
+        return variadic_size(Self.element_types)
 
     @always_inline("nodebug")
     fn __len__(self) -> Int:
@@ -176,7 +178,9 @@ struct Tuple[
         return Self.__len__()
 
     @always_inline("nodebug")
-    fn __getitem__[idx: Int](ref self) -> ref [self.origin] element_types[idx]:
+    fn __getitem__[
+        idx: Int
+    ](ref self) -> ref [self.origin] Self.element_types[idx]:
         """Get a reference to an element in the tuple.
 
         Parameters:
@@ -188,9 +192,7 @@ struct Tuple[
         return self.storage[idx]
 
     @always_inline("nodebug")
-    fn __contains__[
-        T: EqualityComparable & Copyable & Movable
-    ](self, value: T) -> Bool:
+    fn __contains__[T: Equatable & Copyable & Movable](self, value: T) -> Bool:
         """Return whether the tuple contains the specified value.
 
         For example:
@@ -211,13 +213,13 @@ struct Tuple[
             True if the value is in the tuple, False otherwise.
         """
 
-        alias size = variadic_size(element_types)
+        alias size = variadic_size(Self.element_types)
 
         @parameter
         for i in range(size):
 
             @parameter
-            if _type_is_eq[element_types[i], T]():
+            if _type_is_eq[Self.element_types[i], T]():
                 if rebind[T](self[i]) == value:
                     return True
 

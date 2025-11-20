@@ -26,7 +26,7 @@ async fn int_mul[by: Int](value: Int) -> Int:
     return value * by
 
 
-async fn sum_tuple(value: (Int, Float32)) -> Float32:
+async fn sum_tuple(value: Tuple[Int, Float32]) -> Float32:
     print("Sum tuple...")
     sleep(time)
     return value[0] + value[1]

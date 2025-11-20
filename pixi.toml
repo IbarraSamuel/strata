@@ -3,46 +3,48 @@ name = "strata"
 version = "0.0.1"
 description = "Series/Parallel Runner on top of mojo asyncrt"
 authors = ["Samuel Ibarra <ing.samuelibarra@gmail.com>"]
+preview = ["pixi-build"]
 platforms = ["linux-64", "osx-arm64"]
-
 channels = [
     "https://prefix.dev/max-nightly",
     "https://prefix.dev/conda-forge",
-    "https://prefix.dev/pixi-build-backends"
 ]
 
-# CHANGES
-preview = ["pixi-build"]
 
 [package]
 name = "strata"
-version = "0.0.1"
-
-[dependencies]
-mojo = "<1.0.0"
+version = "0.1.0"
 
 [package.build]
 backend = { name = "pixi-build-mojo", version = "0.1.*" }
 
+[package.build.config.pkg]
+name = "strata"
+path = "src/"
+# extra-args = ["-I", "..."]
+
 [package.host-dependencies]
-mojo-compiler = "<1.0.0"
+mojo-compiler = "<=1.0.0"
 
 [package.build-dependencies]
-mojo-compiler = "<1.0.0"
+mojo-compiler = "<=1.0.0"
 
 [package.run-dependencies]
-mojo-compiler = "<1.0.0"
+mojo-compiler = "<=1.0.0"
+
+[dependencies]
+mojo = "<=1.0.0"
 
 [tasks]
 # Build
-build_package = "mojo package strata/ -o package/strata.mojopkg"
+build_package = "mojo package src/ -o package/strata.mojopkg"
 prepare_examples = { cmd = "mv package/strata.mojopkg examples/", depends-on = [
     "build_package",
 ] }
 
 # Python Build
-build_old_python_package = "mojo build strata/python_interop_old.mojo --emit shared-lib -o package/old_mojo_strata.so"
-build_python_package = "mojo build strata/python_interop.mojo --emit shared-lib -o package/mojo_strata.so"
+build_old_python_package = "mojo build src/python_interop_old.mojo --emit shared-lib -o package/old_mojo_strata.so"
+build_python_package = "mojo build src/python_interop.mojo --emit shared-lib -o package/mojo_strata.so"
 prepare_python = { cmd = "mv package/*mojo_strata.so python/src/strata/", depends-on = [
     "build_python_package",
     "build_old_python_package",

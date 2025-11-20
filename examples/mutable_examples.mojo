@@ -9,10 +9,10 @@ struct InitTask[name: String = "Init"](MutCallable):
     var value: Int
 
     fn __call__(mut self):
-        print("Starting [", name, "Task]: Value is", self.value, "...")
+        print("Starting [", Self.name, "Task]: Value is", self.value, "...")
         self.value += 1
         sleep(time)
-        print("Finishing [", name, "Task]: The value is:", self.value)
+        print("Finishing [", Self.name, "Task]: The value is:", self.value)
 
 
 fn main():

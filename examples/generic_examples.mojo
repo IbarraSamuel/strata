@@ -70,9 +70,9 @@ struct IntMulTask[by: Int](Callable):
     alias O = Int
 
     fn __call__(self, arg: Self.I) -> Self.O:
-        print("Mutliply by", by, "...")
+        print("Mutliply by", Self.by, "...")
         sleep(time)
-        return arg * by
+        return arg * Self.by
 
 
 @fieldwise_init

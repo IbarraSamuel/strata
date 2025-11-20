@@ -50,10 +50,10 @@ struct SequentialTaskPairRef[
     T1: Callable,
     T2: Callable,
 ](Callable):
-    var t1: Pointer[T1, o1]
-    var t2: Pointer[T2, o2]
+    var t1: Pointer[Self.T1, Self.o1]
+    var t2: Pointer[Self.T2, Self.o2]
 
-    fn __init__(out self, ref [o1]t1: T1, ref [o2]t2: T2):
+    fn __init__(out self, ref [Self.o1]t1: Self.T1, ref [Self.o2]t2: Self.T2):
         self.t1 = Pointer(to=t1)
         self.t2 = Pointer(to=t2)
 
@@ -70,10 +70,10 @@ struct ParallelTaskPairRef[
     T1: Callable,
     T2: Callable,
 ](Callable):
-    var t1: Pointer[T1, o1]
-    var t2: Pointer[T2, o2]
+    var t1: Pointer[Self.T1, Self.o1]
+    var t2: Pointer[Self.T2, Self.o2]
 
-    fn __init__(out self, ref [o1]t1: T1, ref [o2]t2: T2):
+    fn __init__(out self, ref [Self.o1]t1: Self.T1, ref [Self.o2]t2: Self.T2):
         self.t1 = Pointer(to=t1)
         self.t2 = Pointer(to=t2)
 
@@ -100,14 +100,14 @@ struct ParallelTask[origin: ImmutOrigin, //, *Ts: Callable](
         Ts: ImmutableCallable types that conforms to `ImmCallable`.
     """
 
-    var callables: CallablePack[origin, *Ts]
+    var callables: CallablePack[Self.origin, *Self.Ts]
     """Underlying storage for tasks pointers."""
 
     fn __init__(
         out self: ParallelTask[
-            origin = args.origin, *Ts
+            origin = args.origin, *Self.Ts
         ],
-        *args: *Ts
+        *args: *Self.Ts
     ):
         """Create a Parallel group, using the args provided. Origin need to be casted.
 
@@ -118,7 +118,7 @@ struct ParallelTask[origin: ImmutOrigin, //, *Ts: Callable](
 
     fn __call__(self):
         """This function executes all tasks at the same time."""
-        alias size = variadic_size(Ts)
+        alias size = variadic_size(Self.Ts)
 
         @parameter
         fn exec(i: Int):
@@ -141,14 +141,14 @@ struct SequentialTask[origin: ImmutOrigin, //, *Ts: Callable](
         Ts: ImmutableCallable types that conforms to `Callable`.
     """
 
-    var callables: CallablePack[origin, *Ts]
+    var callables: CallablePack[Self.origin, *Self.Ts]
     """Underlying storage for tasks pointers."""
 
     fn __init__(
         out self: SequentialTask[
-            origin = args.origin, *Ts
+            origin = args.origin, *Self.Ts
         ],
-        *args: *Ts,
+        *args: *Self.Ts,
     ):
         """Create a Series group, using the args provided. Origin need to be casted.
 
@@ -159,7 +159,7 @@ struct SequentialTask[origin: ImmutOrigin, //, *Ts: Callable](
 
     fn __call__(self):
         """This function executes all tasks in ordered sequence."""
-        alias size = variadic_size(Ts)
+        alias size = variadic_size(Self.Ts)
         @parameter
         for ci in range(size):
             self.callables[ci].__call__()

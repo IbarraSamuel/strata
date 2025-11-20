@@ -71,13 +71,15 @@ trait _MovableMutCallable(Movable, _Callable):
 
 
 struct SeriesTask[o: MutOrigin, //, *ts: MutCallable](MutCallable):
-    var storage: MutCallablePack[o, *ts]
+    var storage: MutCallablePack[Self.o, *Self.ts]
 
-    fn __init__(out self: SeriesTask[o = args.origin, *ts], mut*args: *ts):
+    fn __init__(
+        out self: SeriesTask[o = args.origin, *Self.ts], mut*args: * Self.ts
+    ):
         self.storage = MutCallablePack(args._value)
 
     fn __call__(mut self):
-        alias size = variadic_size(ts)
+        alias size = variadic_size(Self.ts)
 
         @parameter
         for ci in range(size):
@@ -85,13 +87,15 @@ struct SeriesTask[o: MutOrigin, //, *ts: MutCallable](MutCallable):
 
 
 struct ParallelTask[o: MutOrigin, //, *ts: MutCallable](MutCallable):
-    var storage: MutCallablePack[o, *ts]
+    var storage: MutCallablePack[Self.o, *Self.ts]
 
-    fn __init__(out self: ParallelTask[o = args.origin, *ts], mut*args: *ts):
+    fn __init__(
+        out self: ParallelTask[o = args.origin, *Self.ts], mut*args: * Self.ts
+    ):
         self.storage = MutCallablePack(args._value)
 
     fn __call__(mut self):
-        alias size = variadic_size(ts)
+        alias size = variadic_size(Self.ts)
 
         @parameter
         fn run_task(i: Int):
@@ -108,8 +112,8 @@ struct ParallelTask[o: MutOrigin, //, *ts: MutCallable](MutCallable):
 struct SequentialTaskPair[T1: Movable & _Callable, T2: Movable & _Callable](
     _MovableMutCallable
 ):
-    var t1: T1
-    var t2: T2
+    var t1: Self.T1
+    var t2: Self.T2
 
     fn __call__(mut self):
         self.t1.__call__()
@@ -120,8 +124,8 @@ struct SequentialTaskPair[T1: Movable & _Callable, T2: Movable & _Callable](
 struct ParallelTaskPair[T1: Movable & _Callable, T2: Movable & _Callable](
     _MovableMutCallable
 ):
-    var t1: T1
-    var t2: T2
+    var t1: Self.T1
+    var t2: Self.T2
 
     fn __call__(mut self):
         @parameter
@@ -136,9 +140,9 @@ struct ParallelTaskPair[T1: Movable & _Callable, T2: Movable & _Callable](
 
 @register_passable("trivial")
 struct _TaskRef[origin: MutOrigin, //, T: _Callable](Movable & _Callable):
-    var inner: Pointer[T, origin]
+    var inner: Pointer[Self.T, Self.origin]
 
-    fn __init__(out self, ref [origin]inner: T):
+    fn __init__(out self, ref [Self.origin]inner: Self.T):
         self.inner = Pointer(to=inner)
 
     fn __call__(self):

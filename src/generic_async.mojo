@@ -30,13 +30,15 @@ struct Fn[i: AnyType, o: Copyable & Movable, //, F: async fn (i) -> o]:
     fn __init__(out self):
         pass
 
-    fn run(self, val: i) -> o:
+    fn run(self, val: Self.i) -> Self.o:
         return _run(self.F(val))
 
     @always_inline("builtin")
-    fn __rshift__(self, other: Fn[i=o, _]) -> Fn[seq_fn[F, other.F]]:
+    fn __rshift__(
+        self, other: Fn[i = Self.o, _]
+    ) -> Fn[seq_fn[Self.F, other.F]]:
         return {}
 
     @always_inline("builtin")
-    fn __add__(self, other: Fn[i=i, _]) -> Fn[par_fn[F, other.F]]:
+    fn __add__(self, other: Fn[i = Self.i, _]) -> Fn[par_fn[Self.F, other.F]]:
         return {}
