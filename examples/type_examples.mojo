@@ -9,7 +9,7 @@ alias time = 0.1
 struct MyTypeTask[name: StringLiteral](TypeCallable):
     @staticmethod
     fn __call__():
-        print("Task [", name, "] Running...")
+        print("Task [", Self.name, "] Running...")
         sleep(time)
 
 

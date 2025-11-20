@@ -9,7 +9,7 @@ struct MyTask[job: StringLiteral](Callable):
     var some_data: String
 
     fn __call__(self):
-        print("Running [", job, "]:", self.some_data)
+        print("Running [", Self.job, "]:", self.some_data)
         sleep(time)
 
 

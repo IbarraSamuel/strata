@@ -1,9 +1,10 @@
 from runtime.asyncrt import TaskGroup, _run
 from os import abort
 from memory import UnsafePointer
-from python import PythonObject, Python
-from python.bindings import PythonModuleBuilder, GILAcquired
 from algorithm import sync_parallelize
+from python import PythonObject, Python
+from memory.legacy_unsafe_pointer import LegacyUnsafePointer
+from python.bindings import PythonModuleBuilder, GILAcquired
 
 
 @export
@@ -42,7 +43,7 @@ trait PythonCallable:
 
     @staticmethod
     def __call__(
-        py_self: UnsafePointer[Self.S],
+        py_self: LegacyUnsafePointer[Self.S],
         args: PythonObject,
     ) -> PythonObject:
         ...
@@ -78,7 +79,7 @@ struct PyTask(PythonTask):
 
     @staticmethod
     def __call__(
-        self_ptr: UnsafePointer[Self], msg: PythonObject
+        self_ptr: LegacyUnsafePointer[Self], msg: PythonObject
     ) -> PythonObject:
         return self_ptr[].inner(msg)
 
@@ -117,7 +118,7 @@ struct PyParallelTask(PythonTask):
 
     @staticmethod
     def __call__(
-        self_ptr: UnsafePointer[Self], msg: PythonObject
+        self_ptr: LegacyUnsafePointer[Self], msg: PythonObject
     ) -> PythonObject:
         data = [Python.int(1), Python.int(1)]
 
@@ -172,7 +173,7 @@ struct PySerialTask(PythonTask):
 
     @staticmethod
     def __call__(
-        self_ptr: UnsafePointer[Self], message: PythonObject
+        self_ptr: LegacyUnsafePointer[Self], message: PythonObject
     ) -> PythonObject:
         first = self_ptr[].task_1(message)
         second = self_ptr[].task_2(first)

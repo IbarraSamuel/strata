@@ -28,9 +28,7 @@ from utils._visualizers import lldb_formatter_wrapping_type
 
 
 @lldb_formatter_wrapping_type
-struct Tuple[*element_types: AnyType](
-    ImplicitlyCopyable, Movable, Sized
-):
+struct Tuple[*element_types: AnyType](ImplicitlyCopyable, Movable, Sized):
     """The type of a literal tuple expression.
 
     A tuple consists of zero or more values, separated by commas.
@@ -42,7 +40,7 @@ struct Tuple[*element_types: AnyType](
     alias _mlir_type = __mlir_type[
         `!kgen.pack<:`,
         VariadicOf[AnyType],
-        element_types,
+        Self.element_types,
         `>`,
     ]
 
@@ -58,7 +56,9 @@ struct Tuple[*element_types: AnyType](
         )
 
     @always_inline("nodebug")
-    fn __init__(out self, var *args: *element_types) where conforms_to(element_types[0], Movable):
+    fn __init__(
+        out self, var *args: * Self.element_types
+    ) where conforms_to(Self.element_types[0], Movable):
         """Construct the tuple.
 
         Args:
@@ -70,7 +70,7 @@ struct Tuple[*element_types: AnyType](
     fn __init__(
         out self,
         *,
-        var storage: VariadicPack[_, _, AnyType, *element_types],
+        var storage: VariadicPack[_, _, AnyType, *Self.element_types],
     ) where conforms_to(storage.element_types[0], Movable):
         """Construct the tuple from a low-level internal representation.
 
@@ -85,8 +85,12 @@ struct Tuple[*element_types: AnyType](
 
         # Move each element into the tuple storage.
         @parameter
-        fn init_elt[idx: Int](var elt: element_types[idx]):
-            UnsafePointer(to=trait_downcast[Movable](self[idx])).init_pointee_move_from(UnsafePointer(to=trait_downcast[Movable](elt)))
+        fn init_elt[idx: Int](var elt: Self.element_types[idx]):
+            UnsafePointer(
+                to=trait_downcast[Movable](self[idx])
+            ).init_pointee_move_from(
+                UnsafePointer(to=trait_downcast[Movable](elt))
+            )
 
         storage^.consume_elements[init_elt]()
 
@@ -100,7 +104,9 @@ struct Tuple[*element_types: AnyType](
             UnsafePointer(to=self[i]).destroy_pointee()
 
     @always_inline("nodebug")
-    fn __copyinit__(out self, existing: Self) where conforms_to(element_types[0], Copyable):
+    fn __copyinit__(
+        out self, existing: Self
+    ) where conforms_to(Self.element_types[0], Copyable):
         """Copy construct the tuple.
 
         Args:
@@ -113,10 +119,14 @@ struct Tuple[*element_types: AnyType](
 
         @parameter
         for i in range(Self.__len__()):
-            UnsafePointer(to=trait_downcast[Copyable](self[i])).init_pointee_copy(trait_downcast[Copyable](existing[i]))
+            UnsafePointer(
+                to=trait_downcast[Copyable](self[i])
+            ).init_pointee_copy(trait_downcast[Copyable](existing[i]))
 
     @always_inline("nodebug")
-    fn __moveinit__(out self, deinit existing: Self) where conforms_to(element_types[0], Movable):
+    fn __moveinit__(
+        out self, deinit existing: Self
+    ) where conforms_to(Self.element_types[0], Movable):
         """Move construct the tuple.
 
         Args:
@@ -129,7 +139,9 @@ struct Tuple[*element_types: AnyType](
 
         @parameter
         for i in range(Self.__len__()):
-            UnsafePointer(to=trait_downcast[Movable](self[i])).init_pointee_move_from(
+            UnsafePointer(
+                to=trait_downcast[Movable](self[i])
+            ).init_pointee_move_from(
                 UnsafePointer(to=trait_downcast[Movable](existing[i]))
             )
         # Note: The destructor on `existing` is auto-disabled in a moveinit.
@@ -143,7 +155,7 @@ struct Tuple[*element_types: AnyType](
             The tuple length.
         """
 
-        alias result = stdlib.builtin.variadic_size(element_types)
+        alias result = stdlib.builtin.variadic_size(Self.element_types)
         return result
 
     @always_inline("nodebug")
@@ -156,7 +168,7 @@ struct Tuple[*element_types: AnyType](
         return Self.__len__()
 
     @always_inline("nodebug")
-    fn __getitem__[idx: Int](ref self) -> ref [self] element_types[idx]:
+    fn __getitem__[idx: Int](ref self) -> ref [self] Self.element_types[idx]:
         """Get a reference to an element in the tuple.
 
         Parameters:
@@ -177,7 +189,7 @@ struct Tuple[*element_types: AnyType](
         return UnsafePointer(elt_kgen_ptr)[]
 
     @always_inline("nodebug")
-    fn __contains__[T: EqualityComparable](self, value: T) -> Bool:
+    fn __contains__[T: Equatable](self, value: T) -> Bool:
         """Return whether the tuple contains the specified value.
 
         For example:
@@ -199,10 +211,10 @@ struct Tuple[*element_types: AnyType](
         """
 
         @parameter
-        for i in range(len(VariadicList(element_types))):
+        for i in range(len(VariadicList(Self.element_types))):
 
             @parameter
-            if _type_is_eq[element_types[i], T]():
+            if _type_is_eq[Self.element_types[i], T]():
                 if rebind[T](self[i]) == value:
                     return True
 
