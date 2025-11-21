@@ -1,6 +1,7 @@
 from runtime.asyncrt import TaskGroup
 from sys.intrinsics import _type_is_eq_parse_time
 from builtin.rebind import downcast
+from builtin.variadics import Concatenated, MakeVariadic, variadic_size
 import os
 
 
@@ -40,7 +41,7 @@ struct Sequence[
     T2: Call, //,
     In: AnyType,
     Out: Movable & Copyable,
-](Call, Movable):
+](Callable, Movable):
     alias I = Self.T1.I
     alias O = Self.T2.O
 
@@ -54,28 +55,9 @@ struct Sequence[
         self.t2 = Pointer(to=t2)
 
     fn __call__(self, arg: Self.I) -> Self.O:
-        ref r1 = self.t1[].__call__(arg)
-        # SAFETY: This is enforce by the where clause on initialization
+        ref r1 = self.t1[](arg)
         ref r1r = rebind[Self.T2.I](r1)
-        return self.t2[].__call__(r1r)
-
-    fn __rshift__[
-        so: ImmutOrigin,
-        oo: ImmutOrigin,
-        o: Call where _type_is_eq_parse_time[Self.O, o.I](),
-    ](ref [so]self: Self, ref [oo]other: o) -> Sequence[
-        O1=so, O2=oo, T1=Self, T2=o, Self.T1.I, o.O
-    ]:
-        return {self, other}
-
-    fn __add__[
-        so: ImmutOrigin,
-        oo: ImmutOrigin,
-        o: Call where _type_is_eq_parse_time[Self.I, o.I](),
-    ](ref [so]self, ref [oo]other: o) -> Parallel[
-        O1=so, O2=oo, T1=Self, T2=o, Self.I, Self.O, o.O, size=2
-    ]:
-        return {self, other}
+        return self.t2[](r1r)
 
 
 struct Parallel[
@@ -115,6 +97,21 @@ struct Parallel[
         self.t1 = Pointer(to=t1)
         self.t2 = Pointer(to=t2)
 
+    fn __add__[
+        so: ImmutOrigin,
+        oo: ImmutOrigin,
+        t: Call where _type_is_eq_parse_time[Self.I, t.I](),
+    ](ref [so]self, ref [oo]other: t) -> Parallel[
+        O1=so,
+        O2=oo,
+        T1=Self,
+        T2=t,
+        Self.In,
+        *Concatenated[Self.Out, MakeVariadic[t.O]],
+        size = Self.size + 1,
+    ]:
+        return {self, other}
+
     fn __rshift__[
         so: ImmutOrigin,
         oo: ImmutOrigin,
@@ -124,36 +121,24 @@ struct Parallel[
     ]:
         return {self, other}
 
-    # fmt: off
-    fn __add__[so: ImmutOrigin, oo: ImmutOrigin, t: Call where _type_is_eq_parse_time[Self.T1.I, t.I]()](ref[so] self, ref[oo] other: t) -> Self.NewPar[so, oo, t, Self.Out[0], Self.Out[1], t.O] where Self.size == 2: return {self, other}
-    fn __add__[so: ImmutOrigin, oo: ImmutOrigin, t: Call where _type_is_eq_parse_time[Self.T1.I, t.I]()](ref[so] self, ref[oo] other: t) -> Self.NewPar[so, oo, t, Self.Out[0], Self.Out[1], Self.Out[2], t.O] where Self.size == 3: return {self, other}
-    fn __add__[so: ImmutOrigin, oo: ImmutOrigin, t: Call where _type_is_eq_parse_time[Self.T1.I, t.I]()](ref[so] self, ref[oo] other: t) -> Self.NewPar[so, oo, t, Self.Out[0], Self.Out[1], Self.Out[2], Self.Out[3], t.O] where Self.size == 4: return {self, other}
-    fn __add__[so: ImmutOrigin, oo: ImmutOrigin, t: Call where _type_is_eq_parse_time[Self.T1.I, t.I]()](ref[so] self, ref[oo] other: t) -> Self.NewPar[so, oo, t, Self.Out[0], Self.Out[1], Self.Out[2], Self.Out[3], Self.Out[4], t.O] where Self.size == 5: return {self, other}
-    fn __add__[so: ImmutOrigin, oo: ImmutOrigin, t: Call where _type_is_eq_parse_time[Self.T1.I, t.I]()](ref[so] self, ref[oo] other: t) -> Self.NewPar[so, oo, t, Self.Out[0], Self.Out[1], Self.Out[2], Self.Out[3], Self.Out[4], Self.Out[5], t.O] where Self.size == 6: return {self, other}
-    fn __add__[so: ImmutOrigin, oo: ImmutOrigin, t: Call where _type_is_eq_parse_time[Self.T1.I, t.I]()](ref[so] self, ref[oo] other: t) -> Self.NewPar[so, oo, t, Self.Out[0], Self.Out[1], Self.Out[2], Self.Out[3], Self.Out[4], Self.Out[5], Self.Out[6], t.O] where Self.size == 7: return {self, other}
-    fn __add__[so: ImmutOrigin, oo: ImmutOrigin, t: Call where _type_is_eq_parse_time[Self.T1.I, t.I]()](ref[so] self, ref[oo] other: t) -> Self.NewPar[so, oo, t, Self.Out[0], Self.Out[1], Self.Out[2], Self.Out[3], Self.Out[4], Self.Out[5], Self.Out[6], Self.Out[7], t.O] where Self.size == 8: return {self, other}
-    fn __add__[so: ImmutOrigin, oo: ImmutOrigin, t: Call where _type_is_eq_parse_time[Self.T1.I, t.I]()](ref[so] self, ref[oo] other: t) -> Self.NewPar[so, oo, t, Self.Out[0], Self.Out[1], Self.Out[2], Self.Out[3], Self.Out[4], Self.Out[5], Self.Out[6], Self.Out[7], Self.Out[8], t.O] where Self.size == 9: return {self, other}
-    fn __add__[so: ImmutOrigin, oo: ImmutOrigin, t: Call where _type_is_eq_parse_time[Self.T1.I, t.I]()](ref[so] self, ref[oo] other: t) -> Self.NewPar[so, oo, t, Self.Out[0], Self.Out[1], Self.Out[2], Self.Out[3], Self.Out[4], Self.Out[5], Self.Out[6], Self.Out[7], Self.Out[8], Self.Out[9], t.O] where Self.size == 10: return {self, other}
-    fn __add__[so: ImmutOrigin, oo: ImmutOrigin, t: Call where _type_is_eq_parse_time[Self.T1.I, t.I]()](ref[so] self, ref[oo] other: t) -> Self.NewPar[so, oo, t, Self.Out[0], Self.Out[1], Self.Out[2], Self.Out[3], Self.Out[4], Self.Out[5], Self.Out[6], Self.Out[7], Self.Out[8], Self.Out[9], Self.Out[10], t.O] where Self.size == 11: return {self, other}
-    fn __add__[so: ImmutOrigin, oo: ImmutOrigin, t: Call where _type_is_eq_parse_time[Self.T1.I, t.I]()](ref[so] self, ref[oo] other: t) -> Self.NewPar[so, oo, t, Self.Out[0], Self.Out[1], Self.Out[2], Self.Out[3], Self.Out[4], Self.Out[5], Self.Out[6], Self.Out[7], Self.Out[8], Self.Out[9], Self.Out[10], Self.Out[11], t.O] where Self.size == 12: return {self, other}
-    fn __add__[so: ImmutOrigin, oo: ImmutOrigin, t: Call where _type_is_eq_parse_time[Self.T1.I, t.I]()](ref[so] self, ref[oo] other: t) -> Self.NewPar[so, oo, t, Self.Out[0], Self.Out[1], Self.Out[2], Self.Out[3], Self.Out[4], Self.Out[5], Self.Out[6], Self.Out[7], Self.Out[8], Self.Out[9], Self.Out[10], Self.Out[11], Self.Out[12], t.O] where Self.size == 13: return {self, other}
-    fn __add__[so: ImmutOrigin, oo: ImmutOrigin, t: Call where _type_is_eq_parse_time[Self.T1.I, t.I]()](ref[so] self, ref[oo] other: t) -> Self.NewPar[so, oo, t, Self.Out[0], Self.Out[1], Self.Out[2], Self.Out[3], Self.Out[4], Self.Out[5], Self.Out[6], Self.Out[7], Self.Out[8], Self.Out[9], Self.Out[10], Self.Out[11], Self.Out[12], Self.Out[13], t.O] where Self.size == 14: return {self, other}
-    fn __add__[so: ImmutOrigin, oo: ImmutOrigin, t: Call where _type_is_eq_parse_time[Self.T1.I, t.I]()](ref[so] self, ref[oo] other: t) -> Self.NewPar[so, oo, t, Self.Out[0], Self.Out[1], Self.Out[2], Self.Out[3], Self.Out[4], Self.Out[5], Self.Out[6], Self.Out[7], Self.Out[8], Self.Out[9], Self.Out[10], Self.Out[11], Self.Out[12], Self.Out[13], Self.Out[14], t.O] where Self.size == 15: return {self, other}
-    # fmt: on
-
     fn __call__(self, arg: Self.I, out o: Self.O):
+        alias tasks_len: Int = variadic_size(Self.Out)
         var tg = TaskGroup()
         var _out_tp: Self.O
 
         @parameter
         async fn task_1():
-            # We know for sure is a tuple
-            t1_result = self.t1[].__call__(arg)
+            t1_result = self.t1[](arg)
 
             @parameter
             if Self.size == 2:
+                # The Out[0] value is the only type that matters
                 _out_tp[0] = rebind_var[Self.Out[0]](t1_result^)
                 return
+
+            # from builtin.variadics import _ReduceVariadicAndIdxToVariadic, _ReduceVariadicIdxGeneratorTypeGenerator
+            # _ReduceVariadicAndIdxToVariadic[BaseVal=Self.Out, Variadic=MakeVariadic[Self.Out[tasks_len - 1]]]
+            # Tuple[*Self.Out]
 
             # fmt: off
             @parameter
@@ -180,7 +165,7 @@ struct Parallel[
         @parameter
         async fn task_2():
             _out_tp[Self.size - 1] = rebind_var[Self.Out[Self.size - 1]](
-                self.t2[].__call__(rebind[Self.T2.I](arg))
+                self.t2[](rebind[Self.T2.I](arg))
             )
 
         __mlir_op.`lit.ownership.mark_initialized`(
@@ -247,3 +232,33 @@ fn run():
     var final = last >> f
     res = final(3)
     print(res)
+
+
+fn test_variadic():
+    from builtin.variadics import (
+        MakeVariadic,
+        _ReduceVariadicIdxGeneratorTypeGenerator,
+        _ReduceVariadicAndIdxToVariadic,
+        _IndexToIntWrap,
+        VariadicOf,
+        Variadic,
+    )
+
+    var my_val = (1, "a", 3.0)
+    alias tp = type_of(my_val)
+
+    alias _Reductor[
+        Prev: VariadicOf[Copyable & Movable],
+        From: VariadicOf[Copyable & Movable],
+        Idx: Int,
+    ] = Prev[Idx]
+    alias r = _ReduceVariadicAndIdxToVariadic[
+        BaseVal = MakeVariadic[tp.element_types[0]],
+        Variadic = tp.element_types,
+        Reducer=_Reductor,
+    ]
+    alias v = r[0]
+
+
+alias fou = '!lit.generator<<"Prev": variadic<trait<@stdlib::@builtin::@value::@Copyable, @stdlib::@builtin::@value::@Movable>>, "From": variadic<trait<@stdlib::@builtin::@value::@Copyable, @stdlib::@builtin::@value::@Movable>>, "Idx": @stdlib::@builtin::@int::@Int>trait<@stdlib::@builtin::@value::@Copyable, @stdlib::@builtin::@value::@Movable>>'
+alias exp = '!lit.generator<<"Prev": variadic<trait<@stdlib::@builtin::@value::@Copyable, @stdlib::@builtin::@value::@Movable>>, "From": variadic<trait<@stdlib::@builtin::@value::@Copyable, @stdlib::@builtin::@value::@Movable>>, "Idx": @stdlib::@builtin::@int::@Int>variadic<trait<@stdlib::@builtin::@value::@Copyable, @stdlib::@builtin::@value::@Movable>>>'
