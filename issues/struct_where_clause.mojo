@@ -7,7 +7,7 @@ trait C:
 
 @fieldwise_init
 struct Ser[c1: C, c2: C where _type_is_eq_parse_time[c1.I, c2.I]()](C):
-    alias I = c1.I
+    alias I = Self.c1.I
 
     fn some_method[
         o: C where _type_is_eq_parse_time[Self.I, o.I]()
