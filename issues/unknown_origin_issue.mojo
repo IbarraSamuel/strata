@@ -13,11 +13,11 @@ struct Point:
 struct PointBox[
     point_origin: Origin,
 ](Movable):
-    var point_ptr: Pointer[Point, point_origin]
+    var point_ptr: Pointer[Point, Self.point_origin]
 
     fn __init__(
         out self,
-        ref [point_origin]point: Point,
+        ref [Self.point_origin]point: Point,
     ):
         self.point_ptr = Pointer(to=point)
 
