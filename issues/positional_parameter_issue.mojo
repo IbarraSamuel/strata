@@ -3,11 +3,11 @@
 
 @fieldwise_init
 struct FnWrapper[i: AnyType]:
-    fn wraps[o: AnyType, //, f: fn (i) -> o](self):
+    fn wraps[o: AnyType, //, f: fn (Self.i) -> o](self):
         pass
 
     @staticmethod
-    fn static_wraps[o: AnyType, //, f: fn (i) -> o]():
+    fn static_wraps[o: AnyType, //, f: fn (Self.i) -> o]():
         pass
 
 
