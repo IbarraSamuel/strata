@@ -155,28 +155,38 @@ struct Parallel[
     alias I = Self.Ts[0].I
     alias O = Tuple[*Self.Out]
 
-    var tasks: LegacyUnsafePointer[Tuple[*TaskMapPtr[*Self.Ts]]]
+    var tasks: Tuple[*TaskMapPtr[*Self.Ts]]
 
     fn __init__[
         o1: ImmutOrigin,
         o2: ImmutOrigin,
+        a1: AddressSpace,
+        a2: AddressSpace,
         T1: Call,
         T2: Call where _type_is_eq_parse_time[T1.I, T2.I](),
     ](
         out self: Parallel[Ts = MakeVariadic[T1, T2], In = T1.I],
-        ref [o1]t1: T1,
-        ref [o2]t2: T2,
+        ref [o1, a1]t1: T1,
+        ref [o2, a2]t2: T2,
     ):
         """You need to provide the parameters to use this initializer."""
         var ptr1 = (
-            LegacyUnsafePointer(to=t1).as_any_origin().unsafe_mut_cast[True]()
+            UnsafePointer(to=t1)
+            .as_any_origin()
+            .unsafe_mut_cast[True]()
+            .address_space_cast[AddressSpace.GENERIC]()
+            .as_legacy_pointer()
         )
         var ptr2 = (
-            LegacyUnsafePointer(to=t2).as_any_origin().unsafe_mut_cast[True]()
+            UnsafePointer(to=t2)
+            .as_any_origin()
+            .unsafe_mut_cast[True]()
+            .address_space_cast[AddressSpace.GENERIC]()
+            .as_legacy_pointer()
         )
-        var rb = rebind_var[TaskMapPtr[*MakeVariadic[T1, T2]][0]](ptr1)
-        var rb2 = rebind_var[TaskMapPtr[*MakeVariadic[T1, T2]][1]](ptr2)
-        self.tasks = {}
+        var v1 = rebind_var[type_of(self.tasks).element_types[0]](ptr1)
+        var v2 = rebind_var[type_of(self.tasks).element_types[1]](ptr2)
+        self.tasks = Tuple(v1^, v2^)
         # self.tasks = rebind[type_of(Parallel[Ts=MakeVariadic[T1, T2], T1.I].tasks)](ptr1, ptr2)
 
     # fn __add__[
