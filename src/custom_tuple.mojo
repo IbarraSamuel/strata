@@ -24,6 +24,7 @@ These are Mojo built-ins, so you don't need to import them.
 
 from sys.intrinsics import _type_is_eq
 from builtin import variadic_size
+from builtin.variadics import Concatenated, VariadicOf
 
 from utils._visualizers import lldb_formatter_wrapping_type
 
@@ -79,7 +80,7 @@ struct Tuple[
             is_owned = args.is_owned,
             *Self.element_types,
         ],
-        mut*args: * Self.element_types,
+        mut *args: * Self.element_types,
         mutable: type_of(True),
     ):
         self.storage = self.Storage(args._value)
@@ -94,7 +95,7 @@ struct Tuple[
         var *args: * Self.element_types,
         own_elements: type_of(True),
     ):
-        self.storage = self.Storage(args._value)
+        self.storage = args^
 
     fn __init__(
         out self,
@@ -166,7 +167,8 @@ struct Tuple[
             The tuple length.
         """
 
-        return variadic_size(Self.element_types)
+        comptime size = variadic_size(Self.element_types)
+        return size
 
     @always_inline("nodebug")
     fn __len__(self) -> Int:
@@ -189,7 +191,10 @@ struct Tuple[
         Returns:
             A reference to the specified element.
         """
-        return self.storage[idx]
+        var litref_elt = __mlir_op.`lit.ref.pack.extract`[
+            index = idx.__mlir_index__()
+        ](self.storage._value)
+        return __get_litref_as_mvalue(litref_elt)
 
     @always_inline("nodebug")
     fn __contains__[T: Equatable & Copyable & Movable](self, value: T) -> Bool:
@@ -213,10 +218,8 @@ struct Tuple[
             True if the value is in the tuple, False otherwise.
         """
 
-        alias size = variadic_size(Self.element_types)
-
         @parameter
-        for i in range(size):
+        for i in range(Self.__len__()):
 
             @parameter
             if _type_is_eq[Self.element_types[i], T]():
