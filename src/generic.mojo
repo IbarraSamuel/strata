@@ -1,7 +1,12 @@
 from runtime.asyncrt import TaskGroup
 from sys.intrinsics import _type_is_eq_parse_time
 from builtin.rebind import downcast
-from builtin.variadics import Concatenated, MakeVariadic, variadic_size
+from builtin.variadics import (
+    Concatenated,
+    MakeVariadic,
+    variadic_size,
+    VariadicOf,
+)
 import os
 
 
@@ -26,7 +31,7 @@ trait Callable(Call):
     fn __add__[
         so: ImmutOrigin, oo: ImmutOrigin, o: Call, s: Call = Self
     ](ref [so]self, ref [oo]other: o) -> Parallel[
-        O1=so, O2=oo, T1=s, T2=o, s.I, s.O, o.O, size=2
+        O1=so, O2=oo, T1=s, T2=o, s.I, MakeVariadic[s.O, o.O]
     ] where _type_is_eq_parse_time[s.I, o.I]():
         # TODO: Fix rebind when this is properly handled by compiler.
         ref _self = rebind[s](self)
@@ -66,26 +71,10 @@ struct Parallel[
     T1: Call,
     T2: Call, //,  # Enforce conformance here once type_of() works for this one
     In: AnyType,
-    *Out: Copyable & Movable,
-    size: Int,
+    Out: VariadicOf[Copyable & Movable],
 ](Call, Movable):
     alias I = Self.T1.I
     alias O = Tuple[*Self.Out]
-
-    alias NewPar[
-        o1: ImmutOrigin,
-        o2: ImmutOrigin,
-        other: Call,
-        *out_types: Copyable & Movable,
-    ] = Parallel[
-        O1 = ImmutOrigin.cast_from[o1],
-        O2 = ImmutOrigin.cast_from[o2],
-        T1=Self,
-        T2=other,
-        Self.T1.I,
-        *out_types,
-        size = Self.size + 1,
-    ]
 
     var t1: Pointer[Self.T1, Self.O1]
     var t2: Pointer[Self.T2, Self.O2]
@@ -107,8 +96,7 @@ struct Parallel[
         T1=Self,
         T2=t,
         Self.In,
-        *Concatenated[Self.Out, MakeVariadic[t.O]],
-        size = Self.size + 1,
+        Concatenated[Self.Out, MakeVariadic[t.O]],
     ]:
         return {self, other}
 
@@ -131,7 +119,7 @@ struct Parallel[
             t1_result = self.t1[](arg)
 
             @parameter
-            if Self.size == 2:
+            if tasks_len == 2:
                 # The Out[0] value is the only type that matters
                 _out_tp[0] = rebind_var[Self.Out[0]](t1_result^)
                 return
@@ -142,29 +130,29 @@ struct Parallel[
 
             # fmt: off
             @parameter
-            for i in range(Self.size - 1):
+            for i in range(tasks_len - 1):
                 @parameter
-                if   Self.size == 3 : _out_tp[i] = rebind[Self.Out[i]](rebind[Tuple[Self.Out[0], Self.Out[1]]](t1_result)[i]).copy()
-                elif Self.size == 4 : _out_tp[i] = rebind[Self.Out[i]](rebind[Tuple[Self.Out[0], Self.Out[1], Self.Out[2]]](t1_result)[i]).copy()
-                elif Self.size == 5 : _out_tp[i] = rebind[Self.Out[i]](rebind[Tuple[Self.Out[0], Self.Out[1], Self.Out[2], Self.Out[3]]](t1_result)[i]).copy()
-                elif Self.size == 6 : _out_tp[i] = rebind[Self.Out[i]](rebind[Tuple[Self.Out[0], Self.Out[1], Self.Out[2], Self.Out[3], Self.Out[4]]](t1_result)[i]).copy()
-                elif Self.size == 7 : _out_tp[i] = rebind[Self.Out[i]](rebind[Tuple[Self.Out[0], Self.Out[1], Self.Out[2], Self.Out[3], Self.Out[4], Self.Out[5]]](t1_result)[i]).copy()
-                elif Self.size == 8 : _out_tp[i] = rebind[Self.Out[i]](rebind[Tuple[Self.Out[0], Self.Out[1], Self.Out[2], Self.Out[3], Self.Out[4], Self.Out[5], Self.Out[6]]](t1_result)[i]).copy()
-                elif Self.size == 9 : _out_tp[i] = rebind[Self.Out[i]](rebind[Tuple[Self.Out[0], Self.Out[1], Self.Out[2], Self.Out[3], Self.Out[4], Self.Out[5], Self.Out[6], Self.Out[7]]](t1_result)[i]).copy()
-                elif Self.size == 10: _out_tp[i] = rebind[Self.Out[i]](rebind[Tuple[Self.Out[0], Self.Out[1], Self.Out[2], Self.Out[3], Self.Out[4], Self.Out[5], Self.Out[6], Self.Out[7], Self.Out[8]]](t1_result)[i]).copy()
-                elif Self.size == 11: _out_tp[i] = rebind[Self.Out[i]](rebind[Tuple[Self.Out[0], Self.Out[1], Self.Out[2], Self.Out[3], Self.Out[4], Self.Out[5], Self.Out[6], Self.Out[7], Self.Out[8], Self.Out[9]]](t1_result)[i]).copy()
-                elif Self.size == 12: _out_tp[i] = rebind[Self.Out[i]](rebind[Tuple[Self.Out[0], Self.Out[1], Self.Out[2], Self.Out[3], Self.Out[4], Self.Out[5], Self.Out[6], Self.Out[7], Self.Out[8], Self.Out[9], Self.Out[10]]](t1_result)[i]).copy()
-                elif Self.size == 13: _out_tp[i] = rebind[Self.Out[i]](rebind[Tuple[Self.Out[0], Self.Out[1], Self.Out[2], Self.Out[3], Self.Out[4], Self.Out[5], Self.Out[6], Self.Out[7], Self.Out[8], Self.Out[9], Self.Out[10], Self.Out[11]]](t1_result)[i]).copy()
-                elif Self.size == 14: _out_tp[i] = rebind[Self.Out[i]](rebind[Tuple[Self.Out[0], Self.Out[1], Self.Out[2], Self.Out[3], Self.Out[4], Self.Out[5], Self.Out[6], Self.Out[7], Self.Out[8], Self.Out[9], Self.Out[10], Self.Out[11], Self.Out[12]]](t1_result)[i]).copy()
-                elif Self.size == 15: _out_tp[i] = rebind[Self.Out[i]](rebind[Tuple[Self.Out[0], Self.Out[1], Self.Out[2], Self.Out[3], Self.Out[4], Self.Out[5], Self.Out[6], Self.Out[7], Self.Out[8], Self.Out[9], Self.Out[10], Self.Out[11], Self.Out[12], Self.Out[13]]](t1_result)[i]).copy()
-                elif Self.size == 16: _out_tp[i] = rebind[Self.Out[i]](rebind[Tuple[Self.Out[0], Self.Out[1], Self.Out[2], Self.Out[3], Self.Out[4], Self.Out[5], Self.Out[6], Self.Out[7], Self.Out[8], Self.Out[9], Self.Out[10], Self.Out[11], Self.Out[12], Self.Out[13], Self.Out[14]]](t1_result)[i]).copy()
+                if   tasks_len == 3 : _out_tp[i] = rebind[Self.Out[i]](rebind[Tuple[Self.Out[0], Self.Out[1]]](t1_result)[i]).copy()
+                elif tasks_len == 4 : _out_tp[i] = rebind[Self.Out[i]](rebind[Tuple[Self.Out[0], Self.Out[1], Self.Out[2]]](t1_result)[i]).copy()
+                elif tasks_len == 5 : _out_tp[i] = rebind[Self.Out[i]](rebind[Tuple[Self.Out[0], Self.Out[1], Self.Out[2], Self.Out[3]]](t1_result)[i]).copy()
+                elif tasks_len == 6 : _out_tp[i] = rebind[Self.Out[i]](rebind[Tuple[Self.Out[0], Self.Out[1], Self.Out[2], Self.Out[3], Self.Out[4]]](t1_result)[i]).copy()
+                elif tasks_len == 7 : _out_tp[i] = rebind[Self.Out[i]](rebind[Tuple[Self.Out[0], Self.Out[1], Self.Out[2], Self.Out[3], Self.Out[4], Self.Out[5]]](t1_result)[i]).copy()
+                elif tasks_len == 8 : _out_tp[i] = rebind[Self.Out[i]](rebind[Tuple[Self.Out[0], Self.Out[1], Self.Out[2], Self.Out[3], Self.Out[4], Self.Out[5], Self.Out[6]]](t1_result)[i]).copy()
+                elif tasks_len == 9 : _out_tp[i] = rebind[Self.Out[i]](rebind[Tuple[Self.Out[0], Self.Out[1], Self.Out[2], Self.Out[3], Self.Out[4], Self.Out[5], Self.Out[6], Self.Out[7]]](t1_result)[i]).copy()
+                elif tasks_len == 10: _out_tp[i] = rebind[Self.Out[i]](rebind[Tuple[Self.Out[0], Self.Out[1], Self.Out[2], Self.Out[3], Self.Out[4], Self.Out[5], Self.Out[6], Self.Out[7], Self.Out[8]]](t1_result)[i]).copy()
+                elif tasks_len == 11: _out_tp[i] = rebind[Self.Out[i]](rebind[Tuple[Self.Out[0], Self.Out[1], Self.Out[2], Self.Out[3], Self.Out[4], Self.Out[5], Self.Out[6], Self.Out[7], Self.Out[8], Self.Out[9]]](t1_result)[i]).copy()
+                elif tasks_len == 12: _out_tp[i] = rebind[Self.Out[i]](rebind[Tuple[Self.Out[0], Self.Out[1], Self.Out[2], Self.Out[3], Self.Out[4], Self.Out[5], Self.Out[6], Self.Out[7], Self.Out[8], Self.Out[9], Self.Out[10]]](t1_result)[i]).copy()
+                elif tasks_len == 13: _out_tp[i] = rebind[Self.Out[i]](rebind[Tuple[Self.Out[0], Self.Out[1], Self.Out[2], Self.Out[3], Self.Out[4], Self.Out[5], Self.Out[6], Self.Out[7], Self.Out[8], Self.Out[9], Self.Out[10], Self.Out[11]]](t1_result)[i]).copy()
+                elif tasks_len == 14: _out_tp[i] = rebind[Self.Out[i]](rebind[Tuple[Self.Out[0], Self.Out[1], Self.Out[2], Self.Out[3], Self.Out[4], Self.Out[5], Self.Out[6], Self.Out[7], Self.Out[8], Self.Out[9], Self.Out[10], Self.Out[11], Self.Out[12]]](t1_result)[i]).copy()
+                elif tasks_len == 15: _out_tp[i] = rebind[Self.Out[i]](rebind[Tuple[Self.Out[0], Self.Out[1], Self.Out[2], Self.Out[3], Self.Out[4], Self.Out[5], Self.Out[6], Self.Out[7], Self.Out[8], Self.Out[9], Self.Out[10], Self.Out[11], Self.Out[12], Self.Out[13]]](t1_result)[i]).copy()
+                elif tasks_len == 16: _out_tp[i] = rebind[Self.Out[i]](rebind[Tuple[Self.Out[0], Self.Out[1], Self.Out[2], Self.Out[3], Self.Out[4], Self.Out[5], Self.Out[6], Self.Out[7], Self.Out[8], Self.Out[9], Self.Out[10], Self.Out[11], Self.Out[12], Self.Out[13], Self.Out[14]]](t1_result)[i]).copy()
                 else:
-                    os.abort(String("Tuple Size ", Self.size, " not implemented yet."))
+                    os.abort(String("Tuple Size ", tasks_len, " not implemented yet."))
                 # fmt: on
 
         @parameter
         async fn task_2():
-            _out_tp[Self.size - 1] = rebind_var[Self.Out[Self.size - 1]](
+            _out_tp[tasks_len - 1] = rebind_var[Self.Out[tasks_len - 1]](
                 self.t2[](rebind[Self.T2.I](arg))
             )
 
@@ -232,33 +220,3 @@ fn run():
     var final = last >> f
     res = final(3)
     print(res)
-
-
-fn test_variadic():
-    from builtin.variadics import (
-        MakeVariadic,
-        _ReduceVariadicIdxGeneratorTypeGenerator,
-        _ReduceVariadicAndIdxToVariadic,
-        _IndexToIntWrap,
-        VariadicOf,
-        Variadic,
-    )
-
-    var my_val = (1, "a", 3.0)
-    alias tp = type_of(my_val)
-
-    alias _Reductor[
-        Prev: VariadicOf[Copyable & Movable],
-        From: VariadicOf[Copyable & Movable],
-        Idx: Int,
-    ] = Prev[Idx]
-    alias r = _ReduceVariadicAndIdxToVariadic[
-        BaseVal = MakeVariadic[tp.element_types[0]],
-        Variadic = tp.element_types,
-        Reducer=_Reductor,
-    ]
-    alias v = r[0]
-
-
-alias fou = '!lit.generator<<"Prev": variadic<trait<@stdlib::@builtin::@value::@Copyable, @stdlib::@builtin::@value::@Movable>>, "From": variadic<trait<@stdlib::@builtin::@value::@Copyable, @stdlib::@builtin::@value::@Movable>>, "Idx": @stdlib::@builtin::@int::@Int>trait<@stdlib::@builtin::@value::@Copyable, @stdlib::@builtin::@value::@Movable>>'
-alias exp = '!lit.generator<<"Prev": variadic<trait<@stdlib::@builtin::@value::@Copyable, @stdlib::@builtin::@value::@Movable>>, "From": variadic<trait<@stdlib::@builtin::@value::@Copyable, @stdlib::@builtin::@value::@Movable>>, "Idx": @stdlib::@builtin::@int::@Int>variadic<trait<@stdlib::@builtin::@value::@Copyable, @stdlib::@builtin::@value::@Movable>>>'
