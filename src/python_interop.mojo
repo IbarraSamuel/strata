@@ -2,7 +2,6 @@ from os import abort
 from python import PythonObject, Python
 from python._cpython import GILReleased
 from runtime.asyncrt import TaskGroup as TG
-from memory.legacy_unsafe_pointer import LegacyUnsafePointer
 from python.bindings import PythonModuleBuilder, PyObjectFunction
 
 
@@ -14,7 +13,7 @@ fn PyInit_mojo_strata() -> PythonObject:
         _ = (
             strata.add_type[TaskGroup]("TaskGroup")
             .def_py_init[TaskGroup.py_init]()
-            .def_method[PyObjectFunction(TaskGroup.add_task)](
+            .def_method[TaskGroup.add_task](
                 "add_task", "Add a task to the group."
             )
             .def_method[TaskGroup.call]("call", "Make this group callable.")
@@ -155,11 +154,11 @@ struct TaskGroup(Movable, Representable):
 
     @staticmethod
     fn add_task(
-        self_ptr: LegacyUnsafePointer[Self],
+        self_ptr: UnsafePointer[Self, MutAnyOrigin],
         t: PythonObject,
         _mode: PythonObject,
     ) raises:
-        self_ptr[].add(t, Int(_mode))
+        self_ptr.unsafe_mut_cast[True]()[].add(t, Int(_mode))
 
     @staticmethod
     fn py_method():
@@ -167,6 +166,6 @@ struct TaskGroup(Movable, Representable):
 
     @staticmethod
     fn call(
-        self_ptr: LegacyUnsafePointer[Self], v: PythonObject
+        self_ptr: UnsafePointer[Self, MutAnyOrigin], v: PythonObject
     ) raises -> PythonObject:
         return self_ptr[]._call(v)

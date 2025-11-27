@@ -1,93 +1,31 @@
 from runtime.asyncrt import TaskGroup
-from sys.intrinsics import _type_is_eq_parse_time
+from sys.intrinsics import _type_is_eq_parse_time, _type_is_eq
+from compile.reflection import get_type_name
 from builtin.rebind import downcast
 from builtin.variadics import (
     Concatenated,
     variadic_size,
-    Variadic,
     VariadicOf,
-    EmptyVariadic,
     MakeVariadic,
-    _ReduceVariadicIdxGeneratorTypeGenerator,
-    _IndexToIntWrap,
-    # _ReduceVariadicAndIdxToVariadic,
-    # _MapVariadicAndIdxToType,
-    # _VariadicIdxToTypeGeneratorTypeGenerator,
-    # _WrapVariadicIdxToTypeMapperToReducer,
+    _MapVariadicAndIdxToType,
 )
-import os
+from sys import codegen_unreachable
 
-
-comptime _ReduceVariadicAndIdxToVariadic[
-    From: type_of(AnyType),
-    To: type_of(AnyType), //,
-    *,
-    BaseVal: VariadicOf[To],
-    Variadic: VariadicOf[From],
-    Reducer: _ReduceVariadicIdxGeneratorTypeGenerator[VariadicOf[To], From],
-] = __mlir_attr[
-    `#kgen.variadic.reduce<`,
-    BaseVal,
-    `,`,
-    Variadic,
-    `,`,
-    _IndexToIntWrap[From, VariadicOf[To], Reducer],
-    `> : `,
-    type_of(BaseVal),
-]
-
-comptime _VariadicIdxToTypeGeneratorTypeGenerator[
-    From: type_of(AnyType), To: type_of(AnyType)
-] = __mlir_type[
-    `!lit.generator<<"From": !kgen.variadic<`,
-    From,
-    `>, "Idx":`,
-    Int,
-    `>`,
-    To,
-    `>`,
-]
-"""This specifies a generator to generate a generator type for the mapper.
-The generated generator type is [Ts: VariadicOf[AnyType], idx: Int] -> AnyType,
-which maps the input variadic + index of the current element to another type.
-"""
-
-comptime _WrapVariadicIdxToTypeMapperToReducer[
-    F: type_of(AnyType),
-    T: type_of(AnyType),
-    Mapper: _VariadicIdxToTypeGeneratorTypeGenerator[F, T],
-    Prev: VariadicOf[T],
-    From: VariadicOf[F],
-    Idx: Int,
-] = Concatenated[Prev, MakeVariadic[Mapper[From, Idx]]]
-
-comptime _MapVariadicAndIdxToType[
-    From: type_of(AnyType), //,
-    *,
-    To: type_of(AnyType),
-    Variadic: VariadicOf[From],
-    Mapper: _VariadicIdxToTypeGeneratorTypeGenerator[From, To],
-] = _ReduceVariadicAndIdxToVariadic[
-    BaseVal = EmptyVariadic[To],  # reduce from a empty variadic
-    Variadic=Variadic,
-    Reducer = _WrapVariadicIdxToTypeMapperToReducer[From, To, Mapper],
-]
-"""Construct a new variadic of types using a type-to-type mapper.
-
-Parameters:
-    To: A common trait bound for the mapped type
-    Variadic: The variadic to be mapped
-    Mapper: A `[Ts: *From, idx: index] -> To` that does the transform
-"""
 
 alias _TaskToResultMapper[*ts: Call, i: Int] = ts[i].O
 alias TaskMapResult[*element_types: Call] = _MapVariadicAndIdxToType[
     To = Copyable & Movable, Variadic=element_types, Mapper=_TaskToResultMapper
 ]
 
-alias _TaskToPtrMapper[*ts: Call, i: Int] = LegacyUnsafePointer[ts[i]]
-alias TaskMapPtr[*element_types: Call] = _MapVariadicAndIdxToType[
-    To = Copyable & Movable, Variadic=element_types, Mapper=_TaskToPtrMapper
+alias _TaskToPtrMapper[o: ImmutOrigin, *ts: Call, i: Int] = Pointer[
+    ts[i], origin=o
+]
+alias TaskMapPtr[
+    o: ImmutOrigin, *element_types: Call
+] = _MapVariadicAndIdxToType[
+    To = Copyable & Movable,
+    Variadic=element_types,
+    Mapper = _TaskToPtrMapper[o],
 ]
 
 
@@ -101,33 +39,44 @@ trait Call:
 
 trait Callable(Call):
     fn __rshift__[
+        so: ImmutOrigin, s: Call = Self
+    ](ref [so]self, read other: Parallel) -> Sequence[
+        O1=so,
+        O2 = origin_of(other),
+        T1=s,
+        T2 = type_of(other),
+        Concatenated[MakeVariadic[s], MakeVariadic[type_of(other)]],
+    ] where _type_is_eq_parse_time[s.O, type_of(other).I]():
+        # TODO: Fix rebind when this is properly handled by compiler.
+        ref _self = rebind[s](self)
+        return {_self, other}
+
+    fn __rshift__[
         so: ImmutOrigin, oo: ImmutOrigin, o: Call, s: Call = Self
     ](ref [so]self, ref [oo]other: o) -> Sequence[
-        O1=so, O2=oo, T1=s, T2=o, s.I, o.O
+        O1=so, O2=oo, T1=s, T2=o, MakeVariadic[s, o]
     ] where _type_is_eq_parse_time[s.O, o.I]():
         # TODO: Fix rebind when this is properly handled by compiler.
         ref _self = rebind[s](self)
         return {_self, other}
 
-    # fn __add__[
-    #     so: ImmutOrigin, oo: ImmutOrigin, o: Call, s: Call = Self
-    # ](ref [so]self, ref [oo]other: o) -> Parallel[
-    #     O1=so, O2=oo, T1=s, T2=o, s.I, s.O, o.O, size=2
-    # ] where _type_is_eq_parse_time[s.I, o.I]():
-    #     # TODO: Fix rebind when this is properly handled by compiler.
-    #     ref _self = rebind[s](self)
-    #     return {_self, other}
+    fn __add__[
+        so: ImmutOrigin, oo: ImmutOrigin, o: Call, s: Call = Self
+    ](ref [so]self, ref [oo]other: o) -> Parallel[
+        origin = origin_of(so, oo), s, o
+    ] where _type_is_eq_parse_time[s.I, o.I]():
+        # TODO: Fix rebind when this is properly handled by compiler.
+        ref _self = rebind[s](self)
+        return {_self, other}
 
 
-@fieldwise_init
 struct Sequence[
     O1: ImmutOrigin,
     O2: ImmutOrigin,
     T1: Call,
     T2: Call, //,
-    In: AnyType,
-    Out: Movable & Copyable,
-](Callable, Movable):
+    elements: VariadicOf[Call],
+](Call):
     alias I = Self.T1.I
     alias O = Self.T2.O
 
@@ -135,7 +84,9 @@ struct Sequence[
     var t2: Pointer[Self.T2, Self.O2]
 
     fn __init__(
-        out self, ref [Self.O1]t1: Self.T1, ref [Self.O2]t2: Self.T2
+        out self,
+        ref [Self.O1]t1: Self.T1,
+        ref [Self.O2]t2: Self.T2,
     ) where _type_is_eq_parse_time[Self.T1.O, Self.T2.I]():
         self.t1 = Pointer(to=t1)
         self.t2 = Pointer(to=t2)
@@ -145,132 +96,189 @@ struct Sequence[
         ref r1r = rebind[Self.T2.I](r1)
         return self.t2[](r1r)
 
+    fn __rshift__(
+        read self, read other: Parallel
+    ) -> Sequence[
+        O1 = origin_of(self),
+        O2 = origin_of(other),
+        T1=Self,
+        T2 = type_of(other),
+        Concatenated[Self.elements, MakeVariadic[type_of(other)]],
+    ] where _type_is_eq_parse_time[Self.T2.O, type_of(other).I]():
+        # TODO: Fix rebind when this is properly handled by compiler.
+        return {self, other}
 
-struct Parallel[
-    Ts: VariadicOf[Call], //,
-    *,
-    In: AnyType,
-    Out: VariadicOf[Copyable & Movable] = TaskMapResult[*Ts],
-](Movable):
-    alias I = Self.Ts[0].I
-    alias O = Tuple[*Self.Out]
+    fn __rshift__[
+        oo: ImmutOrigin, o: Call
+    ](read self, ref [oo]other: o) -> Sequence[
+        O1 = origin_of(self),
+        O2=oo,
+        T1=Self,
+        T2=o,
+        Concatenated[Self.elements, MakeVariadic[o]],
+    ] where _type_is_eq_parse_time[Self.T2.O, o.I]():
+        # TODO: Fix rebind when this is properly handled by compiler.
+        return {self, other}
 
-    var tasks: Tuple[*TaskMapPtr[*Self.Ts]]
+    fn __add__[
+        so: ImmutOrigin, oo: ImmutOrigin, o: Call, s: Call = Self
+    ](ref [so]self, ref [oo]other: o) -> Parallel[
+        origin = origin_of(so, oo), s, o
+    ] where _type_is_eq_parse_time[s.I, o.I]():
+        # TODO: Fix rebind when this is properly handled by compiler.
+        ref _self = rebind[s](self)
+        return {_self, other}
+
+
+struct Parallel[origin: ImmutOrigin, //, *elements: Call](Call):
+    alias I = Self.elements[0].I
+    alias O = Tuple[*TaskMapResult[*Self.elements]]
+    alias Tasks = Tuple[*TaskMapPtr[Self.origin, *Self.elements]]
+
+    var tasks: Self.Tasks
 
     fn __init__[
-        o1: ImmutOrigin,
-        o2: ImmutOrigin,
-        a1: AddressSpace,
-        a2: AddressSpace,
-        T1: Call,
-        T2: Call where _type_is_eq_parse_time[T1.I, T2.I](),
+        o1: ImmutOrigin, o2: ImmutOrigin, c1: Call, c2: Call
     ](
-        out self: Parallel[Ts = MakeVariadic[T1, T2], In = T1.I],
-        ref [o1, a1]t1: T1,
-        ref [o2, a2]t2: T2,
-    ):
-        """You need to provide the parameters to use this initializer."""
-        var ptr1 = (
-            UnsafePointer(to=t1)
-            .as_any_origin()
-            .unsafe_mut_cast[True]()
-            .address_space_cast[AddressSpace.GENERIC]()
-            .as_legacy_pointer()
+        out self: Parallel[origin = origin_of(t1, t2), c1, c2],
+        ref [o1]t1: c1,
+        ref [o2]t2: c2,
+    ) where _type_is_eq_parse_time[c1.I, c2.I]():
+        __mlir_op.`lit.ownership.mark_initialized`(
+            __get_mvalue_as_litref(self.tasks)
         )
-        var ptr2 = (
-            UnsafePointer(to=t2)
-            .as_any_origin()
-            .unsafe_mut_cast[True]()
-            .address_space_cast[AddressSpace.GENERIC]()
-            .as_legacy_pointer()
+        ref tasks = rebind[self.Tasks](self.tasks)
+        tasks = (
+            Pointer[origin = origin_of(o1, o2)](to=t1),
+            Pointer[origin = origin_of(o1, o2)](to=t2),
         )
-        var v1 = rebind_var[type_of(self.tasks).element_types[0]](ptr1)
-        var v2 = rebind_var[type_of(self.tasks).element_types[1]](ptr2)
-        self.tasks = Tuple(v1^, v2^)
-        # self.tasks = rebind[type_of(Parallel[Ts=MakeVariadic[T1, T2], T1.I].tasks)](ptr1, ptr2)
 
-    # fn __add__[
-    #     so: ImmutOrigin,
-    #     oo: ImmutOrigin,
-    #     t: Call where _type_is_eq_parse_time[Self.I, t.I](),
-    # ](ref [so]self, ref [oo]other: t) -> Parallel[
-    #     O1=so,
-    #     O2=oo,
-    #     T1=Self,
-    #     T2=t,
-    #     Self.In,
-    #     *Concatenated[Self.Out, MakeVariadic[t.O]],
-    # ]:
-    #     return {self, other}
+    # @implicit
+    # fn __init__[
+    #     *elems: Call & Copyable & Movable
+    # ](out self: Parallel[*elems], callables: Tuple[*elems]):
+    #     __mlir_op.`lit.ownership.mark_initialized`(
+    #         __get_mvalue_as_litref(self.tasks)
+    #     )
 
-    # fn __rshift__[
-    #     so: ImmutOrigin,
-    #     oo: ImmutOrigin,
-    #     o: Call where _type_is_eq_parse_time[Self.O, o.I](),
-    # ](ref [so]self, ref [oo]other: o) -> Sequence[
-    #     O1=so, O2=oo, T1=Self, T2=o, In = Self.I, Out = o.O
-    # ]:
-    #     return {self, other}
-
-    # fn __call__(self, arg: Self.I, out o: Self.O):
-    #     alias tasks_len: Int = variadic_size(Self.Out)
-    #     var tg = TaskGroup()
-    #     var _out_tp: Self.O
+    #     # TODO: Add hints before if possible.
+    #     # Check that all in types should be the same
+    #     @parameter
+    #     for i in range(variadic_size(Self.elements) - 1):
+    #         alias t1 = Self.elements[i].I
+    #         alias t2 = Self.elements[i + 1].I
+    #         codegen_unreachable[
+    #             not _type_is_eq[t1, t2](),
+    #             (
+    #                 "All `Call.I` types should be equal for all parallel"
+    #                 " elements. "
+    #             ),
+    #             get_type_name[t1](),
+    #             " vs ",
+    #             get_type_name[t2](),
+    #             ".",
+    #         ]()
 
     #     @parameter
-    #     async fn task_1():
-    #         t1_result = self.t1[](arg)
-
-    #         @parameter
-    #         if Self.size == 2:
-    #             # The Out[0] value is the only type that matters
-    #             _out_tp[0] = rebind_var[Self.Out[0]](t1_result^)
-    #             return
-
-    #         # from builtin.variadics import _ReduceVariadicAndIdxToVariadic, _ReduceVariadicIdxGeneratorTypeGenerator
-    #         # _ReduceVariadicAndIdxToVariadic[BaseVal=Self.Out, Variadic=MakeVariadic[Self.Out[tasks_len - 1]]]
-    #         # Tuple[*Self.Out]
-
-    #         # fmt: off
-    #         @parameter
-    #         for i in range(Self.size - 1):
-    #             @parameter
-    #             if   Self.size == 3 : _out_tp[i] = rebind[Self.Out[i]](rebind[Tuple[Self.Out[0], Self.Out[1]]](t1_result)[i]).copy()
-    #             elif Self.size == 4 : _out_tp[i] = rebind[Self.Out[i]](rebind[Tuple[Self.Out[0], Self.Out[1], Self.Out[2]]](t1_result)[i]).copy()
-    #             elif Self.size == 5 : _out_tp[i] = rebind[Self.Out[i]](rebind[Tuple[Self.Out[0], Self.Out[1], Self.Out[2], Self.Out[3]]](t1_result)[i]).copy()
-    #             elif Self.size == 6 : _out_tp[i] = rebind[Self.Out[i]](rebind[Tuple[Self.Out[0], Self.Out[1], Self.Out[2], Self.Out[3], Self.Out[4]]](t1_result)[i]).copy()
-    #             elif Self.size == 7 : _out_tp[i] = rebind[Self.Out[i]](rebind[Tuple[Self.Out[0], Self.Out[1], Self.Out[2], Self.Out[3], Self.Out[4], Self.Out[5]]](t1_result)[i]).copy()
-    #             elif Self.size == 8 : _out_tp[i] = rebind[Self.Out[i]](rebind[Tuple[Self.Out[0], Self.Out[1], Self.Out[2], Self.Out[3], Self.Out[4], Self.Out[5], Self.Out[6]]](t1_result)[i]).copy()
-    #             elif Self.size == 9 : _out_tp[i] = rebind[Self.Out[i]](rebind[Tuple[Self.Out[0], Self.Out[1], Self.Out[2], Self.Out[3], Self.Out[4], Self.Out[5], Self.Out[6], Self.Out[7]]](t1_result)[i]).copy()
-    #             elif Self.size == 10: _out_tp[i] = rebind[Self.Out[i]](rebind[Tuple[Self.Out[0], Self.Out[1], Self.Out[2], Self.Out[3], Self.Out[4], Self.Out[5], Self.Out[6], Self.Out[7], Self.Out[8]]](t1_result)[i]).copy()
-    #             elif Self.size == 11: _out_tp[i] = rebind[Self.Out[i]](rebind[Tuple[Self.Out[0], Self.Out[1], Self.Out[2], Self.Out[3], Self.Out[4], Self.Out[5], Self.Out[6], Self.Out[7], Self.Out[8], Self.Out[9]]](t1_result)[i]).copy()
-    #             elif Self.size == 12: _out_tp[i] = rebind[Self.Out[i]](rebind[Tuple[Self.Out[0], Self.Out[1], Self.Out[2], Self.Out[3], Self.Out[4], Self.Out[5], Self.Out[6], Self.Out[7], Self.Out[8], Self.Out[9], Self.Out[10]]](t1_result)[i]).copy()
-    #             elif Self.size == 13: _out_tp[i] = rebind[Self.Out[i]](rebind[Tuple[Self.Out[0], Self.Out[1], Self.Out[2], Self.Out[3], Self.Out[4], Self.Out[5], Self.Out[6], Self.Out[7], Self.Out[8], Self.Out[9], Self.Out[10], Self.Out[11]]](t1_result)[i]).copy()
-    #             elif Self.size == 14: _out_tp[i] = rebind[Self.Out[i]](rebind[Tuple[Self.Out[0], Self.Out[1], Self.Out[2], Self.Out[3], Self.Out[4], Self.Out[5], Self.Out[6], Self.Out[7], Self.Out[8], Self.Out[9], Self.Out[10], Self.Out[11], Self.Out[12]]](t1_result)[i]).copy()
-    #             elif Self.size == 15: _out_tp[i] = rebind[Self.Out[i]](rebind[Tuple[Self.Out[0], Self.Out[1], Self.Out[2], Self.Out[3], Self.Out[4], Self.Out[5], Self.Out[6], Self.Out[7], Self.Out[8], Self.Out[9], Self.Out[10], Self.Out[11], Self.Out[12], Self.Out[13]]](t1_result)[i]).copy()
-    #             elif Self.size == 16: _out_tp[i] = rebind[Self.Out[i]](rebind[Tuple[Self.Out[0], Self.Out[1], Self.Out[2], Self.Out[3], Self.Out[4], Self.Out[5], Self.Out[6], Self.Out[7], Self.Out[8], Self.Out[9], Self.Out[10], Self.Out[11], Self.Out[12], Self.Out[13], Self.Out[14]]](t1_result)[i]).copy()
-    #             else:
-    #                 os.abort(String("Tuple Size ", Self.size, " not implemented yet."))
-    #             # fmt: on
-
-    #     @parameter
-    #     async fn task_2():
-    #         _out_tp[Self.size - 1] = rebind_var[Self.Out[Self.size - 1]](
-    #             self.t2[](rebind[Self.T2.I](arg))
+    #     for i in range(variadic_size(Self.elements)):
+    #         alias ti = type_of(self.tasks[i])
+    #         self.tasks[i] = rebind_var[ti](
+    #             UnsafePointer(to=callables[i]).as_any_origin()
     #         )
 
-    #     __mlir_op.`lit.ownership.mark_initialized`(
-    #         __get_mvalue_as_litref(_out_tp)
-    #     )
-    #     tg.create_task(task_1())
-    #     tg.create_task(task_2())
+    fn __init__(
+        out self: Parallel[origin = callables.origin, *Self.elements],
+        *callables: * Self.elements,
+        __list_literal__: () = (),
+    ):
+        __mlir_op.`lit.ownership.mark_initialized`(
+            __get_mvalue_as_litref(self.tasks)
+        )
 
-    #     tg.wait()
-    #     return _out_tp^
+        # TODO: Add hints before if possible.
+        # Check that all in types should be the same
+        @parameter
+        for i in range(variadic_size(Self.elements) - 1):
+            alias t1 = Self.elements[i].I
+            alias t2 = Self.elements[i + 1].I
+            codegen_unreachable[
+                not _type_is_eq[t1, t2](),
+                (
+                    "All `Call.I` types should be equal for all parallel"
+                    " elements. "
+                ),
+                get_type_name[t1](),
+                " vs ",
+                get_type_name[t2](),
+                ".",
+            ]()
+
+        @parameter
+        for i in range(variadic_size(Self.elements)):
+            alias ti = type_of(self.tasks[i])
+            self.tasks[i] = rebind_var[ti](Pointer(to=callables[i]))
+
+    fn __call__(self, v: Self.I) -> Self.O:
+        var tg = TaskGroup()
+        var _out_tp: Self.O
+
+        __mlir_op.`lit.ownership.mark_initialized`(
+            __get_mvalue_as_litref(_out_tp)
+        )
+
+        @parameter
+        for i in range(variadic_size(Self.elements)):
+
+            @parameter
+            async fn task():
+                alias to = Self.O.element_types[i]
+                ref in_value = rebind[Self.elements[i].I](v)
+                _out_tp[i] = rebind_var[to](
+                    rebind[Pointer[Self.elements[i], origin = Self.origin]](
+                        self.tasks[i]
+                    )[](in_value)
+                )
+
+            tg.create_task(task())
+
+        tg.wait()
+        return _out_tp^
+
+    fn __rshift__[
+        so: ImmutOrigin, oo: ImmutOrigin, o: Call
+    ](ref [so]self, ref [oo]other: o) -> Sequence[
+        O1=so,
+        O2=oo,
+        T1=Self,
+        T2=o,
+        elements = Concatenated[MakeVariadic[Self], MakeVariadic[o]],
+    ] where _type_is_eq_parse_time[Self.O, o.I]():
+        # TODO: Fix rebind when this is properly handled by compiler.
+        return {self, other}
+
+    fn __add__[
+        oo: ImmutOrigin, o: Call
+    ](
+        ref self,
+        ref [oo]other: o,
+        out final: Parallel[
+            origin = origin_of(Self.origin, oo),
+            *Concatenated[Self.elements, MakeVariadic[o]],
+        ],
+    ) where _type_is_eq_parse_time[Self.I, o.I]():
+        __mlir_op.`lit.ownership.mark_initialized`(
+            __get_mvalue_as_litref(final)
+        )
+        # TODO: Fix rebind when this is properly handled by compiler.
+        final.tasks = rebind_var[final.Tasks](
+            self.tasks.concat((Pointer(to=other),))
+        )
 
 
 @fieldwise_init("implicit")
-struct Fn[In: AnyType, Out: Copyable & Movable](Callable, Movable):
+struct Fn[In: AnyType, Out: Copyable & Movable](
+    Callable, Copyable, ImplicitlyCopyable, Movable
+):
     alias I = Self.In
     alias O = Self.Out
 
@@ -295,7 +303,7 @@ fn tp_to_int(v: Tuple[Int,Int,Int,Int,Int,Int,Int,Int,Int,Int,Int,Int,Int,Int,In
 # fmt: on
 
 
-fn run():
+fn main():
     t1 = T()
     t2 = T()
     t3 = T()
