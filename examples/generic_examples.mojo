@@ -1,4 +1,4 @@
-from strata.new_generic import Callable, Fn, Parallel  # , Tuple
+from strata.new_generic import Callable, Fn
 import os
 from time import sleep
 
@@ -108,30 +108,21 @@ fn main():
     sum_tp = Fn(sum_tuple)
     ftos = Fn(float_to_string)
 
-    var p: Parallel[type_of(mul2), type_of(itof), type_of(mul3)] = [
-        mul2,
-        itof,
-        mul3,
-    ]
-    var final_graph = stoi >> [mul2, itof, mul3] >> sum_tp >> ftos
+    var final_graph = stoi >> mul2 + itof + mul3 >> sum_tp >> ftos
 
     print("Starting Graph execution")
-    result = final_graph("32")
+    var result = final_graph("32")
+    print("Meet expected?:", result, "vs 192.0:", result == "192.0")
 
-    print(result)
-    # print("Meet expected?:", result, "vs 192.0:", result == "192.0")
+    print("Building Struct graph")
 
-    # print("Building Struct graph")
+    var struct_graph = (
+        StringToIntTask()
+        >> IntMulTask[2]() + IntToFloatTask() + IntMulTask[3]()
+        >> SumTuple()
+        >> FloatToStringTask()
+    )
 
-    # var struct_graph = (
-    #     StringToIntTask()
-    #     >> IntMulTask[2]() + IntToFloatTask() + IntMulTask[3]()
-    #     >> SumTuple()
-    #     >> FloatToStringTask()
-    # )
-
-    # print("Starting Graph execution")
-    # var result_2 = struct_graph("32")
-    # print("Meet expected?:", result_2, "vs 192.0:", result_2 == "192.0")
-
-    # print(result_2)
+    print("Starting Graph execution")
+    var result_2 = struct_graph("32")
+    print("Meet expected?:", result_2, "vs 192.0:", result_2 == "192.0")
