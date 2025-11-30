@@ -1,4 +1,4 @@
-from strata.new_generic import Callable, Fn
+from strata.generic import Callable, Fn
 import os
 from time import sleep
 
