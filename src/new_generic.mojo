@@ -39,19 +39,6 @@ trait Call:
 
 trait Callable(Call):
     fn __rshift__[
-        so: ImmutOrigin, s: Call = Self
-    ](ref [so]self, read other: Parallel) -> Sequence[
-        O1=so,
-        O2 = origin_of(other),
-        T1=s,
-        T2 = type_of(other),
-        Concatenated[MakeVariadic[s], MakeVariadic[type_of(other)]],
-    ] where _type_is_eq_parse_time[s.O, type_of(other).I]():
-        # TODO: Fix rebind when this is properly handled by compiler.
-        ref _self = rebind[s](self)
-        return {_self, other}
-
-    fn __rshift__[
         so: ImmutOrigin, oo: ImmutOrigin, o: Call, s: Call = Self
     ](ref [so]self, ref [oo]other: o) -> Sequence[
         O1=so, O2=oo, T1=s, T2=o, MakeVariadic[s, o]
@@ -96,28 +83,15 @@ struct Sequence[
         ref r1r = rebind[Self.T2.I](r1)
         return self.t2[](r1r)
 
-    fn __rshift__(
-        read self, read other: Parallel
-    ) -> Sequence[
+    fn __rshift__[
+        oo: ImmutOrigin
+    ](self, ref [oo]other: Some[Call]) -> Sequence[
         O1 = origin_of(self),
-        O2 = origin_of(other),
+        O2=oo,
         T1=Self,
         T2 = type_of(other),
         Concatenated[Self.elements, MakeVariadic[type_of(other)]],
     ] where _type_is_eq_parse_time[Self.T2.O, type_of(other).I]():
-        # TODO: Fix rebind when this is properly handled by compiler.
-        return {self, other}
-
-    fn __rshift__[
-        oo: ImmutOrigin, o: Call
-    ](read self, ref [oo]other: o) -> Sequence[
-        O1 = origin_of(self),
-        O2=oo,
-        T1=Self,
-        T2=o,
-        Concatenated[Self.elements, MakeVariadic[o]],
-    ] where _type_is_eq_parse_time[Self.T2.O, o.I]():
-        # TODO: Fix rebind when this is properly handled by compiler.
         return {self, other}
 
     fn __add__[
@@ -125,7 +99,6 @@ struct Sequence[
     ](ref [so]self, ref [oo]other: o) -> Parallel[
         origin = origin_of(so, oo), s, o
     ] where _type_is_eq_parse_time[s.I, o.I]():
-        # TODO: Fix rebind when this is properly handled by compiler.
         ref _self = rebind[s](self)
         return {_self, other}
 
@@ -153,43 +126,9 @@ struct Parallel[origin: ImmutOrigin, //, *elements: Call](Call):
             Pointer[origin = origin_of(o1, o2)](to=t2),
         )
 
-    # @implicit
-    # fn __init__[
-    #     *elems: Call & Copyable & Movable
-    # ](out self: Parallel[*elems], callables: Tuple[*elems]):
-    #     __mlir_op.`lit.ownership.mark_initialized`(
-    #         __get_mvalue_as_litref(self.tasks)
-    #     )
-
-    #     # TODO: Add hints before if possible.
-    #     # Check that all in types should be the same
-    #     @parameter
-    #     for i in range(variadic_size(Self.elements) - 1):
-    #         alias t1 = Self.elements[i].I
-    #         alias t2 = Self.elements[i + 1].I
-    #         codegen_unreachable[
-    #             not _type_is_eq[t1, t2](),
-    #             (
-    #                 "All `Call.I` types should be equal for all parallel"
-    #                 " elements. "
-    #             ),
-    #             get_type_name[t1](),
-    #             " vs ",
-    #             get_type_name[t2](),
-    #             ".",
-    #         ]()
-
-    #     @parameter
-    #     for i in range(variadic_size(Self.elements)):
-    #         alias ti = type_of(self.tasks[i])
-    #         self.tasks[i] = rebind_var[ti](
-    #             UnsafePointer(to=callables[i]).as_any_origin()
-    #         )
-
     fn __init__(
         out self: Parallel[origin = callables.origin, *Self.elements],
         *callables: * Self.elements,
-        __list_literal__: () = (),
     ):
         __mlir_op.`lit.ownership.mark_initialized`(
             __get_mvalue_as_litref(self.tasks)
@@ -232,12 +171,14 @@ struct Parallel[origin: ImmutOrigin, //, *elements: Call](Call):
             @parameter
             async fn task():
                 alias to = Self.O.element_types[i]
+                ref task_i = rebind[
+                    Pointer[
+                        Self.elements[i],
+                        origin = Self.origin,
+                    ]
+                ](self.tasks[i])
                 ref in_value = rebind[Self.elements[i].I](v)
-                _out_tp[i] = rebind_var[to](
-                    rebind[Pointer[Self.elements[i], origin = Self.origin]](
-                        self.tasks[i]
-                    )[](in_value)
-                )
+                _out_tp[i] = rebind_var[to](task_i[](in_value))
 
             tg.create_task(task())
 
@@ -251,9 +192,8 @@ struct Parallel[origin: ImmutOrigin, //, *elements: Call](Call):
         O2=oo,
         T1=Self,
         T2=o,
-        elements = Concatenated[MakeVariadic[Self], MakeVariadic[o]],
+        elements = MakeVariadic[downcast[Call, Self], o],
     ] where _type_is_eq_parse_time[Self.O, o.I]():
-        # TODO: Fix rebind when this is properly handled by compiler.
         return {self, other}
 
     fn __add__[
@@ -286,48 +226,3 @@ struct Fn[In: AnyType, Out: Copyable & Movable](
 
     fn __call__(self, arg: Self.I) -> Self.O:
         return self.func(arg)
-
-
-@fieldwise_init
-struct T(Callable):
-    alias I = Int
-    alias O = Int
-
-    fn __call__(self, arg: Self.I) -> Self.O:
-        return arg
-
-
-# fmt: off
-fn tp_to_int(v: Tuple[Int,Int,Int,Int,Int,Int,Int,Int,Int,Int,Int,Int,Int,Int,Int,Int]) -> Int:
-    return v[0]
-# fmt: on
-
-
-fn main():
-    t1 = T()
-    t2 = T()
-    t3 = T()
-    t4 = T()
-    f = Fn(tp_to_int)
-
-    var last = (
-        t1
-        + t2
-        + t3
-        + t4
-        + t1
-        + t2
-        + t3
-        + t4
-        + t1
-        + t2
-        + t3
-        + t4
-        + t1
-        + t2
-        + t3
-        + t4
-    )
-    var final = last >> f
-    res = final(3)
-    print(res)
