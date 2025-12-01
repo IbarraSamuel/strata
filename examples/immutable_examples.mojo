@@ -1,11 +1,11 @@
 from time import sleep
-from strata.immutable import Callable
+from strata.immutable import ImmutCallable
 
-alias time = 0.1
+comptime time = 0.1
 
 
 @fieldwise_init
-struct MyTask[job: StringLiteral](Callable):
+struct MyTask[job: StringLiteral](ImmutCallable):
     var some_data: String
 
     fn __call__(self):
