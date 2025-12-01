@@ -1,1 +1,0 @@
-3. try to use generic in async, rewriting asyncrt to have types in the outputs for TaskGroup. Might be tricky because it will need to have the point 1 to get as an output, a tuple of distinct types.

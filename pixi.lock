@@ -59,6 +59,8 @@ environments:
       - conda: https://prefix.dev/conda-forge/linux-64/zeromq-4.3.5-h387f397_9.conda
       - conda: https://prefix.dev/conda-forge/noarch/zipp-3.23.0-pyhcf101f3_1.conda
       - conda: https://prefix.dev/conda-forge/linux-64/zstd-1.5.7-h3691f8a_5.conda
+      - conda: .
+        subdir: linux-64
       osx-arm64:
       - conda: https://prefix.dev/conda-forge/noarch/_python_abi3_support-1.0-hd8ed1ab_2.conda
       - conda: https://prefix.dev/conda-forge/osx-arm64/bzip2-1.0.8-hd037594_8.conda
@@ -104,6 +106,8 @@ environments:
       - conda: https://prefix.dev/conda-forge/osx-arm64/zeromq-4.3.5-h888dc83_9.conda
       - conda: https://prefix.dev/conda-forge/noarch/zipp-3.23.0-pyhcf101f3_1.conda
       - conda: https://prefix.dev/conda-forge/osx-arm64/zstd-1.5.7-hd0aec43_5.conda
+      - conda: .
+        subdir: osx-arm64
 packages:
 - conda: https://prefix.dev/conda-forge/linux-64/_libgcc_mutex-0.1-conda_forge.tar.bz2
   sha256: fe51de6107f9edc7aa4f786a70f4a883943bc9d39b3bb7307c04c41410990726
@@ -780,6 +784,26 @@ packages:
   license_family: MIT
   size: 18455
   timestamp: 1753199211006
+- conda: .
+  name: strata
+  version: 0.0.1
+  build: hbf21a9e_0
+  subdir: linux-64
+  depends:
+  - mojo-compiler <=1.0.0
+  input:
+    hash: 704ffa70952353fea279762fe3f180f9d64ccd0982068e19f2c02b1f41939bc5
+    globs: []
+- conda: .
+  name: strata
+  version: 0.0.1
+  build: hbf21a9e_0
+  subdir: osx-arm64
+  depends:
+  - mojo-compiler <=1.0.0
+  input:
+    hash: 704ffa70952353fea279762fe3f180f9d64ccd0982068e19f2c02b1f41939bc5
+    globs: []
 - conda: https://prefix.dev/conda-forge/linux-64/tk-8.6.13-noxft_ha0e22de_103.conda
   sha256: 1544760538a40bcd8ace2b1d8ebe3eb5807ac268641f8acdc18c69c5ebfeaf64
   md5: 86bc20552bf46075e3d92b67f089172d
