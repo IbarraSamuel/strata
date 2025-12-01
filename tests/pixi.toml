@@ -24,3 +24,5 @@ strata = { path = ".." }
 
 [tasks]
 test_runners = "mojo test_runners.mojo"
+test_docs = "mojo test_docs_completeness.mojo"
+tests = {depends-on = ["test_runners", "test_docs"]}
