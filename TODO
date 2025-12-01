@@ -1,3 +1,1 @@
-1. Try to avoid copies on the generic example. Using refs will not allow us to have RegPassable types since those don't have pointers.
-2. Try to expand VariadicPack, to allow graph flattening.
 3. try to use generic in async, rewriting asyncrt to have types in the outputs for TaskGroup. Might be tricky because it will need to have the point 1 to get as an output, a tuple of distinct types.
