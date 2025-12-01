@@ -2,11 +2,11 @@ from algorithm import sync_parallelize
 from builtin import variadic_size
 
 alias CallablePack = VariadicPack[
-    is_owned=False, origin=_, element_trait=Callable, element_types=*_
+    is_owned=False, origin=_, element_trait=ImmutCallable, element_types=*_
 ]
 
 
-trait Callable:
+trait ImmutCallable:
     """The struct should contain a fn `__call__` method."""
 
     fn __call__(self):
@@ -14,7 +14,7 @@ trait Callable:
 
     @always_inline("nodebug")
     fn __add__[
-        s: ImmutOrigin, o: ImmutOrigin, t: Callable, //
+        s: ImmutOrigin, o: ImmutOrigin, t: ImmutCallable, //
     ](ref [s]self, ref [o]other: t) -> ParallelTaskPairRef[
         o1=s, o2=o, Self, t
     ]:
@@ -22,7 +22,7 @@ trait Callable:
 
     @always_inline("nodebug")
     fn __rshift__[
-        s: ImmutOrigin, o: ImmutOrigin, t: Callable, //
+        s: ImmutOrigin, o: ImmutOrigin, t: ImmutCallable, //
     ](ref [s]self, ref [o]other: t) -> SequentialTaskPairRef[
         o1=s, o2=o, Self, t
     ]:
@@ -30,7 +30,7 @@ trait Callable:
 
 
 @fieldwise_init("implicit")
-struct Fn(Callable):
+struct Fn(ImmutCallable):
     """This function takes any function with a signature: `fn() -> None` and hold it to later call it using `__call__()`.
     """
 
@@ -47,9 +47,9 @@ struct Fn(Callable):
 struct SequentialTaskPairRef[
     o1: ImmutOrigin,
     o2: ImmutOrigin, //,
-    T1: Callable,
-    T2: Callable,
-](Callable):
+    T1: ImmutCallable,
+    T2: ImmutCallable,
+](ImmutCallable):
     var t1: Pointer[Self.T1, Self.o1]
     var t2: Pointer[Self.T2, Self.o2]
 
@@ -67,9 +67,9 @@ struct SequentialTaskPairRef[
 struct ParallelTaskPairRef[
     o1: ImmutOrigin,
     o2: ImmutOrigin, //,
-    T1: Callable,
-    T2: Callable,
-](Callable):
+    T1: ImmutCallable,
+    T2: ImmutCallable,
+](ImmutCallable):
     var t1: Pointer[Self.T1, Self.o1]
     var t2: Pointer[Self.T2, Self.o2]
 
@@ -90,8 +90,8 @@ struct ParallelTaskPairRef[
 
 
 # Variadic Parallel
-struct ParallelTask[origin: ImmutOrigin, //, *Ts: Callable](
-    Callable
+struct ParallelTask[origin: ImmutOrigin, //, *Ts: ImmutCallable](
+    ImmutCallable
 ):
     """Collection of immutable tasks to run in Parallel.
 
@@ -131,8 +131,8 @@ struct ParallelTask[origin: ImmutOrigin, //, *Ts: Callable](
         sync_parallelize[exec](size)
 
 # # Variadic Series
-struct SequentialTask[origin: ImmutOrigin, //, *Ts: Callable](
-    Callable
+struct SequentialTask[origin: ImmutOrigin, //, *Ts: ImmutCallable](
+    ImmutCallable
 ):
     """Collection of immutable tasks to run in Series.
 
