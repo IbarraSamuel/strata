@@ -23,7 +23,7 @@ alias _TaskToPtrMapper[o: ImmutOrigin, *ts: Call, i: Int] = Pointer[
 alias TaskMapPtr[
     o: ImmutOrigin, *element_types: Call
 ] = _MapVariadicAndIdxToType[
-    To = Movable,
+    To=Movable,
     Variadic=element_types,
     Mapper = _TaskToPtrMapper[o],
 ]
@@ -216,9 +216,7 @@ struct Parallel[origin: ImmutOrigin, //, *elements: Call](Call):
 
 
 @fieldwise_init("implicit")
-struct Fn[In: AnyType, Out: Movable](
-    Callable, Movable
-):
+struct Fn[In: AnyType, Out: Movable](Callable, Movable):
     alias I = Self.In
     alias O = Self.Out
 

@@ -32,9 +32,6 @@ strata = { path = "." }
 [tasks]
 # Build
 build_package = "mojo package src/ -o package/strata.mojopkg"
-prepare_examples = { cmd = "mv package/strata.mojopkg examples/", depends-on = [
-    "build_package",
-] }
 
 # Python Build
 build_old_python_package = "mojo build src/python_interop_old.mojo --emit shared-lib -o package/old_mojo_strata.so"
@@ -50,30 +47,12 @@ build_all = { depends-on = ["build_package", "build_old_python_package", "build_
 # Examples
 async_immutable_task_examples = "mojo examples/async_immutable_task_examples.mojo"
 async_mutable_task_examples = "mojo examples/async_mutable_task_examples.mojo"
-generic_examples = "mojo examples/generic_examples.mojo"
-generic_comptime_examples = "mojo examples/generic_comptime_examples.mojo"
 generic_async_examples = "mojo examples/generic_async_examples.mojo"
-mutable_examples = "mojo examples/mutable_examples.mojo"
-immutable_examples = "mojo examples/immutable_examples.mojo"
-type_examples = "mojo examples/type_examples.mojo"
-
-# Examples
-examples = { depends-on = [
-    "prepare_examples",
-    "type_examples",
-    "immutable_examples",
-    "mutable_examples",
-    "generic_examples",
-    "generic_comptime_examples",
-    # "generic_async_examples",
-    # "async_immutable_task_examples",
-    # "async_mutable_task_examples",
-] }
 
 # Testing
-
-# -- Python testing
+test_runners = {cmd = "mojo run tests/test_runners.mojo"}
+test_docs = {cmd = "mojo run tests/test_docs_completeness.mojo"}
 python_test = {cmd = "cd python && uv run --group test pytest && cd ..", depends-on = ["prepare_python"] }
-tests = { depends-on = ["examples", "python_test"] }  #, "test_docs"] }
-test_docs = "mojo test --diagnose-missing-doc-strings --validate-doc-strings"
+
+tests = { depends-on = ["runners", "python_test"] }  #, "test_docs"] }
 
