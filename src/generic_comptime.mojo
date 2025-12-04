@@ -1,73 +1,104 @@
 from runtime.asyncrt import Task, TaskGroup
-from strata.custom_tuple import Tuple as _Tuple
+from sys.intrinsics import _type_is_eq_parse_time
+from builtin.variadics import (
+    _MapVariadicAndIdxToType,
+    variadic_size,
+    Concatenated,
+    VariadicOf,
+    MakeVariadic,
+)
+
+alias _TaskToResultMapper[*ts: FnTrait, i: Int] = ts[i].O
+alias TaskMapResult[*element_types: FnTrait] = _MapVariadicAndIdxToType[
+    To=Movable, Variadic=element_types, Mapper=_TaskToResultMapper
+]
 
 
-@always_inline("nodebug")
+trait FnTrait(Movable):
+    comptime I: AnyType
+    comptime O: Movable
+    comptime F: fn (Self.I) -> Self.O
+
+
+# @always_inline("nodebug")
 fn seq_fn[
-    In: AnyType, Om: AnyType, O: AnyType, //, f: fn (In) -> Om, l: fn (Om) -> O
+    In: AnyType, M: AnyType, O: AnyType, //, f: fn (In) -> M, l: fn (M) -> O
 ](val: In) -> O:
     return l(f(val))
 
 
-@always_inline("nodebug")
-fn par_fn[
-    In: AnyType,
-    O1: Copyable & Movable,
-    O2: Copyable & Movable, //,
-    f: fn (In) -> O1,
-    l: fn (In) -> O2,
-](val: In) -> Tuple[O1, O2]:
+# @always_inline("nodebug")
+fn par_fns[
+    In: AnyType, *fns: FnTrait
+](val: In, out outs: Tuple[*TaskMapResult[*fns]]):
     tg = TaskGroup()
 
-    var v1: O1
-    var v2: O2
+    __mlir_op.`lit.ownership.mark_initialized`(__get_mvalue_as_litref(outs))
 
     @parameter
-    async fn task_1():
-        v1 = f(val)
+    for ci in range(variadic_size(fns)):
 
-    @parameter
-    async fn task_2():
-        v2 = l(val)
+        @parameter
+        async fn task():
+            ref inp = rebind[fns[ci].I](val)
+            outs[ci] = rebind_var[type_of(outs[ci])](fns[ci].F(inp))
 
-    # This is safe because the variables will be initialized at the return.
-    __mlir_op.`lit.ownership.mark_initialized`(__get_mvalue_as_litref(v1))
-    __mlir_op.`lit.ownership.mark_initialized`(__get_mvalue_as_litref(v2))
-
-    tg.create_task(task_1())
-    tg.create_task(task_2())
+        tg.create_task(task())
 
     tg.wait()
 
-    return (v1^, v2^)
-
 
 @register_passable("trivial")
-struct Fn[i: AnyType, o: Copyable & Movable, //, F: fn (i) -> o]:
+struct Fns[*fns: FnTrait]():
+    alias i = Self.fns[0].I
+    alias o = Tuple[*TaskMapResult[*Self.fns]]
+    alias F = par_fns[Self.i, *Self.fns]
+
     @always_inline("builtin")
     fn __init__(out self):
         pass
 
-    @staticmethod
     @always_inline("builtin")
-    fn sequential[
-        O: Copyable & Movable, //, f: fn (Self.o) -> O
-    ]() -> Fn[seq_fn[Self.F, f]]:
-        return Fn[seq_fn[Self.F, f]]()
-
-    @staticmethod
-    @always_inline("builtin")
-    fn parallel[
-        O: Copyable & Movable, //, f: fn (Self.i) -> O
-    ]() -> Fn[par_fn[Self.F, f]]:
-        return Fn[par_fn[Self.F, f]]()
+    fn __add__(
+        self, other: Fn[i = Self.i]
+    ) -> Fns[*Concatenated[Self.fns, MakeVariadic[Fn[other.F]]]]:
+        return Fns[*Concatenated[Self.fns, MakeVariadic[Fn[other.F]]]]()
 
     @always_inline("builtin")
-    fn __rshift__(
-        self, other: Fn[i = Self.o, _]
-    ) -> Fn[seq_fn[Self.F, other.F]]:
+    fn __rshift__(self, other: Fn[i = Self.o]) -> Fn[seq_fn[Self.F, other.F]]:
         return Fn[seq_fn[Self.F, other.F]]()
 
     @always_inline("builtin")
-    fn __add__(self, other: Fn[i = Self.i, _]) -> Fn[par_fn[Self.F, other.F]]:
-        return Fn[par_fn[Self.F, other.F]]()
+    fn __rshift__(
+        self, other: Fns[**_]
+    ) -> Fn[
+        seq_fn[Self.F, rebind[fn (Self.o) -> other.o](other.F)]
+    ] where _type_is_eq_parse_time[Self.o, other.i]():
+        return Fn[seq_fn[Self.F, rebind[fn (Self.o) -> other.o](other.F)]]()
+
+
+@register_passable("trivial")
+struct Fn[i: AnyType, o: Movable, //, f: fn (i) -> o](FnTrait):
+    alias I = Self.i
+    alias O = Self.o
+    alias F = Self.f
+
+    @always_inline("builtin")
+    fn __init__(out self):
+        pass
+
+    @always_inline("builtin")
+    fn __rshift__(self, other: Fn[i = Self.o]) -> Fn[seq_fn[Self.F, other.F]]:
+        return Fn[seq_fn[Self.F, other.F]]()
+
+    @always_inline("builtin")
+    fn __rshift__(
+        self, other: Fns[**_]
+    ) -> Fn[
+        seq_fn[Self.F, rebind[fn (Self.o) -> other.o](other.F)]
+    ] where _type_is_eq_parse_time[Self.o, other.i]():
+        return Fn[seq_fn[Self.F, rebind[fn (Self.o) -> other.o](other.F)]]()
+
+    @always_inline("builtin")
+    fn __add__(self, other: Fn[i = Self.i]) -> Fns[Self, Fn[other.F]]:
+        return Fns[Self, Fn[other.F]]()

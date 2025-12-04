@@ -14,7 +14,7 @@ from sys import codegen_unreachable
 
 alias _TaskToResultMapper[*ts: Call, i: Int] = ts[i].O
 alias TaskMapResult[*element_types: Call] = _MapVariadicAndIdxToType[
-    To = Copyable & Movable, Variadic=element_types, Mapper=_TaskToResultMapper
+    To=Movable, Variadic=element_types, Mapper=_TaskToResultMapper
 ]
 
 alias _TaskToPtrMapper[o: ImmutOrigin, *ts: Call, i: Int] = Pointer[
@@ -23,7 +23,7 @@ alias _TaskToPtrMapper[o: ImmutOrigin, *ts: Call, i: Int] = Pointer[
 alias TaskMapPtr[
     o: ImmutOrigin, *element_types: Call
 ] = _MapVariadicAndIdxToType[
-    To = Copyable & Movable,
+    To = Movable,
     Variadic=element_types,
     Mapper = _TaskToPtrMapper[o],
 ]
@@ -31,7 +31,7 @@ alias TaskMapPtr[
 
 trait Call:
     alias I: AnyType
-    alias O: Copyable & Movable
+    alias O: Movable
 
     fn __call__(self, arg: Self.I) -> Self.O:
         ...
@@ -216,8 +216,8 @@ struct Parallel[origin: ImmutOrigin, //, *elements: Call](Call):
 
 
 @fieldwise_init("implicit")
-struct Fn[In: AnyType, Out: Copyable & Movable](
-    Callable, Copyable, ImplicitlyCopyable, Movable
+struct Fn[In: AnyType, Out: Movable](
+    Callable, Movable
 ):
     alias I = Self.In
     alias O = Self.Out

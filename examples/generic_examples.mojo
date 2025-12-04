@@ -101,12 +101,12 @@ fn main():
     # NOTE: Compile times could be faster if you use struct instead of functions.
     print("Building graph with functions...")
 
-    stoi = Fn(string_to_int)
-    mul2 = Fn(int_mul[2])
-    mul3 = Fn(int_mul[3])
-    itof = Fn(int_to_float)
-    sum_tp = Fn(sum_tuple)
-    ftos = Fn(float_to_string)
+    var stoi = Fn(string_to_int)
+    var mul2 = Fn(int_mul[2])
+    var mul3 = Fn(int_mul[3])
+    var itof = Fn(int_to_float)
+    var sum_tp = Fn(sum_tuple)
+    var ftos = Fn(float_to_string)
 
     var final_graph = stoi >> mul2 + itof + mul3 >> sum_tp >> ftos
 

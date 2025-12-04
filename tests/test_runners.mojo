@@ -48,6 +48,25 @@ fn test_generic_parallel() raises:
     assert_true(p3.start[] < p3.end[])
 
 
+fn int_to_float(v: Int) -> Float32:
+    return v
+
+
+fn sum_tuple(v: Tuple[Float32, Float32]) -> Int:
+    return Int(v[0] + v[1])
+
+
+fn test_generic_two_parallels() raises:
+    var itof = generic.Fn(int_to_float)
+    var stp = generic.Fn(sum_tuple)
+    var graph = itof + itof >> stp + stp
+
+    var r1, r2 = graph(1)
+
+    assert_equal(r1, 2)
+    assert_equal(r2, 2)
+
+
 fn test_generic_comptime_parallel() raises:
     fn comptime_parallel(v: NoneType) -> Tuple[UInt, UInt]:
         var start = monotonic()
@@ -60,7 +79,7 @@ fn test_generic_comptime_parallel() raises:
 
     var _graph = t1 + t2 + t3
 
-    var (p1, p2), p3 = _graph.F(None)
+    var p1, p2, p3 = _graph.F(None)
 
     assert_true(p1[0] < p1[1])
     assert_true(p1[0] < p2[1])
@@ -71,6 +90,18 @@ fn test_generic_comptime_parallel() raises:
     assert_true(p3[0] < p2[1])
     assert_true(p3[0] < p3[1])
     assert_true(p3[0] < p3[1])
+
+
+fn test_generic_comptime_two_parallels() raises:
+    comptime itof = generic_comptime.Fn[int_to_float]()
+    comptime stp = generic_comptime.Fn[sum_tuple]()
+
+    comptime graph = itof + itof >> stp + stp
+
+    var r1, r2 = graph.F(1)
+
+    assert_equal(r1, 2)
+    assert_equal(r2, 2)
 
 
 struct ImmutParallel(immutable.ImmutCallable):
@@ -113,6 +144,22 @@ fn test_immut_parallel() raises:
     assert_true(p3.start[] < p3.end[])
 
 
+@fieldwise_init
+struct EImmutParallel(immutable.ImmutCallable):
+    fn __call__(self):
+        pass
+
+
+fn test_immut_two_parallels() raises:
+    comptime GP = EImmutParallel
+
+    var p1 = GP()
+    var p2 = GP()
+
+    f = p1 + p2 >> p1 + p2
+    f()
+
+
 struct MutParallel(mutable.MutCallable):
     var start: UInt
     var end: UInt
@@ -147,6 +194,24 @@ fn test_mut_parallel() raises:
     assert_true(p3.start < p2.end)
     assert_true(p3.start < p3.end)
     assert_true(p3.start < p3.end)
+
+
+@fieldwise_init
+struct EMutParallel(mutable.MutCallable):
+    fn __call__(mut self):
+        pass
+
+
+fn test_mut_two_parallels() raises:
+    comptime GP = EMutParallel
+
+    var p1 = GP()
+    var p2 = GP()
+    var p3 = GP()
+    var p4 = GP()
+
+    f = p1 + p2 >> p3 + p4
+    f()
 
 
 fn main() raises:
