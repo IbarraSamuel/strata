@@ -14,8 +14,7 @@ fn _flatten_files(var path: Path, mut files: List[Path]) raises:
         _flatten_files(path / p, files)
 
 
-fn _list_files[package: StringLiteral]() raises -> List[Path]:
-    var package_dir = Path(package)
+fn _list_files(var package_dir: Path) raises -> List[Path]:
     files = List[Path]()
     _flatten_files(package_dir^, files)
     return files^
@@ -28,7 +27,8 @@ fn _run_doctest_cmd(file: Path) raises -> String:
 
 
 fn test_docs_completeness() raises:
-    var files = _list_files["../src"]()
+    var package_dir = _dir_of_current_file() / ".." / "src"
+    var files = _list_files(package_dir)
     var results = List[String](length=len(files), fill="")
 
     @parameter
