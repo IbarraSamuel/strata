@@ -21,9 +21,7 @@ fn PyInit_mojo_strata() -> PythonObject:
 
         return strata.finalize()
     except e:
-        return abort[PythonObject](
-            String("failed to create Python module: ", e)
-        )
+        abort(String("failed to create Python module: ", e))
 
 
 struct TaskGroup(Movable, Representable):
