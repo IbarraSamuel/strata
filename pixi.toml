@@ -27,7 +27,7 @@ mojo-compiler = "<=1.0.0"
 
 [dependencies]
 mojo = "*"
-# strata = { path = "." }
+strata = { path = "." }
 
 [tasks]
 # Build
