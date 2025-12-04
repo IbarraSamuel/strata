@@ -32,9 +32,7 @@ fn PyInit_old_mojo_strata() -> PythonObject:
 
         return strata.finalize()
     except e:
-        return abort[PythonObject](
-            String("failed to create Python module: ", e)
-        )
+        abort(String("failed to create Python module: ", e))
 
 
 trait PythonCallable:
@@ -64,7 +62,7 @@ struct PyTask(PythonTask):
     @staticmethod
     fn init(out self: Self, args: PythonObject, kwargs: PythonObject) raises:
         if len(args) > 0 and "inner" not in kwargs:
-            abort[PythonObject](
+            abort(
                 String(
                     "invalid arguments for PyTask: ",
                     args,
@@ -103,7 +101,7 @@ struct PyParallelTask(PythonTask):
     @staticmethod
     fn init(out self: Self, args: PythonObject, kwargs: PythonObject) raises:
         if len(args) > 0 and "task_1" not in kwargs and "task_2" not in kwargs:
-            abort[PythonObject](
+            abort(
                 String(
                     "invalid arguments for PyParallelTask: ",
                     args,
@@ -158,7 +156,7 @@ struct PySerialTask(PythonTask):
     @staticmethod
     fn init(out self: Self, args: PythonObject, kwargs: PythonObject) raises:
         if len(args) > 0 and "task_1" not in kwargs and "task_2" not in kwargs:
-            abort[PythonObject](
+            abort(
                 String(
                     "invalid arguments for PySerialTask: ",
                     args,
