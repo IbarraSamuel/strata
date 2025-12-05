@@ -1,5 +1,5 @@
 from algorithm import sync_parallelize
-from builtin import variadic_size
+from builtin import Variadic
 
 alias MutCallablePack = VariadicPack[False, _, MutCallable, *_]
 
@@ -74,12 +74,12 @@ struct SeriesTask[o: MutOrigin, //, *ts: MutCallable](MutCallable):
     var storage: MutCallablePack[Self.o, *Self.ts]
 
     fn __init__(
-        out self: SeriesTask[o = args.origin, *Self.ts], mut*args: * Self.ts
+        out self: SeriesTask[o = args.origin, *Self.ts], mut *args: * Self.ts
     ):
         self.storage = MutCallablePack(args._value)
 
     fn __call__(mut self):
-        alias size = variadic_size(Self.ts)
+        alias size = Variadic.size(Self.ts)
 
         @parameter
         for ci in range(size):
@@ -90,12 +90,12 @@ struct ParallelTask[o: MutOrigin, //, *ts: MutCallable](MutCallable):
     var storage: MutCallablePack[Self.o, *Self.ts]
 
     fn __init__(
-        out self: ParallelTask[o = args.origin, *Self.ts], mut*args: * Self.ts
+        out self: ParallelTask[o = args.origin, *Self.ts], mut *args: * Self.ts
     ):
         self.storage = MutCallablePack(args._value)
 
     fn __call__(mut self):
-        alias size = variadic_size(Self.ts)
+        alias size = Variadic.size(Self.ts)
 
         @parameter
         fn run_task(i: Int):

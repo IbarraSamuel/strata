@@ -1,20 +1,20 @@
 from runtime.asyncrt import TaskGroup
-from sys.intrinsics import _type_is_eq_parse_time, _type_is_eq
-from compile.reflection import get_type_name
-from builtin.rebind import downcast
+from sys.intrinsics import _type_is_eq_parse_time
+
 from builtin.variadics import (
-    Concatenated,
-    variadic_size,
-    VariadicOf,
-    MakeVariadic,
+    Variadic,
+    # Concatenated,
+    # variadic_size,
+    # VariadicOf,
+    # MakeVariadic,
     _MapVariadicAndIdxToType,
 )
-from sys import codegen_unreachable
 
+from sys import codegen_unreachable
 
 alias _TaskToResultMapper[*ts: Call, i: Int] = ts[i].O
 alias TaskMapResult[*element_types: Call] = _MapVariadicAndIdxToType[
-    To=Movable, Variadic=element_types, Mapper=_TaskToResultMapper
+    To=Movable, VariadicType=element_types, Mapper=_TaskToResultMapper
 ]
 
 alias _TaskToPtrMapper[o: ImmutOrigin, *ts: Call, i: Int] = Pointer[
@@ -24,7 +24,7 @@ alias TaskMapPtr[
     o: ImmutOrigin, *element_types: Call
 ] = _MapVariadicAndIdxToType[
     To=Movable,
-    Variadic=element_types,
+    VariadicType=element_types,
     Mapper = _TaskToPtrMapper[o],
 ]
 
@@ -41,7 +41,7 @@ trait Callable(Call):
     fn __rshift__[
         so: ImmutOrigin, oo: ImmutOrigin, o: Call, s: Call = Self
     ](ref [so]self, ref [oo]other: o) -> Sequence[
-        O1=so, O2=oo, T1=s, T2=o, MakeVariadic[s, o]
+        O1=so, O2=oo, T1=s, T2=o, Variadic.types[s, o]
     ] where _type_is_eq_parse_time[s.O, o.I]():
         # TODO: Fix rebind when this is properly handled by compiler.
         ref _self = rebind[s](self)
@@ -62,7 +62,7 @@ struct Sequence[
     O2: ImmutOrigin,
     T1: Call,
     T2: Call, //,
-    elements: VariadicOf[Call],
+    elements: Variadic.TypesOfTrait[Call],
 ](Call):
     alias I = Self.T1.I
     alias O = Self.T2.O
@@ -90,7 +90,7 @@ struct Sequence[
         O2=oo,
         T1=Self,
         T2 = type_of(other),
-        Concatenated[Self.elements, MakeVariadic[type_of(other)]],
+        Variadic.concat[Self.elements, Variadic.types[type_of(other)]],
     ] where _type_is_eq_parse_time[Self.T2.O, type_of(other).I]():
         return {self, other}
 
@@ -137,27 +137,31 @@ struct Parallel[origin: ImmutOrigin, //, *elements: Call](Call):
         # TODO: Add hints before if possible.
         # Check that all in types should be the same
         @parameter
-        for i in range(variadic_size(Self.elements) - 1):
+        for i in range(Variadic.size(Self.elements) - 1):
             alias t1 = Self.elements[i].I
             alias t2 = Self.elements[i + 1].I
-            codegen_unreachable[
-                not _type_is_eq[t1, t2](),
-                (
-                    "All `Call.I` types should be equal for all parallel"
-                    " elements. "
-                ),
-                get_type_name[t1](),
-                " vs ",
-                get_type_name[t2](),
-                ".",
-            ]()
+            __comptime_assert _type_is_eq_parse_time[
+                t1, t2
+            ](), "all input types should be equal"
+            # codegen_unreachable[
+            #     not _type_is_eq[t1, t2](),
+            #     (
+            #         "All `Call.I` types should be equal for all parallel"
+            #         " elements. "
+            #     ),
+            #     get_type_name[t1](),
+            #     " vs ",
+            #     get_type_name[t2](),
+            #     ".",
+            # ]()
 
         @parameter
-        for i in range(variadic_size(Self.elements)):
+        for i in range(Variadic.size(Self.elements)):
             alias ti = type_of(self.tasks[i])
             self.tasks[i] = rebind_var[ti](Pointer(to=callables[i]))
 
     fn __call__(self, v: Self.I) -> Self.O:
+        # Assume all tasks has the same input type.
         var tg = TaskGroup()
         var _out_tp: Self.O
 
@@ -166,7 +170,7 @@ struct Parallel[origin: ImmutOrigin, //, *elements: Call](Call):
         )
 
         @parameter
-        for i in range(variadic_size(Self.elements)):
+        for i in range(Variadic.size(Self.elements)):
 
             @parameter
             async fn task():
@@ -192,7 +196,7 @@ struct Parallel[origin: ImmutOrigin, //, *elements: Call](Call):
         O2=oo,
         T1=Self,
         T2=o,
-        elements = MakeVariadic[downcast[Call, Self], o],
+        elements = Variadic.types[T=Call, Self, o],
     ] where _type_is_eq_parse_time[Self.O, o.I]():
         return {self, other}
 
@@ -203,7 +207,7 @@ struct Parallel[origin: ImmutOrigin, //, *elements: Call](Call):
         ref [oo]other: o,
         out final: Parallel[
             origin = origin_of(Self.origin, oo),
-            *Concatenated[Self.elements, MakeVariadic[o]],
+            *Variadic.concat[Self.elements, Variadic.types[o]],
         ],
     ) where _type_is_eq_parse_time[Self.I, o.I]():
         __mlir_op.`lit.ownership.mark_initialized`(

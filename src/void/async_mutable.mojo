@@ -6,19 +6,18 @@ trait AsyncCallable:
         ...
 
     fn __add__[
-        s: MutOrigin,
-        o: MutOrigin,
+        s: MutOrigin, o: MutOrigin
     ](ref [s]self, ref [o]other: Some[AsyncCallable]) -> ParTaskPair[
         TaskRef[Self, s], TaskRef[type_of(other), o]
     ]:
-        return {self, other}
+        return {TaskRef(self), TaskRef(other)}
 
     fn __add__[
         s: MutOrigin,
     ](ref [s]self, var other: Some[AsyncCallable & Movable]) -> ParTaskPair[
         TaskRef[Self, s], type_of(other)
     ]:
-        return {self, other^}
+        return {TaskRef(self), other^}
 
     fn __rshift__[
         s: MutOrigin,
@@ -26,14 +25,14 @@ trait AsyncCallable:
     ](ref [s]self, ref [o]other: Some[AsyncCallable]) -> SerTaskPair[
         TaskRef[Self, s], TaskRef[type_of(other), o]
     ]:
-        return {self, other}
+        return {TaskRef(self), TaskRef(other)}
 
     fn __rshift__[
         s: MutOrigin,
     ](ref [s]self, var other: Some[AsyncCallable & Movable]) -> SerTaskPair[
         TaskRef[Self, s], type_of(other)
     ]:
-        return {self, other^}
+        return {TaskRef(self), other^}
 
 
 trait AsyncCallableMovable(AsyncCallable, Movable):
@@ -42,7 +41,7 @@ trait AsyncCallableMovable(AsyncCallable, Movable):
     ](var self, ref [o]other: Some[AsyncCallable]) -> ParTaskPair[
         Self, TaskRef[type_of(other), o]
     ]:
-        return {self^, other}
+        return {self^, TaskRef(other)}
 
     fn __add__[](
         var self, var other: Some[AsyncCallable & Movable]
@@ -54,7 +53,7 @@ trait AsyncCallableMovable(AsyncCallable, Movable):
     ](var self, ref [o]other: Some[AsyncCallable]) -> SerTaskPair[
         Self, TaskRef[type_of(other), o]
     ]:
-        return {self^, other}
+        return {self^, TaskRef(other)}
 
     fn __rshift__(
         var self, var other: Some[AsyncCallable & Movable]
@@ -65,7 +64,7 @@ trait AsyncCallableMovable(AsyncCallable, Movable):
 struct TaskRef[T: AsyncCallable, origin: MutOrigin](AsyncCallableMovable):
     var v: Pointer[Self.T, Self.origin]
 
-    @implicit
+    # @implicit
     fn __init__(out self, ref [Self.origin]v: Self.T):
         self.v = Pointer(to=v)
 
