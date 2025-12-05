@@ -1,16 +1,17 @@
 from runtime.asyncrt import Task, TaskGroup
 from sys.intrinsics import _type_is_eq_parse_time
+from builtin import Variadic
 from builtin.variadics import (
     _MapVariadicAndIdxToType,
-    variadic_size,
-    Concatenated,
-    VariadicOf,
-    MakeVariadic,
+    # variadic_size,
+    # Concatenated,
+    # VariadicOf,
+    # MakeVariadic,
 )
 
 alias _TaskToResultMapper[*ts: FnTrait, i: Int] = ts[i].O
 alias TaskMapResult[*element_types: FnTrait] = _MapVariadicAndIdxToType[
-    To=Movable, Variadic=element_types, Mapper=_TaskToResultMapper
+    To=Movable, VariadicType=element_types, Mapper=_TaskToResultMapper
 ]
 
 
@@ -36,7 +37,7 @@ fn par_fns[
     __mlir_op.`lit.ownership.mark_initialized`(__get_mvalue_as_litref(outs))
 
     @parameter
-    for ci in range(variadic_size(fns)):
+    for ci in range(Variadic.size(fns)):
 
         @parameter
         async fn task():
@@ -61,8 +62,8 @@ struct Fns[*fns: FnTrait]():
     @always_inline("builtin")
     fn __add__(
         self, other: Fn[i = Self.i]
-    ) -> Fns[*Concatenated[Self.fns, MakeVariadic[Fn[other.F]]]]:
-        return Fns[*Concatenated[Self.fns, MakeVariadic[Fn[other.F]]]]()
+    ) -> Fns[*Variadic.concat[Self.fns, Variadic.types[Fn[other.F]]]]:
+        return Fns[*Variadic.concat[Self.fns, Variadic.types[Fn[other.F]]]]()
 
     @always_inline("builtin")
     fn __rshift__(self, other: Fn[i = Self.o]) -> Fn[seq_fn[Self.F, other.F]]:
