@@ -1,13 +1,6 @@
 from runtime.asyncrt import Task, TaskGroup
 from sys.intrinsics import _type_is_eq_parse_time
-from builtin import Variadic
-from builtin.variadics import (
-    _MapVariadicAndIdxToType,
-    # variadic_size,
-    # Concatenated,
-    # VariadicOf,
-    # MakeVariadic,
-)
+from builtin.variadics import Variadic, _MapVariadicAndIdxToType
 
 alias _TaskToResultMapper[*ts: FnTrait, i: Int] = ts[i].O
 alias TaskMapResult[*element_types: FnTrait] = _MapVariadicAndIdxToType[
@@ -21,14 +14,14 @@ trait FnTrait(Movable):
     comptime F: fn (Self.I) -> Self.O
 
 
-# @always_inline("nodebug")
+@always_inline("nodebug")
 fn seq_fn[
     In: AnyType, M: AnyType, O: AnyType, //, f: fn (In) -> M, l: fn (M) -> O
 ](val: In) -> O:
     return l(f(val))
 
 
-# @always_inline("nodebug")
+@always_inline("nodebug")
 fn par_fns[
     In: AnyType, *fns: FnTrait
 ](val: In, out outs: Tuple[*TaskMapResult[*fns]]):

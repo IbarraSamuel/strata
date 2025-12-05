@@ -1,6 +1,6 @@
 from strata import generic
 from strata.generic import compt
-from strata.void import immutable, mutable, type
+from strata.void import immutable, mutable, type, async_immutable, async_mutable
 from testing import TestSuite, assert_true, assert_equal
 from time import monotonic, sleep
 
@@ -603,6 +603,32 @@ fn test_type_examples() raises:
     )
     print("[Airflow Graph]...")
     airflow_graph.__call__()
+
+
+@fieldwise_init
+struct ATask(async_immutable.AsyncCallable):
+    async fn __call__(self):
+        sleep(TIME)
+        # print("hello")
+
+
+@fieldwise_init
+struct ATask2(async_immutable.AsyncCallable):
+    async fn __call__(self):
+        sleep(TIME)
+        # print("world")
+
+
+fn test_immutable() raises:
+    var graph = (
+        ATask()
+        >> ATask()
+        >> ATask()
+        >> ATask2() + ATask2() + ATask2()
+        >> ATask()
+        >> ATask()
+    )
+    graph.run()
 
 
 fn main() raises:

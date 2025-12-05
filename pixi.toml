@@ -34,25 +34,23 @@ strata = { path = "." }
 build_package = "mojo package src/ -o package/strata.mojopkg"
 
 # Python Build
-build_old_python_package = "mojo build src/python_interop_old.mojo --emit shared-lib -o package/old_mojo_strata.so"
-build_python_package = "mojo build src/python_interop.mojo --emit shared-lib -o package/mojo_strata.so"
-prepare_python = { cmd = "mv package/*mojo_strata.so python/src/strata/", depends-on = [
-    "build_python_package",
-    "build_old_python_package",
-] }
+# build_old_python_package = "mojo build src/interop/python_interop_old.mojo --emit shared-lib -o package/old_mojo_strata.so"
+build_mojo_python = "mojo build src/interop/python_interop.mojo --emit shared-lib -o package/mojo_strata.so"
+prepare_python = { cmd = "mv package/*mojo_strata.so python/src/strata/", depends-on = ["build_mojo_python"] }
 
 # All
 build_all = { depends-on = ["build_package", "build_old_python_package", "build_python_package"] }
 
 # Examples
-async_immutable_task_examples = "mojo examples/async_immutable_task_examples.mojo"
 async_mutable_task_examples = "mojo examples/async_mutable_task_examples.mojo"
 generic_async_examples = "mojo examples/generic_async_examples.mojo"
 
 # Testing
 test_runners = {cmd = "mojo run tests/test_runners.mojo"}
-test_docs = {cmd = "mojo run tests/test_docs_completeness.mojo"}
 python_test = {cmd = "cd python && uv run --group test pytest && cd ..", depends-on = ["prepare_python"] }
+
+# Docs completeness
+test_docs = {cmd = "mojo run tests/test_docs_completeness.mojo"}
 
 tests = { depends-on = ["runners", "python_test"] }  #, "test_docs"] }
 
