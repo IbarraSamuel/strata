@@ -52,5 +52,5 @@ python_test = {cmd = "cd python && uv run --group test pytest && cd ..", depends
 # Docs completeness
 test_docs = {cmd = "mojo run tests/test_docs_completeness.mojo"}
 
-tests = { depends-on = ["runners", "python_test"] }  #, "test_docs"] }
+tests = { depends-on = ["test_runners", "python_test"] }  #, "test_docs"] }
 
