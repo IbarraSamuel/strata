@@ -2,7 +2,7 @@ from strata.generic_async import Fn
 import os
 from time import sleep
 
-alias time = 0.1
+comptime time = 0.1
 
 
 async fn string_to_int(str: String) -> Int:
@@ -36,8 +36,8 @@ async fn sum_tuple(value: Tuple[Int, Float32]) -> Float32:
 struct FloatToString:
     """Just an example of a struct that conforms to callable."""
 
-    alias I = Float32
-    alias O = String
+    comptime I = Float32
+    comptime O = String
 
     @staticmethod
     async fn call(value: Self.I) -> Self.O:
@@ -54,7 +54,7 @@ fn main():
 
     # Functions need to be wrapped in a Fn struct.
     # Structs could give any @staticmehtod to be wrapped in a Fn struct.
-    alias final_graph = (
+    comptime final_graph = (
         Fn[string_to_int]()
         >> Fn[int_mul[2]]() + Fn[int_to_float]()
         >> Fn[sum_tuple]()

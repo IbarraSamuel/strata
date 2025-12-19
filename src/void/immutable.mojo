@@ -1,7 +1,7 @@
 from algorithm import sync_parallelize
 from builtin import Variadic
 
-alias CallablePack = VariadicPack[
+comptime CallablePack = VariadicPack[
     is_owned=False, origin=_, element_trait=ImmutCallable, element_types=*_
 ]
 
@@ -118,7 +118,7 @@ struct ParallelTask[origin: ImmutOrigin, //, *Ts: ImmutCallable](
 
     fn __call__(self):
         """This function executes all tasks at the same time."""
-        alias size = Variadic.size(Self.Ts)
+        comptime size = Variadic.size(Self.Ts)
 
         @parameter
         fn exec(i: Int):
@@ -159,7 +159,7 @@ struct SequentialTask[origin: ImmutOrigin, //, *Ts: ImmutCallable](
 
     fn __call__(self):
         """This function executes all tasks in ordered sequence."""
-        alias size = Variadic.size(Self.Ts)
+        comptime size = Variadic.size(Self.Ts)
         @parameter
         for ci in range(size):
             self.callables[ci].__call__()

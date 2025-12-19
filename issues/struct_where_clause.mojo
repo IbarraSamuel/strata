@@ -2,12 +2,12 @@ from sys.intrinsics import _type_is_eq_parse_time
 
 
 trait C:
-    alias I: AnyType
+    comptime I: AnyType
 
 
 @fieldwise_init
 struct Ser[c1: C, c2: C where _type_is_eq_parse_time[c1.I, c2.I]()](C):
-    alias I = Self.c1.I
+    comptime I = Self.c1.I
 
     fn some_method[
         o: C where _type_is_eq_parse_time[Self.I, o.I]()
@@ -16,7 +16,7 @@ struct Ser[c1: C, c2: C where _type_is_eq_parse_time[c1.I, c2.I]()](C):
 
 
 struct C1(C):
-    alias I = Int
+    comptime I = Int
 
 
 fn main():

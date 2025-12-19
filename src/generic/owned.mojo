@@ -1,6 +1,6 @@
 # trait OwnCall:
-#     alias I: AnyType
-#     alias O: Movable
+#     comptime I: AnyType
+#     comptime O: Movable
 
 #     fn __call__(self, var arg: Self.I) -> Self.O:
 #         ...
@@ -16,8 +16,8 @@
 #         ref _self = rebind[s](self)
 #         return {_self, other}
 # trait OwnCall:
-#     alias I: AnyType
-#     alias O: Movable
+#     comptime I: AnyType
+#     comptime O: Movable
 
 #     fn __call__(self, var arg: Self.I) -> Self.O:
 #         ...

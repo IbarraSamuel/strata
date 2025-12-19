@@ -12,15 +12,15 @@ from builtin.variadics import (
 
 from sys import codegen_unreachable
 
-alias _TaskToResultMapper[*ts: Call, i: Int] = ts[i].O
-alias TaskMapResult[*element_types: Call] = _MapVariadicAndIdxToType[
+comptime _TaskToResultMapper[*ts: Call, i: Int] = ts[i].O
+comptime TaskMapResult[*element_types: Call] = _MapVariadicAndIdxToType[
     To=Movable, VariadicType=element_types, Mapper=_TaskToResultMapper
 ]
 
-alias _TaskToPtrMapper[o: ImmutOrigin, *ts: Call, i: Int] = Pointer[
+comptime _TaskToPtrMapper[o: ImmutOrigin, *ts: Call, i: Int] = Pointer[
     ts[i], origin=o
 ]
-alias TaskMapPtr[
+comptime TaskMapPtr[
     o: ImmutOrigin, *element_types: Call
 ] = _MapVariadicAndIdxToType[
     To=Movable,
@@ -30,8 +30,8 @@ alias TaskMapPtr[
 
 
 trait Call:
-    alias I: AnyType
-    alias O: Movable
+    comptime I: AnyType
+    comptime O: Movable
 
     fn __call__(self, arg: Self.I) -> Self.O:
         ...
@@ -61,11 +61,12 @@ struct Sequence[
     O1: ImmutOrigin,
     O2: ImmutOrigin,
     T1: Call,
-    T2: Call, //,
+    T2: Call,
+    //,
     elements: Variadic.TypesOfTrait[Call],
 ](Call):
-    alias I = Self.T1.I
-    alias O = Self.T2.O
+    comptime I = Self.T1.I
+    comptime O = Self.T2.O
 
     var t1: Pointer[Self.T1, Self.O1]
     var t2: Pointer[Self.T2, Self.O2]
@@ -104,9 +105,9 @@ struct Sequence[
 
 
 struct Parallel[origin: ImmutOrigin, //, *elements: Call](Call):
-    alias I = Self.elements[0].I
-    alias O = Tuple[*TaskMapResult[*Self.elements]]
-    alias Tasks = Tuple[*TaskMapPtr[Self.origin, *Self.elements]]
+    comptime I = Self.elements[0].I
+    comptime O = Tuple[*TaskMapResult[*Self.elements]]
+    comptime Tasks = Tuple[*TaskMapPtr[Self.origin, *Self.elements]]
 
     var tasks: Self.Tasks
 
@@ -138,8 +139,8 @@ struct Parallel[origin: ImmutOrigin, //, *elements: Call](Call):
         # Check that all in types should be the same
         @parameter
         for i in range(Variadic.size(Self.elements) - 1):
-            alias t1 = Self.elements[i].I
-            alias t2 = Self.elements[i + 1].I
+            comptime t1 = Self.elements[i].I
+            comptime t2 = Self.elements[i + 1].I
             __comptime_assert _type_is_eq_parse_time[
                 t1, t2
             ](), "all input types should be equal"
@@ -157,7 +158,7 @@ struct Parallel[origin: ImmutOrigin, //, *elements: Call](Call):
 
         @parameter
         for i in range(Variadic.size(Self.elements)):
-            alias ti = type_of(self.tasks[i])
+            comptime ti = type_of(self.tasks[i])
             self.tasks[i] = rebind_var[ti](Pointer(to=callables[i]))
 
     fn __call__(self, v: Self.I) -> Self.O:
@@ -174,7 +175,7 @@ struct Parallel[origin: ImmutOrigin, //, *elements: Call](Call):
 
             @parameter
             async fn task():
-                alias to = Self.O.element_types[i]
+                comptime to = Self.O.element_types[i]
                 ref task_i = rebind[
                     Pointer[
                         Self.elements[i],
@@ -221,8 +222,8 @@ struct Parallel[origin: ImmutOrigin, //, *elements: Call](Call):
 
 @fieldwise_init("implicit")
 struct Fn[In: AnyType, Out: Movable](Callable, Movable):
-    alias I = Self.In
-    alias O = Self.Out
+    comptime I = Self.In
+    comptime O = Self.Out
 
     var func: fn (Self.In) -> Self.Out
 

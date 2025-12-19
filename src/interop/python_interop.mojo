@@ -25,9 +25,9 @@ fn PyInit_mojo_strata() -> PythonObject:
 
 
 struct TaskGroup(Movable, Representable):
-    alias undefined = TaskGroup(-1)
-    alias Serial = TaskGroup(0)
-    alias Parallel = TaskGroup(1)
+    comptime undefined = TaskGroup(-1)
+    comptime Serial = TaskGroup(0)
+    comptime Parallel = TaskGroup(1)
 
     var mode: Int
     var objects: List[PythonObject]
@@ -148,7 +148,7 @@ struct TaskGroup(Movable, Representable):
 
     @staticmethod
     fn py_init(out self: Self, args: PythonObject, kwargs: PythonObject) raises:
-        self = Self(task=kwargs["task"])
+        self = Self(task=kwargs[PythonObject("task")])
 
     @staticmethod
     fn add_task(
@@ -167,3 +167,4 @@ struct TaskGroup(Movable, Representable):
         self_ptr: UnsafePointer[Self, MutAnyOrigin], v: PythonObject
     ) raises -> PythonObject:
         return self_ptr[]._call(v)
+

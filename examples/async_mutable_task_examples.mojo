@@ -1,7 +1,7 @@
 from strata.async_mutable_task import AsyncCallable, TaskRef
 from time import sleep
 
-alias time = 0.1
+comptime time = 0.1
 
 
 struct MyTask[job: StringLiteral](AsyncCallable):
