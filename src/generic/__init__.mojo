@@ -14,7 +14,7 @@ from sys import codegen_unreachable
 
 comptime _TaskToResultMapper[*ts: Call, i: Int] = ts[i].O
 comptime TaskMapResult[*element_types: Call] = _MapVariadicAndIdxToType[
-    To=Movable, VariadicType=element_types, Mapper=_TaskToResultMapper
+    To=Movable & ImplicitlyDestructible, VariadicType=element_types, Mapper=_TaskToResultMapper
 ]
 
 comptime _TaskToPtrMapper[o: ImmutOrigin, *ts: Call, i: Int] = Pointer[
@@ -23,7 +23,7 @@ comptime _TaskToPtrMapper[o: ImmutOrigin, *ts: Call, i: Int] = Pointer[
 comptime TaskMapPtr[
     o: ImmutOrigin, *element_types: Call
 ] = _MapVariadicAndIdxToType[
-    To=Movable,
+    To=Movable & ImplicitlyDestructible,
     VariadicType=element_types,
     Mapper = _TaskToPtrMapper[o],
 ]
@@ -31,7 +31,7 @@ comptime TaskMapPtr[
 
 trait Call:
     comptime I: AnyType
-    comptime O: Movable
+    comptime O: Movable & ImplicitlyDestructible
 
     fn __call__(self, arg: Self.I) -> Self.O:
         ...
@@ -221,7 +221,7 @@ struct Parallel[origin: ImmutOrigin, //, *elements: Call](Call):
 
 
 @fieldwise_init("implicit")
-struct Fn[In: AnyType, Out: Movable](Callable, Movable):
+struct Fn[In: AnyType, Out: Movable & ImplicitlyDestructible](Callable, Movable):
     comptime I = Self.In
     comptime O = Self.Out
 
