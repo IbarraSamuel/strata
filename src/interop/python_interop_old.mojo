@@ -36,7 +36,7 @@ fn PyInit_old_mojo_strata() -> PythonObject:
 
 
 trait PythonCallable:
-    alias S: AnyType
+    comptime S: AnyType
 
     @staticmethod
     def __call__(
@@ -45,12 +45,12 @@ trait PythonCallable:
         ...
 
 
-alias PythonTask = PythonCallable & Representable & Movable
+comptime PythonTask = PythonCallable & Representable & Movable
 
 
 # Question: It is possible to initialize with something else than default?
 struct PyTask(PythonTask):
-    alias S = Self
+    comptime S = Self
     var inner: PythonObject
 
     fn __init__(out self, inner: PythonObject):
@@ -71,7 +71,7 @@ struct PyTask(PythonTask):
                     "Please use `inner` as kwarg.",
                 )
             )
-        self = Self(inner=kwargs["inner"])
+        self = Self(inner=kwargs[PythonObject("inner")])
 
     @staticmethod
     def __call__(
@@ -81,7 +81,7 @@ struct PyTask(PythonTask):
 
 
 struct PyParallelTask(PythonTask):
-    alias S = Self
+    comptime S = Self
     var task_1: PythonObject
     var task_2: PythonObject
 
@@ -110,7 +110,10 @@ struct PyParallelTask(PythonTask):
                     "Please use `task_1` and `task_2` as kwargs.",
                 )
             )
-        self = Self(task_1=kwargs["task_1"], task_2=kwargs["task_2"])
+        self = Self(
+            task_1=kwargs[PythonObject("task_1")],
+            task_2=kwargs[PythonObject("task_2")],
+        )
 
     @staticmethod
     def __call__(
@@ -136,7 +139,7 @@ struct PyParallelTask(PythonTask):
 
 
 struct PySerialTask(PythonTask):
-    alias S = Self
+    comptime S = Self
     var task_1: PythonObject
     var task_2: PythonObject
 
@@ -165,7 +168,10 @@ struct PySerialTask(PythonTask):
                     "Please use `task_1` and `task_2` as kwargs.",
                 )
             )
-        self = Self(task_1=kwargs["task_1"], task_2=kwargs["task_2"])
+        self = Self(
+            task_1=kwargs[PythonObject("task_1")],
+            task_2=kwargs[PythonObject("task_2")],
+        )
 
     @staticmethod
     def __call__(

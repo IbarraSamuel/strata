@@ -2,8 +2,8 @@ from runtime.asyncrt import Task, TaskGroup
 from sys.intrinsics import _type_is_eq_parse_time
 from builtin.variadics import Variadic, _MapVariadicAndIdxToType
 
-alias _TaskToResultMapper[*ts: FnTrait, i: Int] = ts[i].O
-alias TaskMapResult[*element_types: FnTrait] = _MapVariadicAndIdxToType[
+comptime _TaskToResultMapper[*ts: FnTrait, i: Int] = ts[i].O
+comptime TaskMapResult[*element_types: FnTrait] = _MapVariadicAndIdxToType[
     To=Movable, VariadicType=element_types, Mapper=_TaskToResultMapper
 ]
 
@@ -44,9 +44,9 @@ fn par_fns[
 
 @register_passable("trivial")
 struct Fns[*fns: FnTrait]():
-    alias i = Self.fns[0].I
-    alias o = Tuple[*TaskMapResult[*Self.fns]]
-    alias F = par_fns[Self.i, *Self.fns]
+    comptime i = Self.fns[0].I
+    comptime o = Tuple[*TaskMapResult[*Self.fns]]
+    comptime F = par_fns[Self.i, *Self.fns]
 
     @always_inline("builtin")
     fn __init__(out self):
@@ -73,9 +73,9 @@ struct Fns[*fns: FnTrait]():
 
 @register_passable("trivial")
 struct Fn[i: AnyType, o: Movable, //, f: fn (i) -> o](FnTrait):
-    alias I = Self.i
-    alias O = Self.o
-    alias F = Self.f
+    comptime I = Self.i
+    comptime O = Self.o
+    comptime F = Self.f
 
     @always_inline("builtin")
     fn __init__(out self):

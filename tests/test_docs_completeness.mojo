@@ -2,7 +2,7 @@ from pathlib import _dir_of_current_file, Path
 from algorithm import sync_parallelize
 import subprocess
 
-alias CMD = "mojo doc --diagnose-missing-doc-strings --validate-doc-strings {}"
+comptime CMD = "mojo doc --diagnose-missing-doc-strings --validate-doc-strings {}"
 
 
 fn _flatten_files(var path: Path, mut files: List[Path]) raises:

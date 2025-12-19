@@ -8,8 +8,8 @@ comptime TIME = 0.1
 
 
 struct GenericParallel(generic.Callable):
-    alias I = Int
-    alias O = NoneType
+    comptime I = Int
+    comptime O = NoneType
 
     var start: UnsafePointer[UInt, MutAnyOrigin]
     var end: UnsafePointer[UInt, MutAnyOrigin]
@@ -105,8 +105,8 @@ fn float_to_string(value: Float32) -> String:
 # Struct Versions
 @fieldwise_init
 struct StringToIntTask(generic.Callable):
-    alias I = String
-    alias O = Int
+    comptime I = String
+    comptime O = Int
 
     fn __call__(self, arg: Self.I) -> Self.O:
         print("string to int...")
@@ -119,8 +119,8 @@ struct StringToIntTask(generic.Callable):
 
 @fieldwise_init
 struct IntToFloatTask(generic.Callable):
-    alias I = Int
-    alias O = Float32
+    comptime I = Int
+    comptime O = Float32
 
     fn __call__(self, arg: Int) -> Float32:
         print("int to float...")
@@ -130,8 +130,8 @@ struct IntToFloatTask(generic.Callable):
 
 @fieldwise_init
 struct IntMulTask[by: Int](generic.Callable):
-    alias I = Int
-    alias O = Int
+    comptime I = Int
+    comptime O = Int
 
     fn __call__(self, arg: Self.I) -> Self.O:
         print("Mutliply by", Self.by, "...")
@@ -141,8 +141,8 @@ struct IntMulTask[by: Int](generic.Callable):
 
 @fieldwise_init
 struct SumTuple(generic.Callable):
-    alias I = Tuple[Int, Float32, Int]
-    alias O = Float32
+    comptime I = Tuple[Int, Float32, Int]
+    comptime O = Float32
 
     fn __call__(self, arg: Self.I) -> Self.O:
         print("Sum tuple...")
@@ -152,8 +152,8 @@ struct SumTuple(generic.Callable):
 
 @fieldwise_init
 struct FloatToStringTask(generic.Callable):
-    alias I = Float32
-    alias O = String
+    comptime I = Float32
+    comptime O = String
 
     fn __call__(self, arg: Float32) -> String:
         print("float to string...")
@@ -278,23 +278,23 @@ fn test_generic_comptime_examples() raises:
     print("Building graph")
 
     comptime Fn = compt.Fn
-    alias f1 = Fn[string_to_int]()
-    alias f21 = Fn[int_mul[2]]()
-    alias f22 = Fn[int_to_float]()
-    alias f23 = Fn[int_mul[3]]()
-    alias sumtp = Fn[sum_tuple_g]()
-    alias fts = Fn[FloatToString.call]()
+    comptime f1 = Fn[string_to_int]()
+    comptime f21 = Fn[int_mul[2]]()
+    comptime f22 = Fn[int_to_float]()
+    comptime f23 = Fn[int_mul[3]]()
+    comptime sumtp = Fn[sum_tuple_g]()
+    comptime fts = Fn[FloatToString.call]()
 
-    alias parpp = f21 + f22
-    alias pargp = parpp + f23
-    alias runpar = f1 >> pargp
-    alias cnct = runpar >> sumtp
-    alias final_g = cnct >> fts
+    comptime parpp = f21 + f22
+    comptime pargp = parpp + f23
+    comptime runpar = f1 >> pargp
+    comptime cnct = runpar >> sumtp
+    comptime final_g = cnct >> fts
 
     var final_result_f = final_g.F("32")
-    print("final result all aliased:", final_result_f)
+    print("final result all comptimeed:", final_result_f)
 
-    alias final_graph = (
+    comptime final_graph = (
         Fn[string_to_int]()
         >> Fn[int_mul[2]]() + Fn[int_to_float_t]() + Fn[int_mul[3]]()
         >> Fn[sum_tuple3]()
@@ -531,8 +531,8 @@ fn test_mut_examples() raises:
 
     # mutable_type_graph()
 
-    alias ST = mutable.SeriesTask
-    alias PT = mutable.ParallelTask
+    comptime ST = mutable.SeriesTask
+    comptime PT = mutable.ParallelTask
 
     task1 = InitTask["first"](0)
     task2 = InitTask["second"](0)
@@ -576,15 +576,15 @@ fn test_type_examples() raises:
     comptime SD = type.SeriesTypeTask
     comptime PD = type.ParallelTypeTask
 
-    alias Initialize = MyTypeTask["Initialize"]
-    alias LoadData = MyTypeTask["LoadData"]
-    alias FindMin = MyTypeTask["FindMin"]
-    alias FindMax = MyTypeTask["FindMax"]
-    alias FindMean = MyTypeTask["FindMean"]
-    alias FindMedian = MyTypeTask["FindMedian"]
-    alias MergeResults = MyTypeTask["MergeResults"]
+    comptime Initialize = MyTypeTask["Initialize"]
+    comptime LoadData = MyTypeTask["LoadData"]
+    comptime FindMin = MyTypeTask["FindMin"]
+    comptime FindMax = MyTypeTask["FindMax"]
+    comptime FindMean = MyTypeTask["FindMean"]
+    comptime FindMedian = MyTypeTask["FindMedian"]
+    comptime MergeResults = MyTypeTask["MergeResults"]
 
-    alias TypesGraph = SD[
+    comptime TypesGraph = SD[
         Initialize,
         LoadData,
         PD[FindMin, FindMax, FindMean, FindMedian],
@@ -595,7 +595,7 @@ fn test_type_examples() raises:
 
     # # Airflow Syntax.
 
-    alias airflow_graph = (
+    comptime airflow_graph = (
         Initialize()
         >> LoadData()
         >> FindMin() + FindMax() + FindMean() + FindMedian()

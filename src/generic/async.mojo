@@ -1,19 +1,20 @@
 from runtime.asyncrt import _run, create_task
+from runtime.asyncrt import TaskGroup
 
 
-# @always_inline("nodebug")
+@always_inline("nodebug")
 async fn seq_fn[
-    In: AnyType, Om: AnyType, O: AnyType, //, f:
+    In: AnyType, Om: ImplicitlyDestructible, O: ImplicitlyDestructible, //, f:
     async fn (In) -> Om, l:
     async fn (Om) -> O,
 ](val: In) -> O:
-    r1 = await f(val)
+    ref r1 = await f(val)
     return await l(r1)
 
 
-# @always_inline("nodebug")
+@always_inline("nodebug")
 async fn par_fn[
-    In: AnyType, O1: Copyable & Movable, O2: Copyable & Movable, //, f:
+    In: AnyType, O1: Copyable & ImplicitlyDestructible, O2: Copyable & ImplicitlyDestructible, //, f:
     async fn (In) -> O1, l:
     async fn (In) -> O2,
 ](val: In) -> Tuple[O1, O2]:
