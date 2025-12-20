@@ -1,4 +1,4 @@
-from strata.generic_async import Fn
+from strata.generic.async_fn import Fn
 import os
 from time import sleep
 
