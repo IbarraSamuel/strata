@@ -3,10 +3,6 @@ from sys.intrinsics import _type_is_eq_parse_time
 
 from builtin.variadics import (
     Variadic,
-    # Concatenated,
-    # variadic_size,
-    # VariadicOf,
-    # MakeVariadic,
     _MapVariadicAndIdxToType,
 )
 
@@ -14,7 +10,9 @@ from sys import codegen_unreachable
 
 comptime _TaskToResultMapper[*ts: Call, i: Int] = ts[i].O
 comptime TaskMapResult[*element_types: Call] = _MapVariadicAndIdxToType[
-    To=Movable & ImplicitlyDestructible, VariadicType=element_types, Mapper=_TaskToResultMapper
+    To = Movable & ImplicitlyDestructible,
+    VariadicType=element_types,
+    Mapper=_TaskToResultMapper,
 ]
 
 comptime _TaskToPtrMapper[o: ImmutOrigin, *ts: Call, i: Int] = Pointer[
@@ -23,7 +21,7 @@ comptime _TaskToPtrMapper[o: ImmutOrigin, *ts: Call, i: Int] = Pointer[
 comptime TaskMapPtr[
     o: ImmutOrigin, *element_types: Call
 ] = _MapVariadicAndIdxToType[
-    To=Movable & ImplicitlyDestructible,
+    To = Movable & ImplicitlyDestructible,
     VariadicType=element_types,
     Mapper = _TaskToPtrMapper[o],
 ]
@@ -221,7 +219,9 @@ struct Parallel[origin: ImmutOrigin, //, *elements: Call](Call):
 
 
 @fieldwise_init("implicit")
-struct Fn[In: AnyType, Out: Movable & ImplicitlyDestructible](Callable, Movable):
+struct Fn[In: AnyType, Out: Movable & ImplicitlyDestructible](
+    Callable, Movable
+):
     comptime I = Self.In
     comptime O = Self.Out
 
