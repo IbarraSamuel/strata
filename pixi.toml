@@ -7,7 +7,6 @@ channels = [
     "https://prefix.dev/conda-forge",
 ]
 
-
 [package]
 name = "strata"
 version = "0.0.1"
