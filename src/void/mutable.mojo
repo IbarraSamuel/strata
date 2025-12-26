@@ -1,7 +1,9 @@
 from algorithm import sync_parallelize
 from builtin import Variadic
 
-comptime MutCallablePack = VariadicPack[False, _, MutCallable, *_]
+comptime MutCallablePack = VariadicPack[
+    elt_is_mutable=True, origin=_, False, MutCallable, *_
+]
 
 
 trait _Callable:
@@ -71,7 +73,7 @@ trait _MovableMutCallable(Movable, _Callable):
 
 
 struct SeriesTask[o: MutOrigin, //, *ts: MutCallable](MutCallable):
-    var storage: MutCallablePack[Self.o, *Self.ts]
+    var storage: MutCallablePack[origin = Self.o, *Self.ts]
 
     fn __init__(
         out self: SeriesTask[o = args.origin, *Self.ts], mut *args: * Self.ts
@@ -87,7 +89,7 @@ struct SeriesTask[o: MutOrigin, //, *ts: MutCallable](MutCallable):
 
 
 struct ParallelTask[o: MutOrigin, //, *ts: MutCallable](MutCallable):
-    var storage: MutCallablePack[Self.o, *Self.ts]
+    var storage: MutCallablePack[origin = Self.o, *Self.ts]
 
     fn __init__(
         out self: ParallelTask[o = args.origin, *Self.ts], mut *args: * Self.ts

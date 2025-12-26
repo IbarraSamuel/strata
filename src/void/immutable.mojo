@@ -2,7 +2,7 @@ from algorithm import sync_parallelize
 from builtin import Variadic
 
 comptime CallablePack = VariadicPack[
-    is_owned=False, origin=_, element_trait=ImmutCallable, element_types=*_
+    elt_is_mutable=False, origin=_, False, ImmutCallable, *_
 ]
 
 
@@ -15,9 +15,7 @@ trait ImmutCallable:
     @always_inline("nodebug")
     fn __add__[
         s: ImmutOrigin, o: ImmutOrigin, t: ImmutCallable, //
-    ](ref [s]self, ref [o]other: t) -> ParallelTaskPairRef[
-        o1=s, o2=o, Self, t
-    ]:
+    ](ref [s]self, ref [o]other: t) -> ParallelTaskPairRef[o1=s, o2=o, Self, t]:
         return {self, other}
 
     @always_inline("nodebug")
@@ -46,7 +44,8 @@ struct Fn(ImmutCallable):
 @register_passable("trivial")
 struct SequentialTaskPairRef[
     o1: ImmutOrigin,
-    o2: ImmutOrigin, //,
+    o2: ImmutOrigin,
+    //,
     T1: ImmutCallable,
     T2: ImmutCallable,
 ](ImmutCallable):
@@ -66,7 +65,8 @@ struct SequentialTaskPairRef[
 @register_passable("trivial")
 struct ParallelTaskPairRef[
     o1: ImmutOrigin,
-    o2: ImmutOrigin, //,
+    o2: ImmutOrigin,
+    //,
     T1: ImmutCallable,
     T2: ImmutCallable,
 ](ImmutCallable):
@@ -88,11 +88,8 @@ struct ParallelTaskPairRef[
         sync_parallelize[exec](2)
 
 
-
 # Variadic Parallel
-struct ParallelTask[origin: ImmutOrigin, //, *Ts: ImmutCallable](
-    ImmutCallable
-):
+struct ParallelTask[origin: ImmutOrigin, //, *Ts: ImmutCallable](ImmutCallable):
     """Collection of immutable tasks to run in Parallel.
 
     Parameters:
@@ -100,14 +97,11 @@ struct ParallelTask[origin: ImmutOrigin, //, *Ts: ImmutCallable](
         Ts: ImmutableCallable types that conforms to `ImmCallable`.
     """
 
-    var callables: CallablePack[Self.origin, *Self.Ts]
+    var callables: CallablePack[origin = Self.origin, *Self.Ts]
     """Underlying storage for tasks pointers."""
 
     fn __init__(
-        out self: ParallelTask[
-            origin = args.origin, *Self.Ts
-        ],
-        *args: *Self.Ts
+        out self: ParallelTask[origin = args.origin, *Self.Ts], *args: * Self.Ts
     ):
         """Create a Parallel group, using the args provided. Origin need to be casted.
 
@@ -130,6 +124,7 @@ struct ParallelTask[origin: ImmutOrigin, //, *Ts: ImmutCallable](
 
         sync_parallelize[exec](size)
 
+
 # # Variadic Series
 struct SequentialTask[origin: ImmutOrigin, //, *Ts: ImmutCallable](
     ImmutCallable
@@ -141,14 +136,12 @@ struct SequentialTask[origin: ImmutOrigin, //, *Ts: ImmutCallable](
         Ts: ImmutableCallable types that conforms to `Callable`.
     """
 
-    var callables: CallablePack[Self.origin, *Self.Ts]
+    var callables: CallablePack[origin = Self.origin, *Self.Ts]
     """Underlying storage for tasks pointers."""
 
     fn __init__(
-        out self: SequentialTask[
-            origin = args.origin, *Self.Ts
-        ],
-        *args: *Self.Ts,
+        out self: SequentialTask[origin = args.origin, *Self.Ts],
+        *args: * Self.Ts,
     ):
         """Create a Series group, using the args provided. Origin need to be casted.
 
@@ -160,6 +153,7 @@ struct SequentialTask[origin: ImmutOrigin, //, *Ts: ImmutCallable](
     fn __call__(self):
         """This function executes all tasks in ordered sequence."""
         comptime size = Variadic.size(Self.Ts)
+
         @parameter
         for ci in range(size):
             self.callables[ci].__call__()
