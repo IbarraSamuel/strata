@@ -18,11 +18,12 @@ trait AsyncCallable:
 
 struct SerTaskPair[
     m1: Bool,
-    m2: Bool, //,
+    m2: Bool,
+    //,
     T1: AsyncCallable,
     T2: AsyncCallable,
-    o1: Origin[m1],
-    o2: Origin[m2],
+    o1: Origin[mut=m1],
+    o2: Origin[mut=m2],
 ](AsyncCallable):
     var t1: Pointer[Self.T1, Self.o1]
     var t2: Pointer[Self.T2, Self.o2]
@@ -42,11 +43,12 @@ struct SerTaskPair[
 
 struct ParTaskPair[
     m1: Bool,
-    m2: Bool, //,
+    m2: Bool,
+    //,
     T1: AsyncCallable,
     T2: AsyncCallable,
-    o1: Origin[m1],
-    o2: Origin[m2],
+    o1: Origin[mut=m1],
+    o2: Origin[mut=m2],
 ](AsyncCallable):
     var t1: Pointer[Self.T1, Self.o1]
     var t2: Pointer[Self.T2, Self.o2]
