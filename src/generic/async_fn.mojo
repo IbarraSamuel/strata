@@ -26,7 +26,7 @@ async fn par_fn[
 
 
 @register_passable("trivial")
-struct Fn[i: AnyType, o: Copyable & Movable, //, F: async fn (i) -> o]:
+struct Fn[i: AnyType, o: Copyable & Movable & ImplicitlyDestructible, //, F: async fn (i) -> o]:
     @always_inline("builtin")
     fn __init__(out self):
         pass
