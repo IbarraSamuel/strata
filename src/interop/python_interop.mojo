@@ -148,7 +148,15 @@ struct TaskGroup(Movable, Representable):
 
     @staticmethod
     fn py_init(out self: Self, args: PythonObject, kwargs: PythonObject) raises:
-        self = Self(task=kwargs[PythonObject("task")])
+        """Requires a kw argument called "task" or a positional argument that should be of type task.
+        """
+        if len(args) != 1 and PythonObject("task") not in kwargs:
+            raise "Bad arguments."
+
+        var task_obj = (
+            args[0] if len(args) == 1 else kwargs[PythonObject("task")]
+        )
+        self = Self(task=task_obj)
 
     @staticmethod
     fn add_task(
@@ -167,4 +175,3 @@ struct TaskGroup(Movable, Representable):
         self_ptr: UnsafePointer[Self, MutAnyOrigin], v: PythonObject
     ) raises -> PythonObject:
         return self_ptr[]._call(v)
-

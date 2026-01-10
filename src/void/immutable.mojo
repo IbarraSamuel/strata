@@ -2,7 +2,7 @@ from algorithm import sync_parallelize
 from builtin import Variadic
 
 comptime CallablePack = VariadicPack[
-    elt_is_mutable=False, origin=_, False, ImmutCallable, *_
+    elt_is_mutable=False, False, ImmutCallable, ...
 ]
 
 
