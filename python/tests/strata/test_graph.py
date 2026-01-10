@@ -5,13 +5,13 @@ from typing import cast
 
 # import pytest
 
-from strata.message import Combinable, ParallelTask, SerialTask, Task
+from strata.graph import Combinable, Graph
 
 SLEEP_TIME = 0.1
 
 
 @dataclass
-class MyTask:
+class MyTask(Combinable):
     value: int = 0
 
     def __call__(self, message: int) -> int:
@@ -20,13 +20,14 @@ class MyTask:
 
 
 def test_task():
-    my_task = MyTask()
-    motask = Task(my_task)
+    motask = MyTask()
+    graph = Graph.build(motask)
 
     value = 1
-    result = motask(value)
-    result = motask(result)
-    assert my_task.value == value * 2
+    result = graph(value)
+    result = graph(result)
+    assert motask.value == value * 2
+    assert result == value + 2
 
 
 @dataclass
@@ -80,8 +81,11 @@ class SumTuple(Combinable):
 def test_serial_task():
     my_task_1 = AddOneTask()
     my_task_2 = AddOneTask()
-    serial_task = SerialTask(my_task_1, my_task_2)
+    serial_task = my_task_1 >> my_task_2
 
+    g0 = Graph.build(serial_task)
+    g = Graph() << serial_task
+    g2 = serial_task >> Graph()
     print("[Serial Task]...")
 
     message = 5

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from enum import IntEnum
-from typing import Protocol, cast
+from typing import Protocol, cast, overload
 
 from strata import mojo_strata
 
@@ -31,7 +31,7 @@ class SerTaskGroup[I, O]:
         return cast("SerTaskGroup[I, T]", self)
 
     def __add__[*Os, T](
-        self: SerTaskGroup[I, tuple[*Os]], other: Task[O, T]
+        self: SerTaskGroup[I, tuple[*Os]], other: Task[I, T]
     ) -> ParTaskGroup[I, tuple[*Os, T]]:
         self.inner.add_task(other, GroupMode.PARALLEL.value)
         return ParTaskGroup[I, tuple[*Os, T]](
@@ -55,7 +55,7 @@ class ParTaskGroup[I, O]:
     ) -> ParTaskGroup[I, tuple[*Os, T]]:
         if isinstance(other, SerTaskGroup):
             other = other.inner
-        self.inner.add_task(other, GroupMode.PARALLEL.value)  # ty: ignore[no-matching-overload]
+        self.inner.add_task(other, GroupMode.PARALLEL.value)
         return cast("ParTaskGroup[I, tuple[*Os, T]]", self)
 
 
@@ -65,9 +65,18 @@ class TaskGroup[I, O]:
     def __init__(self, task: Task[I, O]) -> None:
         self.inner = mojo_strata.TaskGroup(task=task)
 
+    @overload
+    def __rshift__(self, other: Graph) -> BuildedGraph[I, O]: ...
+    @overload
     def __rshift__[T](
         self, other: Task[O, T] | ParTaskGroup[O, T] | mojo_strata.TaskGroup[O, T]
-    ) -> SerTaskGroup[I, T]:
+    ) -> SerTaskGroup[I, T]: ...
+    def __rshift__[T](
+        self,
+        other: Task[O, T] | ParTaskGroup[O, T] | mojo_strata.TaskGroup[O, T] | Graph,
+    ) -> SerTaskGroup[I, T] | BuildedGraph[I, O]:
+        if isinstance(other, Graph):
+            return BuildedGraph(elements=self.inner)
         if isinstance(other, ParTaskGroup):
             other = other.inner
         self.inner.add_task(other, GroupMode.SERIAL.value)
@@ -79,13 +88,13 @@ class TaskGroup[I, O]:
     ) -> ParTaskGroup[I, tuple[*Os, T]]:
         if isinstance(other, SerTaskGroup):
             other = other.inner
-        self.inner.add_task(other, GroupMode.PARALLEL.value)  # ty: ignore[no-matching-overload]
+        self.inner.add_task(other, GroupMode.PARALLEL.value)
         return ParTaskGroup[I, tuple[*Os, T]](
             cast("mojo_strata.TaskGroup[I, tuple[*Os, T]]", self.inner)
         )
 
 
-class Graph[I = object, O = object]:
+class Graph:
     @staticmethod
     def __lshift__[In, Out](
         other: SerTaskGroup[In, Out]
@@ -95,13 +104,12 @@ class Graph[I = object, O = object]:
     ) -> BuildedGraph[In, Out]:
         # It's not a group
         if not isinstance(other, (TaskGroup, SerTaskGroup, ParTaskGroup)):
-            other = TaskGroup(other)  # ty: ignore[invalid-argument-type]
+            other = TaskGroup(other)
 
-        return BuildedGraph(elements=other.inner)  # ty: ignore[invalid-return-type]
+        return BuildedGraph(elements=other.inner)
 
-    @classmethod
-    def build[In, Out](
-        cls,
+    @staticmethod
+    def __rshift__[In, Out](
         other: SerTaskGroup[In, Out]
         | ParTaskGroup[In, Out]
         | TaskGroup[In, Out]
@@ -109,12 +117,25 @@ class Graph[I = object, O = object]:
     ) -> BuildedGraph[In, Out]:
         # It's not a group
         if not isinstance(other, (TaskGroup, SerTaskGroup, ParTaskGroup)):
-            other = TaskGroup(other)  # ty: ignore[invalid-argument-type]
+            other = TaskGroup(other)
 
-        return BuildedGraph(elements=other.inner)  # ty: ignore[invalid-return-type]
+        return BuildedGraph(elements=other.inner)
+
+    @staticmethod
+    def build[In, Out](
+        other: SerTaskGroup[In, Out]
+        | ParTaskGroup[In, Out]
+        | TaskGroup[In, Out]
+        | Task[In, Out],
+    ) -> BuildedGraph[In, Out]:
+        # It's not a group
+        if not isinstance(other, (TaskGroup, SerTaskGroup, ParTaskGroup)):
+            other = TaskGroup(other)
+
+        return BuildedGraph(elements=other.inner)
 
 
-class BuildedGraph[I = object, O = object]:
+class BuildedGraph[I, O]:
     inner: mojo_strata.TaskGroup[I, O]
 
     def __init__(self, elements: mojo_strata.TaskGroup[I, O]) -> None:
@@ -128,13 +149,14 @@ class Combinable(Protocol):
     def __rshift__[I, O, T](
         self: Task[I, O], other: Task[O, T] | ParTaskGroup[O, T]
     ) -> SerTaskGroup[I, T]:
-        return TaskGroup(self) >> other
+        group = TaskGroup(self)
+        return group >> other
 
     def __add__[I, O, T](
         self: Task[I, O], other: Task[I, T]
     ) -> ParTaskGroup[I, tuple[O, T]]:
         group = cast("TaskGroup[I, tuple[O]]", TaskGroup(self))
-        return group.__add__(other)
+        return group + other
 
 
 from dataclasses import dataclass  # noqa: E402

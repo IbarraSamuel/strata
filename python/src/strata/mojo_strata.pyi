@@ -1,8 +1,10 @@
 from typing import Literal, Protocol, overload, type_check_only
 
+
 @type_check_only
 class Task[I, O](Protocol):
     def __call__(self, msg: I, /) -> O: ...
+
 
 class TaskGroup[I, O]:
     def __init__(self, task: Task[I, O]) -> None: ...
