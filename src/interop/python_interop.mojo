@@ -164,7 +164,8 @@ struct TaskGroup(Movable, Representable):
         t: PythonObject,
         _mode: PythonObject,
     ) raises:
-        self_ptr.unsafe_mut_cast[True]()[].add(t, Int(_mode))
+        ref mut_self = self_ptr.unsafe_mut_cast[True]()[]
+        mut_self.add(t, Int(py=_mode))
 
     @staticmethod
     fn py_method():
