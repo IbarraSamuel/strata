@@ -33,7 +33,6 @@ strata = { path = "." }
 build_package = "mojo package src/ -o package/strata.mojopkg"
 
 # Python Build
-# build_old_python_package = "mojo build src/interop/python_interop_old.mojo --emit shared-lib -o package/old_mojo_strata.so"
 build_mojo_python = "mojo build src/interop/python_interop.mojo --emit shared-lib -o package/mojo_strata.so"
 prepare_python = { cmd = "mv package/*mojo_strata.so python/src/strata/", depends-on = ["build_mojo_python"] }
 
