@@ -54,14 +54,19 @@ fn int_to_float(v: Int) -> Float32:
     return v
 
 
-fn sum_tuple(v: Tuple[Float32, Float32]) -> Int:
+fn int_to_int(v: Int) -> Int:
+    return v
+
+
+fn sum_tuple(v: Tuple[Float32, Int]) -> Int:
     return Int(v[0] + v[1])
 
 
 fn test_generic_two_parallels() raises:
     var itof = generic.Fn(int_to_float)
+    var itoi = generic.Fn(int_to_int)
     var stp = generic.Fn(sum_tuple)
-    var graph = itof + itof >> stp + stp
+    var graph = itof + itoi >> stp + stp
 
     var r1, r2 = graph(1)
 
@@ -220,9 +225,10 @@ fn test_generic_comptime_parallel() raises:
 
 fn test_generic_comptime_two_parallels() raises:
     comptime itof = compt.Fn[int_to_float]()
+    comptime itoi = compt.Fn[int_to_int]()
     comptime stp = compt.Fn[sum_tuple]()
 
-    comptime graph = itof + itof >> stp + stp
+    comptime graph = itof + itoi >> stp + stp
 
     var r1, r2 = graph.F(1)
 

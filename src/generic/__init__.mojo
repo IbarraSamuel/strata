@@ -2,13 +2,6 @@ from runtime.asyncrt import TaskGroup
 from sys.intrinsics import _type_is_eq_parse_time
 from builtin.rebind import downcast
 
-from builtin.variadics import (
-    Variadic,
-    _MapVariadicAndIdxToType,
-)
-
-from sys import codegen_unreachable
-
 comptime TaskToRes[t: Call] = t.O
 comptime TaskToPtr[o: Origin, t: Call] = downcast[
     Pointer[t, origin=o], Movable & ImplicitlyDestructible
@@ -44,7 +37,7 @@ trait Callable(Call):
     ](ref [so]self, ref [oo]other: o) -> Parallel[
         origin = origin_of(so, oo), downcast[Self, Call], o
     ]:
-        return {trait_downcast[Call](self), other}
+        return Parallel(trait_downcast[Call](self), other)
 
 
 struct Sequence[
@@ -77,7 +70,7 @@ struct Sequence[
         O2=oo,
         T1=Self,
         T2=o,
-        Variadic.concat[Self.elements, Variadic.types[o]],
+        Variadic.concat_types[Self.elements, Variadic.types[o]],
     ]:
         return {self, other}
 
@@ -88,7 +81,7 @@ struct Sequence[
     ](ref [so]self, ref [oo]other: o) -> Parallel[
         origin = origin_of(so, oo), Self, o
     ]:
-        return {self, other}
+        return Parallel(self, other)
 
 
 struct Parallel[origin: ImmutOrigin, //, *elements: Call](Call):
@@ -101,25 +94,6 @@ struct Parallel[origin: ImmutOrigin, //, *elements: Call](Call):
     comptime Tasks = Tuple[*Self.PtrElems]
 
     var tasks: Self.Tasks
-
-    fn __init__[
-        o1: ImmutOrigin,
-        o2: ImmutOrigin,
-        c1: Call,
-        c2: Call where _type_is_eq_parse_time[c1.I, c2.I](),
-    ](
-        out self: Parallel[origin = origin_of(t1, t2), c1, c2],
-        ref [o1]t1: c1,
-        ref [o2]t2: c2,
-    ):
-        __mlir_op.`lit.ownership.mark_initialized`(
-            __get_mvalue_as_litref(self.tasks)
-        )
-        ref tasks = rebind[self.Tasks](self.tasks)
-        tasks = (
-            Pointer[origin = origin_of(o1, o2)](to=t1),
-            Pointer[origin = origin_of(o1, o2)](to=t2),
-        )
 
     fn __init__(
         out self: Parallel[origin = callables.origin, *Self.elements],
@@ -194,7 +168,7 @@ struct Parallel[origin: ImmutOrigin, //, *elements: Call](Call):
         ref [oo]other: o,
         out final: Parallel[
             origin = origin_of(Self.origin, oo),
-            *Variadic.concat[Self.elements, Variadic.types[o]],
+            *Variadic.concat_types[Self.elements, Variadic.types[o]],
         ],
     ):
         __mlir_op.`lit.ownership.mark_initialized`(

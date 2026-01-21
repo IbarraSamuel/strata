@@ -4,7 +4,9 @@ from builtin.variadics import Variadic, _MapVariadicAndIdxToType
 
 comptime _TaskToResultMapper[*ts: FnTrait, i: Int] = ts[i].O
 comptime TaskMapResult[*element_types: FnTrait] = _MapVariadicAndIdxToType[
-    To=Movable & ImplicitlyDestructible, VariadicType=element_types, Mapper=_TaskToResultMapper
+    To = Movable & ImplicitlyDestructible,
+    VariadicType=element_types,
+    Mapper=_TaskToResultMapper,
 ]
 
 
@@ -16,7 +18,12 @@ trait FnTrait(Movable):
 
 @always_inline("nodebug")
 fn seq_fn[
-    In: AnyType, M: AnyType & ImplicitlyDestructible, O: AnyType & ImplicitlyDestructible, //, f: fn (In) -> M, l: fn (M) -> O
+    In: AnyType,
+    M: AnyType & ImplicitlyDestructible,
+    O: AnyType & ImplicitlyDestructible,
+    //,
+    f: fn (In) -> M,
+    l: fn (M) -> O,
 ](val: In) -> O:
     return l(f(val))
 
@@ -55,8 +62,10 @@ struct Fns[*fns: FnTrait]():
     @always_inline("builtin")
     fn __add__(
         self, other: Fn[i = Self.i]
-    ) -> Fns[*Variadic.concat[Self.fns, Variadic.types[Fn[other.F]]]]:
-        return Fns[*Variadic.concat[Self.fns, Variadic.types[Fn[other.F]]]]()
+    ) -> Fns[*Variadic.concat_types[Self.fns, Variadic.types[Fn[other.F]]]]:
+        return Fns[
+            *Variadic.concat_types[Self.fns, Variadic.types[Fn[other.F]]]
+        ]()
 
     @always_inline("builtin")
     fn __rshift__(self, other: Fn[i = Self.o]) -> Fn[seq_fn[Self.F, other.F]]:
@@ -72,7 +81,9 @@ struct Fns[*fns: FnTrait]():
 
 
 @register_passable("trivial")
-struct Fn[i: AnyType, o: Movable & ImplicitlyDestructible, //, f: fn (i) -> o](FnTrait):
+struct Fn[i: AnyType, o: Movable & ImplicitlyDestructible, //, f: fn (i) -> o](
+    FnTrait
+):
     comptime I = Self.i
     comptime O = Self.o
     comptime F = Self.f
