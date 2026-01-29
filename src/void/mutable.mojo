@@ -140,8 +140,9 @@ struct ParallelTaskPair[T1: Movable & _Callable, T2: Movable & _Callable](
         sync_parallelize[run_task](2)
 
 
-@register_passable("trivial")
-struct _TaskRef[origin: MutOrigin, //, T: _Callable](Movable & _Callable):
+struct _TaskRef[origin: MutOrigin, //, T: _Callable](
+    Movable, TrivialRegisterType, _Callable
+):
     var inner: Pointer[Self.T, Self.origin]
 
     fn __init__(out self, ref [Self.origin]inner: Self.T):

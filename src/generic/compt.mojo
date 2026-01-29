@@ -1,19 +1,14 @@
 from runtime.asyncrt import Task, TaskGroup
 from sys.intrinsics import _type_is_eq_parse_time
-from builtin.variadics import Variadic, _MapVariadicAndIdxToType
-
-comptime _TaskToResultMapper[*ts: FnTrait, i: Int] = ts[i].O
-comptime TaskMapResult[*element_types: FnTrait] = _MapVariadicAndIdxToType[
-    To = Movable & ImplicitlyDestructible,
-    VariadicType=element_types,
-    Mapper=_TaskToResultMapper,
-]
 
 
-trait FnTrait(Movable):
+comptime FnToOut[f: FnTrait] = f.O
+
+
+trait FnTrait(Movable, TrivialRegisterType):
     comptime I: AnyType
     comptime O: Movable & ImplicitlyDestructible
-    comptime F: fn (Self.I) -> Self.O
+    comptime F: fn(Self.I) -> Self.O
 
 
 @always_inline("nodebug")
@@ -22,8 +17,8 @@ fn seq_fn[
     M: AnyType & ImplicitlyDestructible,
     O: AnyType & ImplicitlyDestructible,
     //,
-    f: fn (In) -> M,
-    l: fn (M) -> O,
+    f: fn(In) -> M,
+    l: fn(M) -> O,
 ](val: In) -> O:
     return l(f(val))
 
@@ -31,7 +26,7 @@ fn seq_fn[
 @always_inline("nodebug")
 fn par_fns[
     In: AnyType, *fns: FnTrait
-](val: In, out outs: Tuple[*TaskMapResult[*fns]]):
+](val: In, out outs: Tuple[*Variadic.map_types_to_types[fns, FnToOut]]):
     tg = TaskGroup()
 
     __mlir_op.`lit.ownership.mark_initialized`(__get_mvalue_as_litref(outs))
@@ -49,10 +44,9 @@ fn par_fns[
     tg.wait()
 
 
-@register_passable("trivial")
-struct Fns[*fns: FnTrait]():
+struct Fns[*fns: FnTrait](TrivialRegisterType):
     comptime i = Self.fns[0].I
-    comptime o = Tuple[*TaskMapResult[*Self.fns]]
+    comptime o = Tuple[*Variadic.map_types_to_types[Self.fns, FnToOut]]
     comptime F = par_fns[Self.i, *Self.fns]
 
     @always_inline("builtin")
@@ -75,13 +69,12 @@ struct Fns[*fns: FnTrait]():
     fn __rshift__(
         self, other: Fns[**_]
     ) -> Fn[
-        seq_fn[Self.F, rebind[fn (Self.o) -> other.o](other.F)]
+        seq_fn[Self.F, rebind[fn(Self.o) -> other.o](other.F)]
     ] where _type_is_eq_parse_time[Self.o, other.i]():
-        return Fn[seq_fn[Self.F, rebind[fn (Self.o) -> other.o](other.F)]]()
+        return Fn[seq_fn[Self.F, rebind[fn(Self.o) -> other.o](other.F)]]()
 
 
-@register_passable("trivial")
-struct Fn[i: AnyType, o: Movable & ImplicitlyDestructible, //, f: fn (i) -> o](
+struct Fn[i: AnyType, o: Movable & ImplicitlyDestructible, //, f: fn(i) -> o](
     FnTrait
 ):
     comptime I = Self.i
@@ -100,9 +93,9 @@ struct Fn[i: AnyType, o: Movable & ImplicitlyDestructible, //, f: fn (i) -> o](
     fn __rshift__(
         self, other: Fns[**_]
     ) -> Fn[
-        seq_fn[Self.F, rebind[fn (Self.o) -> other.o](other.F)]
+        seq_fn[Self.F, rebind[fn(Self.o) -> other.o](other.F)]
     ] where _type_is_eq_parse_time[Self.o, other.i]():
-        return Fn[seq_fn[Self.F, rebind[fn (Self.o) -> other.o](other.F)]]()
+        return Fn[seq_fn[Self.F, rebind[fn(Self.o) -> other.o](other.F)]]()
 
     @always_inline("builtin")
     fn __add__(self, other: Fn[i = Self.i]) -> Fns[Self, Fn[other.F]]:

@@ -32,7 +32,7 @@ struct Fn(ImmutCallable):
     """This function takes any function with a signature: `fn() -> None` and hold it to later call it using `__call__()`.
     """
 
-    var func: fn ()
+    var func: fn()
     """Pointer to the function to call."""
 
     fn __call__(self):
@@ -41,14 +41,13 @@ struct Fn(ImmutCallable):
 
 
 @fieldwise_init
-@register_passable("trivial")
 struct SequentialTaskPairRef[
     o1: ImmutOrigin,
     o2: ImmutOrigin,
     //,
     T1: ImmutCallable,
     T2: ImmutCallable,
-](ImmutCallable):
+](ImmutCallable, TrivialRegisterType):
     var t1: Pointer[Self.T1, Self.o1]
     var t2: Pointer[Self.T2, Self.o2]
 
@@ -62,14 +61,13 @@ struct SequentialTaskPairRef[
 
 
 @fieldwise_init
-@register_passable("trivial")
 struct ParallelTaskPairRef[
     o1: ImmutOrigin,
     o2: ImmutOrigin,
     //,
     T1: ImmutCallable,
     T2: ImmutCallable,
-](ImmutCallable):
+](ImmutCallable, TrivialRegisterType):
     var t1: Pointer[Self.T1, Self.o1]
     var t2: Pointer[Self.T2, Self.o2]
 

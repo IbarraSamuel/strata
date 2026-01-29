@@ -21,8 +21,7 @@ trait TypeCallable:
 
 
 @fieldwise_init
-@register_passable("trivial")
-struct ParallelTypeTask[*Ts: TypeCallable](TypeCallable):
+struct ParallelTypeTask[*Ts: TypeCallable](TrivialRegisterType, TypeCallable):
     """Refers to a task that can be instanciated in the future, because it's defaultable.
 
     Parameters:
@@ -47,8 +46,7 @@ struct ParallelTypeTask[*Ts: TypeCallable](TypeCallable):
 
 
 @fieldwise_init
-@register_passable("trivial")
-struct SeriesTypeTask[*Ts: TypeCallable](TypeCallable):
+struct SeriesTypeTask[*Ts: TypeCallable](TrivialRegisterType, TypeCallable):
     """Refers to a task that can be instanciated in the future, because it's defaultable.
 
     Parameters:
