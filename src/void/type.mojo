@@ -11,17 +11,25 @@ trait TypeCallable:
     fn __rshift__[
         t: TypeCallable, //
     ](var self, other: t) -> SeriesTypeTask[Self, t]:
+        self^.forget()
         return {}
 
     @always_inline("nodebug")
     fn __add__[
         t: TypeCallable, //
     ](var self, other: t) -> ParallelTypeTask[Self, t]:
+        self^.forget()
         return {}
+
+    @always_inline("nodebug")
+    fn forget(deinit self):
+        pass
 
 
 @fieldwise_init
-struct ParallelTypeTask[*Ts: TypeCallable](TrivialRegisterType, TypeCallable):
+struct ParallelTypeTask[*Ts: TypeCallable](
+    TrivialRegisterPassable, TypeCallable
+):
     """Refers to a task that can be instanciated in the future, because it's defaultable.
 
     Parameters:
@@ -46,7 +54,7 @@ struct ParallelTypeTask[*Ts: TypeCallable](TrivialRegisterType, TypeCallable):
 
 
 @fieldwise_init
-struct SeriesTypeTask[*Ts: TypeCallable](TrivialRegisterType, TypeCallable):
+struct SeriesTypeTask[*Ts: TypeCallable](TrivialRegisterPassable, TypeCallable):
     """Refers to a task that can be instanciated in the future, because it's defaultable.
 
     Parameters:

@@ -7,56 +7,60 @@ trait AsyncCallable:
 
     fn __add__[
         s: MutOrigin, o: MutOrigin
-    ](ref [s]self, ref [o]other: Some[AsyncCallable]) -> ParTaskPair[
+    ](ref[s] self, ref[o] other: Some[AsyncCallable]) -> ParTaskPair[
         TaskRef[Self, s], TaskRef[type_of(other), o]
     ]:
         return {TaskRef(self), TaskRef(other)}
 
     fn __add__[
         s: MutOrigin,
-    ](ref [s]self, var other: Some[AsyncCallable & Movable]) -> ParTaskPair[
-        TaskRef[Self, s], type_of(other)
-    ]:
+    ](
+        ref[s] self,
+        var other: Some[AsyncCallable & Movable & ImplicitlyDestructible],
+    ) -> ParTaskPair[TaskRef[Self, s], type_of(other)]:
         return {TaskRef(self), other^}
 
     fn __rshift__[
         s: MutOrigin,
         o: MutOrigin,
-    ](ref [s]self, ref [o]other: Some[AsyncCallable]) -> SerTaskPair[
+    ](ref[s] self, ref[o] other: Some[AsyncCallable]) -> SerTaskPair[
         TaskRef[Self, s], TaskRef[type_of(other), o]
     ]:
         return {TaskRef(self), TaskRef(other)}
 
     fn __rshift__[
         s: MutOrigin,
-    ](ref [s]self, var other: Some[AsyncCallable & Movable]) -> SerTaskPair[
-        TaskRef[Self, s], type_of(other)
-    ]:
+    ](
+        ref[s] self,
+        var other: Some[AsyncCallable & Movable & ImplicitlyDestructible],
+    ) -> SerTaskPair[TaskRef[Self, s], type_of(other)]:
         return {TaskRef(self), other^}
 
 
-trait AsyncCallableMovable(AsyncCallable, Movable):
+trait AsyncCallableMovable(AsyncCallable, ImplicitlyDestructible, Movable):
     fn __add__[
         o: MutOrigin,
-    ](var self, ref [o]other: Some[AsyncCallable]) -> ParTaskPair[
+    ](var self, ref[o] other: Some[AsyncCallable]) -> ParTaskPair[
         Self, TaskRef[type_of(other), o]
     ]:
         return {self^, TaskRef(other)}
 
     fn __add__[](
-        var self, var other: Some[AsyncCallable & Movable]
+        var self,
+        var other: Some[AsyncCallable & Movable & ImplicitlyDestructible],
     ) -> ParTaskPair[Self, type_of(other)]:
         return {self^, other^}
 
     fn __rshift__[
         o: MutOrigin,
-    ](var self, ref [o]other: Some[AsyncCallable]) -> SerTaskPair[
+    ](var self, ref[o] other: Some[AsyncCallable]) -> SerTaskPair[
         Self, TaskRef[type_of(other), o]
     ]:
         return {self^, TaskRef(other)}
 
     fn __rshift__(
-        var self, var other: Some[AsyncCallable & Movable]
+        var self,
+        var other: Some[AsyncCallable & Movable & ImplicitlyDestructible],
     ) -> SerTaskPair[Self, type_of(other)]:
         return {self^, other^}
 
@@ -65,7 +69,7 @@ struct TaskRef[T: AsyncCallable, origin: MutOrigin](AsyncCallableMovable):
     var v: Pointer[Self.T, Self.origin]
 
     # @implicit
-    fn __init__(out self, ref [Self.origin]v: Self.T):
+    fn __init__(out self, ref[Self.origin] v: Self.T):
         self.v = Pointer(to=v)
 
     async fn __call__(mut self):
@@ -73,9 +77,10 @@ struct TaskRef[T: AsyncCallable, origin: MutOrigin](AsyncCallableMovable):
 
 
 @fieldwise_init
-struct SerTaskPair[T1: AsyncCallable & Movable, T2: AsyncCallable & Movable](
-    AsyncCallableMovable
-):
+struct SerTaskPair[
+    T1: AsyncCallable & Movable & ImplicitlyDestructible,
+    T2: AsyncCallable & Movable & ImplicitlyDestructible,
+](AsyncCallableMovable):
     var t1: Self.T1
     var t2: Self.T2
 
@@ -88,9 +93,10 @@ struct SerTaskPair[T1: AsyncCallable & Movable, T2: AsyncCallable & Movable](
 
 
 @fieldwise_init
-struct ParTaskPair[T1: AsyncCallable & Movable, T2: AsyncCallable & Movable](
-    AsyncCallableMovable
-):
+struct ParTaskPair[
+    T1: AsyncCallable & Movable & ImplicitlyDestructible,
+    T2: AsyncCallable & Movable & ImplicitlyDestructible,
+](AsyncCallableMovable):
     var t1: Self.T1
     var t2: Self.T2
 

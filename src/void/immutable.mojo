@@ -15,13 +15,13 @@ trait ImmutCallable:
     @always_inline("nodebug")
     fn __add__[
         s: ImmutOrigin, o: ImmutOrigin, t: ImmutCallable, //
-    ](ref [s]self, ref [o]other: t) -> ParallelTaskPairRef[o1=s, o2=o, Self, t]:
+    ](ref[s] self, ref[o] other: t) -> ParallelTaskPairRef[o1=s, o2=o, Self, t]:
         return {self, other}
 
     @always_inline("nodebug")
     fn __rshift__[
         s: ImmutOrigin, o: ImmutOrigin, t: ImmutCallable, //
-    ](ref [s]self, ref [o]other: t) -> SequentialTaskPairRef[
+    ](ref[s] self, ref[o] other: t) -> SequentialTaskPairRef[
         o1=s, o2=o, Self, t
     ]:
         return {self, other}
@@ -47,11 +47,11 @@ struct SequentialTaskPairRef[
     //,
     T1: ImmutCallable,
     T2: ImmutCallable,
-](ImmutCallable, TrivialRegisterType):
+](ImmutCallable, TrivialRegisterPassable):
     var t1: Pointer[Self.T1, Self.o1]
     var t2: Pointer[Self.T2, Self.o2]
 
-    fn __init__(out self, ref [Self.o1]t1: Self.T1, ref [Self.o2]t2: Self.T2):
+    fn __init__(out self, ref[Self.o1] t1: Self.T1, ref[Self.o2] t2: Self.T2):
         self.t1 = Pointer(to=t1)
         self.t2 = Pointer(to=t2)
 
@@ -67,11 +67,11 @@ struct ParallelTaskPairRef[
     //,
     T1: ImmutCallable,
     T2: ImmutCallable,
-](ImmutCallable, TrivialRegisterType):
+](ImmutCallable, TrivialRegisterPassable):
     var t1: Pointer[Self.T1, Self.o1]
     var t2: Pointer[Self.T2, Self.o2]
 
-    fn __init__(out self, ref [Self.o1]t1: Self.T1, ref [Self.o2]t2: Self.T2):
+    fn __init__(out self, ref[Self.o1] t1: Self.T1, ref[Self.o2] t2: Self.T2):
         self.t1 = Pointer(to=t1)
         self.t2 = Pointer(to=t2)
 

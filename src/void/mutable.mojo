@@ -15,14 +15,14 @@ trait MutCallable(_Callable):
     # ---- FOR MUTABLE VERSIONS -----
     fn __add__[
         s: MutOrigin, o: MutOrigin, //
-    ](ref [s]self, ref [o]other: Some[_Callable]) -> ParallelTaskPair[
+    ](ref[s] self, ref[o] other: Some[_Callable]) -> ParallelTaskPair[
         _TaskRef[origin=s, Self], _TaskRef[origin=o, type_of(other)]
     ]:
         return {_TaskRef(self), _TaskRef(other)}
 
     fn __rshift__[
         s: MutOrigin, o: MutOrigin, //
-    ](ref [s]self, ref [o]other: Some[_Callable]) -> SequentialTaskPair[
+    ](ref[s] self, ref[o] other: Some[_Callable]) -> SequentialTaskPair[
         _TaskRef[origin=s, Self], _TaskRef[origin=o, type_of(other)]
     ]:
         return {_TaskRef(self), _TaskRef(other)}
@@ -30,44 +30,46 @@ trait MutCallable(_Callable):
     # When a pure MutCallable (first value) mets a var
     fn __add__[
         s: MutOrigin, //
-    ](ref [s]self, var other: Some[Movable & _Callable]) -> ParallelTaskPair[
-        _TaskRef[origin=s, Self], type_of(other)
-    ]:
+    ](
+        ref[s] self,
+        var other: Some[Movable & _Callable & ImplicitlyDestructible],
+    ) -> ParallelTaskPair[_TaskRef[origin=s, Self], type_of(other)]:
         return {_TaskRef(self), other^}
 
     fn __rshift__[
         s: MutOrigin, //
-    ](ref [s]self, var other: Some[Movable & _Callable]) -> SequentialTaskPair[
-        _TaskRef[origin=s, Self], type_of(other)
-    ]:
+    ](
+        ref[s] self,
+        var other: Some[Movable & _Callable & ImplicitlyDestructible],
+    ) -> SequentialTaskPair[_TaskRef[origin=s, Self], type_of(other)]:
         return {_TaskRef(self), other^}
 
 
-trait _MovableMutCallable(Movable, _Callable):
+trait _MovableMutCallable(ImplicitlyDestructible, Movable, _Callable):
     fn __call__(mut self):
         ...
 
     fn __add__[
         o: MutOrigin, //
-    ](var self, ref [o]other: Some[_Callable]) -> ParallelTaskPair[
+    ](var self, ref[o] other: Some[_Callable]) -> ParallelTaskPair[
         Self, _TaskRef[origin=o, type_of(other)]
     ]:
         return {self^, _TaskRef(other)}
 
     fn __rshift__[
         o: MutOrigin, //
-    ](var self, ref [o]other: Some[_Callable]) -> SequentialTaskPair[
+    ](var self, ref[o] other: Some[_Callable]) -> SequentialTaskPair[
         Self, _TaskRef[origin=o, type_of(other)]
     ]:
         return {self^, _TaskRef(other)}
 
     fn __add__(
-        var self, var other: Some[_Callable & Movable]
+        var self, var other: Some[_Callable & Movable & ImplicitlyDestructible]
     ) -> ParallelTaskPair[Self, type_of(other)]:
         return {self^, other^}
 
     fn __rshift__(
-        var self, var other: Some[_Callable & Movable]
+        var self, var other: Some[_Callable & Movable & ImplicitlyDestructible]
     ) -> SequentialTaskPair[Self, type_of(other)]:
         return {self^, other^}
 
@@ -111,9 +113,10 @@ struct ParallelTask[o: MutOrigin, //, *ts: MutCallable](MutCallable):
 
 
 @fieldwise_init
-struct SequentialTaskPair[T1: Movable & _Callable, T2: Movable & _Callable](
-    _MovableMutCallable
-):
+struct SequentialTaskPair[
+    T1: Movable & _Callable & ImplicitlyDestructible,
+    T2: Movable & _Callable & ImplicitlyDestructible,
+](_MovableMutCallable):
     var t1: Self.T1
     var t2: Self.T2
 
@@ -123,9 +126,10 @@ struct SequentialTaskPair[T1: Movable & _Callable, T2: Movable & _Callable](
 
 
 @fieldwise_init
-struct ParallelTaskPair[T1: Movable & _Callable, T2: Movable & _Callable](
-    _MovableMutCallable
-):
+struct ParallelTaskPair[
+    T1: Movable & _Callable & ImplicitlyDestructible,
+    T2: Movable & _Callable & ImplicitlyDestructible,
+](_MovableMutCallable):
     var t1: Self.T1
     var t2: Self.T2
 
@@ -141,11 +145,11 @@ struct ParallelTaskPair[T1: Movable & _Callable, T2: Movable & _Callable](
 
 
 struct _TaskRef[origin: MutOrigin, //, T: _Callable](
-    Movable, TrivialRegisterType, _Callable
+    Movable, TrivialRegisterPassable, _Callable
 ):
     var inner: Pointer[Self.T, Self.origin]
 
-    fn __init__(out self, ref [Self.origin]inner: Self.T):
+    fn __init__(out self, ref[Self.origin] inner: Self.T):
         self.inner = Pointer(to=inner)
 
     fn __call__(self):

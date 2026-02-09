@@ -25,7 +25,7 @@ async fn par_fn[
     return (r1.copy(), r2.copy())
 
 
-struct Fn[i: AnyType, o: Copyable & Movable & ImplicitlyDestructible, //, F: async fn (i) -> o](TrivialRegisterType):
+struct Fn[i: AnyType, o: Copyable & Movable & ImplicitlyDestructible, //, F: async fn (i) -> o](TrivialRegisterPassable):
     @always_inline("builtin")
     fn __init__(out self):
         pass

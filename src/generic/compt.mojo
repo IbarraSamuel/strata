@@ -5,7 +5,7 @@ from sys.intrinsics import _type_is_eq_parse_time
 comptime FnToOut[f: FnTrait] = f.O
 
 
-trait FnTrait(Movable, TrivialRegisterType):
+trait FnTrait(Movable, TrivialRegisterPassable):
     comptime I: AnyType
     comptime O: Movable & ImplicitlyDestructible
     comptime F: fn(Self.I) -> Self.O
@@ -23,10 +23,19 @@ fn seq_fn[
     return l(f(val))
 
 
+comptime InputsMatch[
+    fns: Variadic.TypesOfTrait[FnTrait], T: FnTrait
+] = _type_is_eq_parse_time[fns[0].I, T.I]()
+
+
 @always_inline("nodebug")
 fn par_fns[
     In: AnyType, *fns: FnTrait
 ](val: In, out outs: Tuple[*Variadic.map_types_to_types[fns, FnToOut]]):
+    comptime assert Variadic.size(
+        Variadic.filter_types[*fns, predicate = InputsMatch[fns]]
+    ) == Variadic.size(fns), "All input types should be the same."
+
     tg = TaskGroup()
 
     __mlir_op.`lit.ownership.mark_initialized`(__get_mvalue_as_litref(outs))
@@ -44,7 +53,7 @@ fn par_fns[
     tg.wait()
 
 
-struct Fns[*fns: FnTrait](TrivialRegisterType):
+struct Fns[*fns: FnTrait](TrivialRegisterPassable):
     comptime i = Self.fns[0].I
     comptime o = Tuple[*Variadic.map_types_to_types[Self.fns, FnToOut]]
     comptime F = par_fns[Self.i, *Self.fns]

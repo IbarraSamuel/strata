@@ -570,7 +570,9 @@ fn test_mut_examples() raises:
 
 
 @fieldwise_init
-struct MyTypeTask[name: StringLiteral](type.TypeCallable, TrivialRegisterType):
+struct MyTypeTask[name: StringLiteral](
+    type.TypeCallable, TrivialRegisterPassable
+):
     @staticmethod
     fn __call__():
         print("Task [", Self.name, "] Running...")
