@@ -21,7 +21,7 @@ trait Callable(Call):
         so: ImmutOrigin,
         oo: ImmutOrigin,
         o: Call where _type_is_eq_parse_time[downcast[Self, Call].O, o.I](),
-    ](ref [so]self, ref [oo]other: o) -> Sequence[
+    ](ref[so] self, ref[oo] other: o) -> Sequence[
         O1=so,
         O2=oo,
         T1 = downcast[Self, Call],
@@ -34,7 +34,7 @@ trait Callable(Call):
         so: ImmutOrigin,
         oo: ImmutOrigin,
         o: Call where _type_is_eq_parse_time[downcast[Self, Call].I, o.I](),
-    ](ref [so]self, ref [oo]other: o) -> Parallel[
+    ](ref[so] self, ref[oo] other: o) -> Parallel[
         origin = origin_of(so, oo), downcast[Self, Call], o
     ]:
         return Parallel(trait_downcast[Call](self), other)
@@ -54,7 +54,7 @@ struct Sequence[
     var t1: Pointer[Self.T1, Self.O1]
     var t2: Pointer[Self.T2, Self.O2]
 
-    fn __init__(out self, ref [Self.O1]t1: Self.T1, ref [Self.O2]t2: Self.T2):
+    fn __init__(out self, ref[Self.O1] t1: Self.T1, ref[Self.O2] t2: Self.T2):
         self.t1 = Pointer(to=t1)
         self.t2 = Pointer(to=t2)
 
@@ -65,7 +65,7 @@ struct Sequence[
 
     fn __rshift__[
         oo: ImmutOrigin, o: Call where _type_is_eq_parse_time[Self.O, o.I]()
-    ](self, ref [oo]other: o) -> Sequence[
+    ](self, ref[oo] other: o) -> Sequence[
         O1 = origin_of(self),
         O2=oo,
         T1=Self,
@@ -78,10 +78,15 @@ struct Sequence[
         so: ImmutOrigin,
         oo: ImmutOrigin,
         o: Call where _type_is_eq_parse_time[Self.I, o.I](),
-    ](ref [so]self, ref [oo]other: o) -> Parallel[
+    ](ref[so] self, ref[oo] other: o) -> Parallel[
         origin = origin_of(so, oo), Self, o
     ]:
         return Parallel(self, other)
+
+
+comptime InputIsEq[
+    CompareTo: Variadic.TypesOfTrait[Call], V: Call
+] = _type_is_eq_parse_time[CompareTo[0].I, V.I]()
 
 
 struct Parallel[origin: ImmutOrigin, //, *elements: Call](Call):
@@ -98,6 +103,11 @@ struct Parallel[origin: ImmutOrigin, //, *elements: Call](Call):
     fn __init__(
         out self: Parallel[origin = callables.origin, *Self.elements],
         *callables: * Self.elements,
+        # ) where Variadic.size(
+        #     Variadic.filter_types[
+        #         *Self.elements, predicate = InputIsEq[Self.elements]
+        #     ]
+        # ) == Variadic.size(Self.elements):
     ):
         __mlir_op.`lit.ownership.mark_initialized`(
             __get_mvalue_as_litref(self.tasks)
@@ -109,7 +119,7 @@ struct Parallel[origin: ImmutOrigin, //, *elements: Call](Call):
         for i in range(Variadic.size(Self.elements) - 1):
             comptime t1 = Self.elements[i].I
             comptime t2 = Self.elements[i + 1].I
-            __comptime_assert _type_is_eq_parse_time[
+            comptime assert _type_is_eq_parse_time[
                 t1, t2
             ](), "all input types should be equal"
 
@@ -152,7 +162,7 @@ struct Parallel[origin: ImmutOrigin, //, *elements: Call](Call):
         so: ImmutOrigin,
         oo: ImmutOrigin,
         o: Call where _type_is_eq_parse_time[Self.O, o.I](),
-    ](ref [so]self, ref [oo]other: o) -> Sequence[
+    ](ref[so] self, ref[oo] other: o) -> Sequence[
         O1=so,
         O2=oo,
         T1=Self,
@@ -165,7 +175,7 @@ struct Parallel[origin: ImmutOrigin, //, *elements: Call](Call):
         oo: ImmutOrigin, o: Call where _type_is_eq_parse_time[Self.I, o.I]()
     ](
         ref self,
-        ref [oo]other: o,
+        ref[oo] other: o,
         out final: Parallel[
             origin = origin_of(Self.origin, oo),
             *Variadic.concat_types[Self.elements, Variadic.types[o]],
@@ -187,7 +197,7 @@ struct Fn[In: AnyType, Out: Movable & ImplicitlyDestructible](
     comptime I = Self.In
     comptime O = Self.Out
 
-    var func: fn (Self.In) -> Self.Out
+    var func: fn(Self.In) -> Self.Out
 
     fn __call__(self, arg: Self.I) -> Self.O:
         return self.func(arg)
