@@ -8,6 +8,7 @@ class Task[I, O](Protocol):
 
 class TaskGroup[I, O]:
     def __init__(self, task: Task[I, O]) -> None: ...
+    # Parallel Overload
     @overload
     def add_task[*Os, T](
         self: TaskGroup[I, tuple[*Os]],
@@ -15,6 +16,7 @@ class TaskGroup[I, O]:
         mode: Literal[1],
         /,
     ) -> None: ...
+    # Sequential Overload
     @overload
     def add_task[T](
         self, task: Task[O, T] | TaskGroup[O, T], mode: Literal[0], /

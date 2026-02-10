@@ -23,7 +23,8 @@ class SerTaskGroup[I, O]:
         self.inner = task
 
     def __rshift__[T](
-        self, other: Task[O, T] | ParTaskGroup[O, T] | mojo_strata.TaskGroup[O, T]
+        self,
+        other: Task[O, T] | ParTaskGroup[O, T] | mojo_strata.TaskGroup[O, T],
     ) -> SerTaskGroup[I, T]:
         if isinstance(other, ParTaskGroup):
             other = other.inner

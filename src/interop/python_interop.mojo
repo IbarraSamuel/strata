@@ -2,7 +2,7 @@ from os import abort
 from python import PythonObject, Python
 from python._cpython import GILReleased
 from runtime.asyncrt import TaskGroup as TG
-from python.bindings import PythonModuleBuilder, PyObjectFunction
+from python.bindings import PythonModuleBuilder
 
 
 @export
@@ -57,7 +57,7 @@ struct TaskGroup(Movable, Representable):
         )
         return String("TaskGroup(mode:", mode, ", objects:", objs, ")")
 
-    fn add(mut self, t: PythonObject, mode: Int) raises:
+    fn _add_task(mut self, t: PythonObject, mode: Int) raises:
         if self.mode == Self.undefined.mode:
             self.mode = mode
 
@@ -146,6 +146,10 @@ struct TaskGroup(Movable, Representable):
             tp += Python.tuple(res)
         return tp
 
+    # =========================================
+    # ====== Python exported functions. =======
+    # =========================================
+
     @staticmethod
     fn py_init(out self: Self, args: PythonObject, kwargs: PythonObject) raises:
         """Requires a kw argument called "task" or a positional argument that should be of type task.
@@ -164,8 +168,7 @@ struct TaskGroup(Movable, Representable):
         t: PythonObject,
         _mode: PythonObject,
     ) raises:
-        ref mut_self = self_ptr.unsafe_mut_cast[True]()[]
-        mut_self.add(t, Int(py=_mode))
+        self_ptr[]._add_task(t, Int(py=_mode))
 
     @staticmethod
     fn py_method():
