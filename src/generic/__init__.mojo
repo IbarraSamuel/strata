@@ -33,7 +33,9 @@ trait Callable(Call):
     fn __add__[
         so: ImmutOrigin,
         oo: ImmutOrigin,
-        o: Call where _type_is_eq_parse_time[downcast[Self, Call].I, o.I](),
+        o: Call where InputIsEq[
+            Variadic.types[T=Call, downcast[Self, Call], o]
+        ],
     ](ref[so] self, ref[oo] other: o) -> Parallel[
         origin = origin_of(so, oo), downcast[Self, Call], o
     ]:
@@ -77,19 +79,25 @@ struct Sequence[
     fn __add__[
         so: ImmutOrigin,
         oo: ImmutOrigin,
-        o: Call where _type_is_eq_parse_time[Self.I, o.I](),
+        o: Call where InputIsEq[Variadic.types[T=Call, Self, o]],
     ](ref[so] self, ref[oo] other: o) -> Parallel[
         origin = origin_of(so, oo), Self, o
     ]:
         return Parallel(self, other)
 
 
-comptime InputIsEq[
-    CompareTo: Variadic.TypesOfTrait[Call], V: Call
-] = _type_is_eq_parse_time[CompareTo[0].I, V.I]()
+comptime _InputIsEq[CompareTo: AnyType, V: Call] = _type_is_eq_parse_time[
+    CompareTo, V.I
+]()
+
+comptime InputIsEq[CompareTo: Variadic.TypesOfTrait[Call]] = Variadic.size(
+    Variadic.filter_types[*CompareTo, predicate = _InputIsEq[CompareTo[0].I]]
+) == Variadic.size(CompareTo)
 
 
-struct Parallel[origin: ImmutOrigin, //, *elements: Call](Call):
+struct Parallel[
+    origin: ImmutOrigin, //, *elements: Call where InputIsEq[elements]
+](Call):
     comptime I = Self.elements[0].I
     comptime ResElems = Variadic.map_types_to_types[Self.elements, TaskToRes]
     comptime PtrElems = Variadic.map_types_to_types[
@@ -103,28 +111,12 @@ struct Parallel[origin: ImmutOrigin, //, *elements: Call](Call):
     fn __init__(
         out self: Parallel[origin = callables.origin, *Self.elements],
         *callables: * Self.elements,
-        # ) where Variadic.size(
-        #     Variadic.filter_types[
-        #         *Self.elements, predicate = InputIsEq[Self.elements]
-        #     ]
-        # ) == Variadic.size(Self.elements):
     ):
         __mlir_op.`lit.ownership.mark_initialized`(
             __get_mvalue_as_litref(self.tasks)
         )
 
-        # TODO: Add hints before if possible.
-        # Check that all in types should be the same
-        @parameter
-        for i in range(Variadic.size(Self.elements) - 1):
-            comptime t1 = Self.elements[i].I
-            comptime t2 = Self.elements[i + 1].I
-            comptime assert _type_is_eq_parse_time[
-                t1, t2
-            ](), "all input types should be equal"
-
-        @parameter
-        for i in range(Variadic.size(Self.elements)):
+        comptime for i in range(Variadic.size(Self.elements)):
             # comptime ti = Self.PtrElems[i]
             comptime ti = type_of(self.tasks[i])
             self.tasks[i] = rebind_var[ti](Pointer(to=callables[i]))
@@ -138,8 +130,7 @@ struct Parallel[origin: ImmutOrigin, //, *elements: Call](Call):
             __get_mvalue_as_litref(_out_tp)
         )
 
-        @parameter
-        for i in range(Variadic.size(Self.elements)):
+        comptime for i in range(Variadic.size(Self.elements)):
 
             @parameter
             async fn task():
@@ -172,7 +163,10 @@ struct Parallel[origin: ImmutOrigin, //, *elements: Call](Call):
         return {self, other}
 
     fn __add__[
-        oo: ImmutOrigin, o: Call where _type_is_eq_parse_time[Self.I, o.I]()
+        oo: ImmutOrigin,
+        o: Call where InputIsEq[
+            Variadic.concat_types[Self.elements, Variadic.types[o]]
+        ],
     ](
         ref self,
         ref[oo] other: o,

@@ -114,8 +114,7 @@ struct ParallelTask[origin: ImmutOrigin, //, *Ts: ImmutCallable](ImmutCallable):
 
         @parameter
         fn exec(i: Int):
-            @parameter
-            for ti in range(size):
+            comptime for ti in range(size):
                 if ti == i:
                     self.callables[ti].__call__()
                     return
@@ -152,6 +151,5 @@ struct SequentialTask[origin: ImmutOrigin, //, *Ts: ImmutCallable](
         """This function executes all tasks in ordered sequence."""
         comptime size = Variadic.size(Self.Ts)
 
-        @parameter
-        for ci in range(size):
+        comptime for ci in range(size):
             self.callables[ci].__call__()

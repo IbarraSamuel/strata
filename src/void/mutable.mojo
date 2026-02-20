@@ -74,27 +74,28 @@ trait _MovableMutCallable(ImplicitlyDestructible, Movable, _Callable):
         return {self^, other^}
 
 
-struct SeriesTask[o: MutOrigin, //, *ts: MutCallable](MutCallable):
-    var storage: MutCallablePack[origin = Self.o, *Self.ts]
+struct SeriesTask[origin: MutOrigin, //, *ts: MutCallable](MutCallable):
+    var storage: MutCallablePack[origin = Self.origin, *Self.ts]
 
     fn __init__(
-        out self: SeriesTask[o = args.origin, *Self.ts], mut *args: * Self.ts
+        out self: SeriesTask[origin = args.origin, *Self.ts],
+        mut *args: * Self.ts,
     ):
         self.storage = MutCallablePack(args._value)
 
     fn __call__(mut self):
         comptime size = Variadic.size(Self.ts)
 
-        @parameter
-        for ci in range(size):
+        comptime for ci in range(size):
             self.storage[ci].__call__()
 
 
-struct ParallelTask[o: MutOrigin, //, *ts: MutCallable](MutCallable):
-    var storage: MutCallablePack[origin = Self.o, *Self.ts]
+struct ParallelTask[origin: MutOrigin, //, *ts: MutCallable](MutCallable):
+    var storage: MutCallablePack[origin = Self.origin, *Self.ts]
 
     fn __init__(
-        out self: ParallelTask[o = args.origin, *Self.ts], mut *args: * Self.ts
+        out self: ParallelTask[origin = args.origin, *Self.ts],
+        mut *args: * Self.ts,
     ):
         self.storage = MutCallablePack(args._value)
 
@@ -103,8 +104,7 @@ struct ParallelTask[o: MutOrigin, //, *ts: MutCallable](MutCallable):
 
         @parameter
         fn run_task(i: Int):
-            @parameter
-            for ci in range(size):
+            comptime for ci in range(size):
                 if ci == i:
                     self.storage[ci].__call__()
                     return

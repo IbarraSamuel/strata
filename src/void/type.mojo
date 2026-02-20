@@ -44,8 +44,7 @@ struct ParallelTypeTask[*Ts: TypeCallable](
 
         @parameter
         fn exec(i: Int):
-            @parameter
-            for ti in range(size):
+            comptime for ti in range(size):
                 if ti == i:
                     Self.Ts[ti].__call__()
                     return
@@ -67,6 +66,5 @@ struct SeriesTypeTask[*Ts: TypeCallable](TrivialRegisterPassable, TypeCallable):
         """Call the tasks based on the types on a sequence order."""
         comptime size = Variadic.size(Self.Ts)
 
-        @parameter
-        for i in range(size):
+        comptime for i in range(size):
             Self.Ts[i].__call__()

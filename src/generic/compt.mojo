@@ -11,7 +11,6 @@ trait FnTrait(Movable, TrivialRegisterPassable):
     comptime F: fn(Self.I) -> Self.O
 
 
-@always_inline("nodebug")
 fn seq_fn[
     In: AnyType,
     M: AnyType & ImplicitlyDestructible,
@@ -23,25 +22,48 @@ fn seq_fn[
     return l(f(val))
 
 
-comptime InputsMatch[
-    fns: Variadic.TypesOfTrait[FnTrait], T: FnTrait
-] = _type_is_eq_parse_time[fns[0].I, T.I]()
+comptime _FnInputMatch[I: AnyType, T: FnTrait] = _type_is_eq_parse_time[
+    I, T.I
+]()
+
+comptime InputsMatch[*fns: FnTrait] = Variadic.size(
+    Variadic.filter_types[*fns, predicate = _FnInputMatch[fns[0].I]]
+) == Variadic.size(fns)
 
 
-@always_inline("nodebug")
 fn par_fns[
-    In: AnyType, *fns: FnTrait
-](val: In, out outs: Tuple[*Variadic.map_types_to_types[fns, FnToOut]]):
-    comptime assert Variadic.size(
-        Variadic.filter_types[*fns, predicate = InputsMatch[fns]]
-    ) == Variadic.size(fns), "All input types should be the same."
+    *fns: FnTrait where InputsMatch[*fns]
+](val: fns[0].I, out outs: Tuple[*Variadic.map_types_to_types[fns, FnToOut]]):
+    # comptime assert Variadic.size(
+    #     Variadic.filter_types[*fns, predicate = InputsMatch[In]]
+    # ) == Variadic.size(fns), "All input types should be the same."
 
     tg = TaskGroup()
 
     __mlir_op.`lit.ownership.mark_initialized`(__get_mvalue_as_litref(outs))
 
-    @parameter
-    for ci in range(Variadic.size(fns)):
+    comptime for ci in range(Variadic.size(fns)):
+
+        @parameter
+        async fn task():
+            ref inp = rebind[fns[ci].I](val)
+            outs[ci] = rebind_var[type_of(outs[ci])](fns[ci].F(inp))
+
+        tg.create_task(task())
+
+    tg.wait()
+
+
+fn par_fns_late_checked[
+    *fns: FnTrait
+](
+    val: fns[0].I, out outs: Tuple[*Variadic.map_types_to_types[fns, FnToOut]]
+) where InputsMatch[*fns]:
+    tg = TaskGroup()
+
+    __mlir_op.`lit.ownership.mark_initialized`(__get_mvalue_as_litref(outs))
+
+    comptime for ci in range(Variadic.size(fns)):
 
         @parameter
         async fn task():
@@ -56,7 +78,7 @@ fn par_fns[
 struct Fns[*fns: FnTrait](TrivialRegisterPassable):
     comptime i = Self.fns[0].I
     comptime o = Tuple[*Variadic.map_types_to_types[Self.fns, FnToOut]]
-    comptime F = par_fns[Self.i, *Self.fns]
+    comptime F = par_fns_late_checked[*Self.fns]
 
     @always_inline("builtin")
     fn __init__(out self):
@@ -76,7 +98,7 @@ struct Fns[*fns: FnTrait](TrivialRegisterPassable):
 
     @always_inline("builtin")
     fn __rshift__(
-        self, other: Fns[**_]
+        self, other: Fns[...]
     ) -> Fn[
         seq_fn[Self.F, rebind[fn(Self.o) -> other.o](other.F)]
     ] where _type_is_eq_parse_time[Self.o, other.i]():
@@ -100,7 +122,7 @@ struct Fn[i: AnyType, o: Movable & ImplicitlyDestructible, //, f: fn(i) -> o](
 
     @always_inline("builtin")
     fn __rshift__(
-        self, other: Fns[**_]
+        self, other: Fns[...]
     ) -> Fn[
         seq_fn[Self.F, rebind[fn(Self.o) -> other.o](other.F)]
     ] where _type_is_eq_parse_time[Self.o, other.i]():
@@ -109,3 +131,57 @@ struct Fn[i: AnyType, o: Movable & ImplicitlyDestructible, //, f: fn(i) -> o](
     @always_inline("builtin")
     fn __add__(self, other: Fn[i = Self.i]) -> Fns[Self, Fn[other.F]]:
         return Fns[Self, Fn[other.F]]()
+
+
+@fieldwise_init
+struct F[i: AnyType, o: Movable & ImplicitlyDestructible, //, f: fn(i) -> o](
+    FnTrait
+):
+    comptime I = Self.i
+    comptime O = Self.o
+    comptime F = Self.f
+
+    comptime seq[
+        other_o: Movable & ImplicitlyDestructible,
+        //,
+        other_f: fn(Self.o) -> other_o,
+    ] = F[seq_fn[Self.f, other_f]]
+
+    comptime par[
+        other_o: Movable & ImplicitlyDestructible,
+        //,
+        other_f: fn(Self.i) -> other_o,
+    ] = FG[Self, F[other_f]]
+
+    comptime comptime_run[i: Self.i] = Self.f(i)
+
+    @staticmethod
+    fn run(inp: Self.i) -> Self.o:
+        return Self.f(inp)
+
+
+@fieldwise_init
+struct FG[*fns: FnTrait where InputsMatch[*fns]]:
+    comptime i = Self.fns[0].I
+    comptime o = Tuple[*Variadic.map_types_to_types[Self.fns, FnToOut]]
+    comptime f = par_fns[*Self.fns]
+
+    comptime seq[
+        other_o: Movable & ImplicitlyDestructible,
+        //,
+        other_f: fn(Self.o) -> other_o,
+    ] = F[seq_fn[Self.f, other_f]]
+
+    comptime par[
+        other_o: Movable & ImplicitlyDestructible,
+        //,
+        other_f: fn(Self.i) -> other_o where InputsMatch[
+            *Variadic.concat_types[Self.fns, Variadic.types[F[other_f]]]
+        ],
+    ] = FG[*Variadic.concat_types[Self.fns, Variadic.types[F[other_f]]]]
+
+    comptime comptime_run[i: Self.i] = Self.f(i)
+
+    @staticmethod
+    fn run(inp: Self.i) -> Self.o:
+        return Self.f(inp)

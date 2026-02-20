@@ -51,7 +51,7 @@ fn test_generic_parallel() raises:
 
 
 fn int_to_float(v: Int) -> Float32:
-    return v
+    return Float32(v)
 
 
 fn int_to_int(v: Int) -> Int:
@@ -59,7 +59,7 @@ fn int_to_int(v: Int) -> Int:
 
 
 fn sum_tuple(v: Tuple[Float32, Int]) -> Int:
-    return Int(v[0] + v[1])
+    return Int(v[0] + Float32(v[1]))
 
 
 fn test_generic_two_parallels() raises:
@@ -86,7 +86,7 @@ fn string_to_int(str: String) -> Int:
 fn int_to_float_g(value: Int) -> Float32:
     print("int to float...")
     sleep(TIME)
-    return value
+    return Float32(value)
 
 
 fn int_mul[by: Int](value: Int) -> Int:
@@ -98,7 +98,7 @@ fn int_mul[by: Int](value: Int) -> Int:
 fn sum_tuple_g(value: Tuple[Int, Float32, Int]) -> Float32:
     print("Sum tuple...")
     sleep(TIME)
-    return value[0] + value[1] + value[2]
+    return Float32(value[0]) + value[1] + Float32(value[2])
 
 
 fn float_to_string(value: Float32) -> String:
@@ -130,7 +130,7 @@ struct IntToFloatTask(generic.Callable):
     fn __call__(self, arg: Int) -> Float32:
         print("int to float...")
         sleep(TIME)
-        return arg
+        return Float32(arg)
 
 
 @fieldwise_init
@@ -152,7 +152,7 @@ struct SumTuple(generic.Callable):
     fn __call__(self, arg: Self.I) -> Self.O:
         print("Sum tuple...")
         sleep(TIME)
-        return arg[0] + arg[1] + arg[2]
+        return Float32(arg[0]) + arg[1] + Float32(arg[2])
 
 
 @fieldwise_init
@@ -248,7 +248,7 @@ fn string_to_int_c(str: String) -> Int:
 fn int_to_float_t(value: Int) -> Float32:
     print("int to float...")
     sleep(TIME)
-    return value
+    return Float32(value)
 
 
 fn int_mul_c[by: Int](value: Int) -> Int:
@@ -260,7 +260,7 @@ fn int_mul_c[by: Int](value: Int) -> Int:
 fn sum_tuple3(value: Tuple[Int, Float32, Int]) -> Float32:
     print("Sum tuple...")
     sleep(TIME)
-    return value[0] + value[1] + value[2]
+    return Float32(value[0]) + value[1] + Float32(value[2])
 
 
 # Struct example
@@ -273,7 +273,7 @@ struct FloatToString:
 
 
 async fn async_itof(v: Int) -> Float32:
-    return v
+    return Float32(v)
 
 
 async fn async_ftoi(v: Float32) -> Int:
@@ -310,6 +310,45 @@ fn test_generic_comptime_examples() raises:
     print("Starting Graph execution")
     var final_result = final_graph.F("32")
     print(final_result)
+
+
+fn test_generic_comptime_explicit() raises:
+    print("Building graph")
+
+    fn stoi(v: String) -> Int:
+        try:
+            return Int(v)
+        except:
+            return 0
+
+    fn int_m[q: Int](v: Int) -> Int:
+        return q * v
+
+    fn itof(v: Int) -> Float32:
+        return Float32(v)
+
+    fn sumtp(v: Tuple[Int, Float32, Int]) -> Float32:
+        return Float32(v[0]) + v[1] + Float32(v[2])
+
+    fn ftos(v: Float32) -> String:
+        return String(v)
+
+    comptime F = compt.F
+    comptime explicit_graph = (
+        F[stoi].seq[F[int_m[2]].par[itof].par[int_m[3]].f].seq[sumtp].seq[ftos]
+    )
+
+    # comptime f_compt_result = explicit_graph.comptime_run["32"]
+    # comptime s_compt_result = explicit_graph.run("32")
+
+    # var f_runt_result = explicit_graph.comptime_run["32"]
+    var s_runt_result = explicit_graph.run("32")
+
+    # assert_equal(f_compt_result, s_compt_result)
+    # assert_equal(s_compt_result, f_runt_result)
+    # assert_equal(f_runt_result, s_runt_result)
+
+    print("final result all comptimeed:", s_runt_result)
 
 
 struct ImmutParallel(immutable.ImmutCallable):
