@@ -1,4 +1,4 @@
-from runtime.asyncrt import TaskGroup, _run
+from std.runtime.asyncrt import TaskGroup, _run
 
 
 trait AsyncCallable:

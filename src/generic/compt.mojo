@@ -1,8 +1,17 @@
-from runtime.asyncrt import Task, TaskGroup
-from sys.intrinsics import _type_is_eq_parse_time
-
+from std.runtime.asyncrt import Task, TaskGroup
+from std.sys.intrinsics import _type_is_eq_parse_time
+from std.memory import UnsafeMaybeUninit
 
 comptime FnToOut[f: FnTrait] = f.O
+
+
+comptime _FnInputMatch[I: AnyType, T: FnTrait] = _type_is_eq_parse_time[
+    I, T.I
+]()
+
+comptime InputsMatch[*fns: FnTrait] = Variadic.size(
+    Variadic.filter_types[*fns, predicate=_FnInputMatch[fns[0].I, _]]
+) == Variadic.size(fns)
 
 
 trait FnTrait(Movable, TrivialRegisterPassable):
@@ -22,22 +31,9 @@ fn seq_fn[
     return l(f(val))
 
 
-comptime _FnInputMatch[I: AnyType, T: FnTrait] = _type_is_eq_parse_time[
-    I, T.I
-]()
-
-comptime InputsMatch[*fns: FnTrait] = Variadic.size(
-    Variadic.filter_types[*fns, predicate = _FnInputMatch[fns[0].I]]
-) == Variadic.size(fns)
-
-
 fn par_fns[
     *fns: FnTrait where InputsMatch[*fns]
 ](val: fns[0].I, out outs: Tuple[*Variadic.map_types_to_types[fns, FnToOut]]):
-    # comptime assert Variadic.size(
-    #     Variadic.filter_types[*fns, predicate = InputsMatch[In]]
-    # ) == Variadic.size(fns), "All input types should be the same."
-
     tg = TaskGroup()
 
     __mlir_op.`lit.ownership.mark_initialized`(__get_mvalue_as_litref(outs))
@@ -47,90 +43,11 @@ fn par_fns[
         @parameter
         async fn task():
             ref inp = rebind[fns[ci].I](val)
-            outs[ci] = rebind_var[type_of(outs[ci])](fns[ci].F(inp))
+            outs[ci] = rebind_var[outs.element_types[ci]](fns[ci].F(inp))
 
         tg.create_task(task())
 
     tg.wait()
-
-
-fn par_fns_late_checked[
-    *fns: FnTrait
-](
-    val: fns[0].I, out outs: Tuple[*Variadic.map_types_to_types[fns, FnToOut]]
-) where InputsMatch[*fns]:
-    tg = TaskGroup()
-
-    __mlir_op.`lit.ownership.mark_initialized`(__get_mvalue_as_litref(outs))
-
-    comptime for ci in range(Variadic.size(fns)):
-
-        @parameter
-        async fn task():
-            ref inp = rebind[fns[ci].I](val)
-            outs[ci] = rebind_var[type_of(outs[ci])](fns[ci].F(inp))
-
-        tg.create_task(task())
-
-    tg.wait()
-
-
-struct Fns[*fns: FnTrait](TrivialRegisterPassable):
-    comptime i = Self.fns[0].I
-    comptime o = Tuple[*Variadic.map_types_to_types[Self.fns, FnToOut]]
-    comptime F = par_fns_late_checked[*Self.fns]
-
-    @always_inline("builtin")
-    fn __init__(out self):
-        pass
-
-    @always_inline("builtin")
-    fn __add__(
-        self, other: Fn[i = Self.i]
-    ) -> Fns[*Variadic.concat_types[Self.fns, Variadic.types[Fn[other.F]]]]:
-        return Fns[
-            *Variadic.concat_types[Self.fns, Variadic.types[Fn[other.F]]]
-        ]()
-
-    @always_inline("builtin")
-    fn __rshift__(self, other: Fn[i = Self.o]) -> Fn[seq_fn[Self.F, other.F]]:
-        return Fn[seq_fn[Self.F, other.F]]()
-
-    @always_inline("builtin")
-    fn __rshift__(
-        self, other: Fns[...]
-    ) -> Fn[
-        seq_fn[Self.F, rebind[fn(Self.o) -> other.o](other.F)]
-    ] where _type_is_eq_parse_time[Self.o, other.i]():
-        return Fn[seq_fn[Self.F, rebind[fn(Self.o) -> other.o](other.F)]]()
-
-
-struct Fn[i: AnyType, o: Movable & ImplicitlyDestructible, //, f: fn(i) -> o](
-    FnTrait
-):
-    comptime I = Self.i
-    comptime O = Self.o
-    comptime F = Self.f
-
-    @always_inline("builtin")
-    fn __init__(out self):
-        pass
-
-    @always_inline("builtin")
-    fn __rshift__(self, other: Fn[i = Self.o]) -> Fn[seq_fn[Self.F, other.F]]:
-        return Fn[seq_fn[Self.F, other.F]]()
-
-    @always_inline("builtin")
-    fn __rshift__(
-        self, other: Fns[...]
-    ) -> Fn[
-        seq_fn[Self.F, rebind[fn(Self.o) -> other.o](other.F)]
-    ] where _type_is_eq_parse_time[Self.o, other.i]():
-        return Fn[seq_fn[Self.F, rebind[fn(Self.o) -> other.o](other.F)]]()
-
-    @always_inline("builtin")
-    fn __add__(self, other: Fn[i = Self.i]) -> Fns[Self, Fn[other.F]]:
-        return Fns[Self, Fn[other.F]]()
 
 
 @fieldwise_init

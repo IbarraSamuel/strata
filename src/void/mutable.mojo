@@ -1,5 +1,5 @@
-from algorithm import sync_parallelize
-from builtin import Variadic
+from std.algorithm import sync_parallelize
+from std.builtin import Variadic
 
 comptime MutCallablePack = VariadicPack[
     elt_is_mutable=True, False, MutCallable, ...
@@ -75,10 +75,10 @@ trait _MovableMutCallable(ImplicitlyDestructible, Movable, _Callable):
 
 
 struct SeriesTask[origin: MutOrigin, //, *ts: MutCallable](MutCallable):
-    var storage: MutCallablePack[origin = Self.origin, *Self.ts]
+    var storage: MutCallablePack[origin=Self.origin, *Self.ts]
 
     fn __init__(
-        out self: SeriesTask[origin = args.origin, *Self.ts],
+        out self: SeriesTask[origin=args.origin, *Self.ts],
         mut *args: * Self.ts,
     ):
         self.storage = MutCallablePack(args._value)
@@ -91,10 +91,10 @@ struct SeriesTask[origin: MutOrigin, //, *ts: MutCallable](MutCallable):
 
 
 struct ParallelTask[origin: MutOrigin, //, *ts: MutCallable](MutCallable):
-    var storage: MutCallablePack[origin = Self.origin, *Self.ts]
+    var storage: MutCallablePack[origin=Self.origin, *Self.ts]
 
     fn __init__(
-        out self: ParallelTask[origin = args.origin, *Self.ts],
+        out self: ParallelTask[origin=args.origin, *Self.ts],
         mut *args: * Self.ts,
     ):
         self.storage = MutCallablePack(args._value)

@@ -1,5 +1,5 @@
-from algorithm import sync_parallelize
-from builtin import Variadic
+from std.algorithm import sync_parallelize
+from std.builtin import Variadic
 
 
 trait TypeCallable:

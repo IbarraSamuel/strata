@@ -1,5 +1,4 @@
-from runtime.asyncrt import _run, create_task
-from runtime.asyncrt import TaskGroup
+from std.runtime.asyncrt import _run, create_task, TaskGroup
 
 
 @always_inline("nodebug")

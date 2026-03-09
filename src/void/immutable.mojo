@@ -1,5 +1,5 @@
-from algorithm import sync_parallelize
-from builtin import Variadic
+from std.algorithm import sync_parallelize
+from std.builtin import Variadic
 
 comptime CallablePack = VariadicPack[
     elt_is_mutable=False, False, ImmutCallable, ...
@@ -95,11 +95,11 @@ struct ParallelTask[origin: ImmutOrigin, //, *Ts: ImmutCallable](ImmutCallable):
         Ts: ImmutableCallable types that conforms to `ImmCallable`.
     """
 
-    var callables: CallablePack[origin = Self.origin, *Self.Ts]
+    var callables: CallablePack[origin=Self.origin, *Self.Ts]
     """Underlying storage for tasks pointers."""
 
     fn __init__(
-        out self: ParallelTask[origin = args.origin, *Self.Ts], *args: * Self.Ts
+        out self: ParallelTask[origin=args.origin, *Self.Ts], *args: * Self.Ts
     ):
         """Create a Parallel group, using the args provided. Origin need to be casted.
 
@@ -133,11 +133,11 @@ struct SequentialTask[origin: ImmutOrigin, //, *Ts: ImmutCallable](
         Ts: ImmutableCallable types that conforms to `Callable`.
     """
 
-    var callables: CallablePack[origin = Self.origin, *Self.Ts]
+    var callables: CallablePack[origin=Self.origin, *Self.Ts]
     """Underlying storage for tasks pointers."""
 
     fn __init__(
-        out self: SequentialTask[origin = args.origin, *Self.Ts],
+        out self: SequentialTask[origin=args.origin, *Self.Ts],
         *args: * Self.Ts,
     ):
         """Create a Series group, using the args provided. Origin need to be casted.

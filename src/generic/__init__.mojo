@@ -1,6 +1,6 @@
-from runtime.asyncrt import TaskGroup
-from sys.intrinsics import _type_is_eq_parse_time
-from builtin.rebind import downcast
+from std.runtime.asyncrt import TaskGroup
+from std.sys.intrinsics import _type_is_eq_parse_time
+from std.builtin.rebind import downcast
 
 comptime TaskToRes[t: Call] = t.O
 comptime TaskToPtr[o: Origin, t: Call] = downcast[
@@ -24,7 +24,7 @@ trait Callable(Call):
     ](ref[so] self, ref[oo] other: o) -> Sequence[
         O1=so,
         O2=oo,
-        T1 = downcast[Self, Call],
+        T1=downcast[Self, Call],
         T2=o,
         Variadic.types[downcast[Self, Call], o],
     ]:
@@ -37,7 +37,7 @@ trait Callable(Call):
             Variadic.types[T=Call, downcast[Self, Call], o]
         ],
     ](ref[so] self, ref[oo] other: o) -> Parallel[
-        origin = origin_of(so, oo), downcast[Self, Call], o
+        origin=origin_of(so, oo), downcast[Self, Call], o
     ]:
         return Parallel(trait_downcast[Call](self), other)
 
@@ -68,7 +68,7 @@ struct Sequence[
     fn __rshift__[
         oo: ImmutOrigin, o: Call where _type_is_eq_parse_time[Self.O, o.I]()
     ](self, ref[oo] other: o) -> Sequence[
-        O1 = origin_of(self),
+        O1=origin_of(self),
         O2=oo,
         T1=Self,
         T2=o,
@@ -81,7 +81,7 @@ struct Sequence[
         oo: ImmutOrigin,
         o: Call where InputIsEq[Variadic.types[T=Call, Self, o]],
     ](ref[so] self, ref[oo] other: o) -> Parallel[
-        origin = origin_of(so, oo), Self, o
+        origin=origin_of(so, oo), Self, o
     ]:
         return Parallel(self, other)
 
@@ -91,7 +91,7 @@ comptime _InputIsEq[CompareTo: AnyType, V: Call] = _type_is_eq_parse_time[
 ]()
 
 comptime InputIsEq[CompareTo: Variadic.TypesOfTrait[Call]] = Variadic.size(
-    Variadic.filter_types[*CompareTo, predicate = _InputIsEq[CompareTo[0].I]]
+    Variadic.filter_types[*CompareTo, predicate=_InputIsEq[CompareTo[0].I, _]]
 ) == Variadic.size(CompareTo)
 
 
@@ -101,7 +101,7 @@ struct Parallel[
     comptime I = Self.elements[0].I
     comptime ResElems = Variadic.map_types_to_types[Self.elements, TaskToRes]
     comptime PtrElems = Variadic.map_types_to_types[
-        Self.elements, TaskToPtr[Self.origin]
+        Self.elements, TaskToPtr[Self.origin, _]
     ]
     comptime O = Tuple[*Self.ResElems]
     comptime Tasks = Tuple[*Self.PtrElems]
@@ -109,7 +109,7 @@ struct Parallel[
     var tasks: Self.Tasks
 
     fn __init__(
-        out self: Parallel[origin = callables.origin, *Self.elements],
+        out self: Parallel[origin=callables.origin, *Self.elements],
         *callables: * Self.elements,
     ):
         __mlir_op.`lit.ownership.mark_initialized`(
@@ -138,7 +138,7 @@ struct Parallel[
                 ref task_i = rebind[
                     Pointer[
                         Self.elements[i],
-                        origin = Self.origin,
+                        origin=Self.origin,
                     ]
                 ](self.tasks[i])
                 ref in_value = rebind[Self.elements[i].I](v)
@@ -158,7 +158,7 @@ struct Parallel[
         O2=oo,
         T1=Self,
         T2=o,
-        elements = Variadic.types[T=Call, Self, o],
+        elements=Variadic.types[T=Call, Self, o],
     ]:
         return {self, other}
 
@@ -168,10 +168,10 @@ struct Parallel[
             Variadic.concat_types[Self.elements, Variadic.types[o]]
         ],
     ](
-        ref self,
+        deinit self,
         ref[oo] other: o,
         out final: Parallel[
-            origin = origin_of(Self.origin, oo),
+            origin=origin_of(Self.origin, oo),
             *Variadic.concat_types[Self.elements, Variadic.types[o]],
         ],
     ):
@@ -180,7 +180,7 @@ struct Parallel[
         )
         # TODO: Fix rebind when this is properly handled by compiler.
         final.tasks = rebind_var[final.Tasks](
-            self.tasks.concat((Pointer(to=other),))
+            self.tasks^.concat((Pointer(to=other),))
         )
 
 

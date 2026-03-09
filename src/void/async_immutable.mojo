@@ -1,4 +1,4 @@
-from runtime.asyncrt import TaskGroup, _run
+from std.runtime.asyncrt import TaskGroup, _run
 
 
 trait AsyncCallable:
@@ -7,12 +7,12 @@ trait AsyncCallable:
 
     fn __add__[
         s: Origin, o: Origin, t: AsyncCallable
-    ](ref [s]self, ref [o]other: t) -> ParTaskPair[Self, t, s, o]:
+    ](ref[s] self, ref[o] other: t) -> ParTaskPair[Self, t, s, o]:
         return {self, other}
 
     fn __rshift__[
         s: Origin, o: Origin, t: AsyncCallable
-    ](ref [s]self, ref [o]other: t) -> SerTaskPair[Self, t, s, o]:
+    ](ref[s] self, ref[o] other: t) -> SerTaskPair[Self, t, s, o]:
         return {self, other}
 
 
@@ -28,7 +28,7 @@ struct SerTaskPair[
     var t1: Pointer[Self.T1, Self.o1]
     var t2: Pointer[Self.T2, Self.o2]
 
-    fn __init__(out self, ref [Self.o1]t1: Self.T1, ref [Self.o2]t2: Self.T2):
+    fn __init__(out self, ref[Self.o1] t1: Self.T1, ref[Self.o2] t2: Self.T2):
         self.t1 = Pointer(to=t1)
         self.t2 = Pointer(to=t2)
 
@@ -53,7 +53,7 @@ struct ParTaskPair[
     var t1: Pointer[Self.T1, Self.o1]
     var t2: Pointer[Self.T2, Self.o2]
 
-    fn __init__(out self, ref [Self.o1]t1: Self.T1, ref [Self.o2]t2: Self.T2):
+    fn __init__(out self, ref[Self.o1] t1: Self.T1, ref[Self.o2] t2: Self.T2):
         self.t1 = Pointer(to=t1)
         self.t2 = Pointer(to=t2)
 

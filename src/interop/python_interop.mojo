@@ -1,8 +1,8 @@
-from os import abort
-from python import PythonObject, Python
-from python._cpython import GILReleased
-from runtime.asyncrt import TaskGroup as TG
-from python.bindings import PythonModuleBuilder
+from std.os import abort
+from std.python import PythonObject, Python
+from std.python._cpython import GILReleased
+from std.runtime.asyncrt import TaskGroup as TG
+from std.python.bindings import PythonModuleBuilder
 
 
 @export
@@ -24,7 +24,7 @@ fn PyInit_mojo_strata() -> PythonObject:
         abort(String("failed to create Python module: ", e))
 
 
-struct TaskGroup(Movable, Representable):
+struct TaskGroup(Movable, Writable):
     comptime undefined = TaskGroup(-1)
     comptime Serial = TaskGroup(0)
     comptime Parallel = TaskGroup(1)
