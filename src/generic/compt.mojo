@@ -70,6 +70,12 @@ struct F[i: AnyType, o: Movable & ImplicitlyDestructible, //, f: fn(i) -> o](
         other_f: fn(Self.i) -> other_o,
     ] = FG[Self, F[other_f]]
 
+    # comptime par[
+    #     *fns: FnTrait where InputsMatch[
+    #         *Variadic.concat_types[T=FnTrait, Variadic.types[Self], fns]
+    #     ]
+    # ] = FG[*Variadic.concat_types[T=FnTrait, Variadic.types[Self], fns]]
+
     comptime comptime_run[i: Self.i] = Self.f(i)
 
     @staticmethod
@@ -79,26 +85,26 @@ struct F[i: AnyType, o: Movable & ImplicitlyDestructible, //, f: fn(i) -> o](
 
 @fieldwise_init
 struct FG[*fns: FnTrait where InputsMatch[*fns]]:
-    comptime i = Self.fns[0].I
-    comptime o = Tuple[*Variadic.map_types_to_types[Self.fns, FnToOut]]
-    comptime f = par_fns[*Self.fns]
+    comptime I = Self.fns[0].I
+    comptime O = Tuple[*Variadic.map_types_to_types[Self.fns, FnToOut]]
+    comptime F = par_fns[*Self.fns]
 
     comptime seq[
         other_o: Movable & ImplicitlyDestructible,
         //,
-        other_f: fn(Self.o) -> other_o,
-    ] = F[seq_fn[Self.f, other_f]]
+        other_f: fn(Self.O) -> other_o,
+    ] = F[seq_fn[Self.F, other_f]]
 
     comptime par[
         other_o: Movable & ImplicitlyDestructible,
         //,
-        other_f: fn(Self.i) -> other_o where InputsMatch[
+        other_f: fn(Self.I) -> other_o where InputsMatch[
             *Variadic.concat_types[Self.fns, Variadic.types[F[other_f]]]
         ],
     ] = FG[*Variadic.concat_types[Self.fns, Variadic.types[F[other_f]]]]
 
-    comptime comptime_run[i: Self.i] = Self.f(i)
+    comptime comptime_run[i: Self.I] = Self.F(i)
 
     @staticmethod
-    fn run(inp: Self.i) -> Self.o:
-        return Self.f(inp)
+    fn run(inp: Self.I) -> Self.O:
+        return Self.F(inp)

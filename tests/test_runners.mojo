@@ -1,8 +1,9 @@
+from std.testing import TestSuite, assert_true, assert_equal
+from std.time import monotonic, sleep
+
 from strata import generic
 from strata.generic import compt
 from strata.void import immutable, mutable, type, async_immutable, async_mutable
-from testing import TestSuite, assert_true, assert_equal
-from time import monotonic, sleep
 
 comptime TIME = 0.1
 
@@ -205,12 +206,11 @@ fn test_generic_comptime_parallel() raises:
         var end = monotonic()
         return start, end
 
-    comptime MyFn = compt.Fn[comptime_parallel]
-    var t1, t2, t3 = MyFn(), MyFn(), MyFn()
+    comptime _graph = (
+        compt.F[comptime_parallel].par[comptime_parallel].par[comptime_parallel]
+    )
 
-    var _graph = t1 + t2 + t3
-
-    var p1, p2, p3 = _graph.F(None)
+    var p1, p2, p3 = _graph.run(None)
 
     assert_true(p1[0] < p1[1])
     assert_true(p1[0] < p2[1])
@@ -224,13 +224,11 @@ fn test_generic_comptime_parallel() raises:
 
 
 fn test_generic_comptime_two_parallels() raises:
-    comptime itof = compt.Fn[int_to_float]()
-    comptime itoi = compt.Fn[int_to_int]()
-    comptime stp = compt.Fn[sum_tuple]()
+    comptime graph = compt.F[int_to_float].par[int_to_int].seq[
+        compt.F[sum_tuple].par[sum_tuple].F
+    ]
 
-    comptime graph = itof + itoi >> stp + stp
-
-    var r1, r2 = graph.F(1)
+    var r1, r2 = graph.run(1)
 
     assert_equal(r1, 2)
     assert_equal(r2, 2)
@@ -283,7 +281,7 @@ async fn async_ftoi(v: Float32) -> Int:
 fn test_generic_comptime_examples() raises:
     print("Building graph")
 
-    comptime Fn = compt.Fn
+    comptime Fn = compt.F
     comptime f1 = Fn[string_to_int]()
     comptime f21 = Fn[int_mul[2]]()
     comptime f22 = Fn[int_to_float]()
@@ -291,25 +289,31 @@ fn test_generic_comptime_examples() raises:
     comptime sumtp = Fn[sum_tuple_g]()
     comptime fts = Fn[FloatToString.call]()
 
-    comptime parpp = f21 + f22
-    comptime pargp = parpp + f23
-    comptime runpar = f1 >> pargp
-    comptime cnct = runpar >> sumtp
-    comptime final_g = cnct >> fts
+    comptime final_g = (
+        Fn[string_to_int]
+        .seq[Fn[int_mul[2]].par[int_to_float].par[int_mul[3]].F]
+        .seq[sum_tuple3]
+        .seq[FloatToString.call]
+    )
+    # comptime parpp = f21 + f22
+    # comptime pargp = parpp + f23
+    # comptime runpar = f1 >> pargp
+    # comptime cnct = runpar >> sumtp
+    # comptime final_g = cnct >> fts
 
     var final_result_f = final_g.F("32")
     print("final result all comptimeed:", final_result_f)
 
-    comptime final_graph = (
-        Fn[string_to_int]()
-        >> Fn[int_mul[2]]() + Fn[int_to_float_t]() + Fn[int_mul[3]]()
-        >> Fn[sum_tuple3]()
-        >> Fn[FloatToString.call]()
-    )
+    # comptime final_graph = (
+    #     Fn[string_to_int]()
+    #     >> Fn[int_mul[2]]() + Fn[int_to_float_t]() + Fn[int_mul[3]]()
+    #     >> Fn[sum_tuple3]()
+    #     >> Fn[FloatToString.call]()
+    # )
 
-    print("Starting Graph execution")
-    var final_result = final_graph.F("32")
-    print(final_result)
+    # print("Starting Graph execution")
+    # var final_result = final_graph.F("32")
+    # print(final_result)
 
 
 fn test_generic_comptime_explicit() raises:
@@ -335,7 +339,7 @@ fn test_generic_comptime_explicit() raises:
 
     comptime F = compt.F
     comptime explicit_graph = (
-        F[stoi].seq[F[int_m[2]].par[itof].par[int_m[3]].f].seq[sumtp].seq[ftos]
+        F[stoi].seq[F[int_m[2]].par[itof].par[int_m[3]].F].seq[sumtp].seq[ftos]
     )
 
     # comptime f_compt_result = explicit_graph.comptime_run["32"]
