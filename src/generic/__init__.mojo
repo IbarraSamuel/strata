@@ -61,9 +61,7 @@ struct Sequence[
         self.t2 = Pointer(to=t2)
 
     fn __call__(self, arg: Self.I) -> Self.O:
-        ref r1 = self.t1[](arg)
-        ref r1r = rebind[Self.T2.I](r1)  # This should be redundant
-        return self.t2[](r1r)
+        return self.t2[](rebind[Self.T2.I](self.t1[](arg)))
 
     fn __rshift__[
         oo: ImmutOrigin, o: Call where _type_is_eq_parse_time[Self.O, o.I]()
