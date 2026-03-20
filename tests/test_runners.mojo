@@ -5,7 +5,12 @@ from strata import generic
 from strata.generic import compt
 from strata.void import immutable, mutable, type, async_immutable, async_mutable
 
-comptime TIME = 0.1
+
+comptime TIME = 0.001
+
+
+# fn sleep(time: Float64) -> None:
+#     pass
 
 
 struct GenericParallel(generic.Callable):
@@ -76,7 +81,7 @@ fn test_generic_two_parallels() raises:
 
 
 fn string_to_int(str: String) -> Int:
-    print("string to int...")
+    # print("string to int...")
     sleep(TIME)
     try:
         return Int(str)
@@ -85,25 +90,25 @@ fn string_to_int(str: String) -> Int:
 
 
 fn int_to_float_g(value: Int) -> Float32:
-    print("int to float...")
+    # print("int to float...")
     sleep(TIME)
     return Float32(value)
 
 
 fn int_mul[by: Int](value: Int) -> Int:
-    print("Mutliply by", by, "...")
+    # print("Mutliply by", by, "...")
     sleep(TIME)
     return value * by
 
 
 fn sum_tuple_g(value: Tuple[Int, Float32, Int]) -> Float32:
-    print("Sum tuple...")
+    # print("Sum tuple...")
     sleep(TIME)
     return Float32(value[0]) + value[1] + Float32(value[2])
 
 
 fn float_to_string(value: Float32) -> String:
-    print("float to string...")
+    # print("float to string...")
     sleep(TIME)
     return String(value)
 
@@ -115,7 +120,7 @@ struct StringToIntTask(generic.Callable):
     comptime O = Int
 
     fn __call__(self, arg: Self.I) -> Self.O:
-        print("string to int...")
+        # print("string to int...")
         sleep(TIME)
         try:
             return Int(arg)
@@ -129,7 +134,7 @@ struct IntToFloatTask(generic.Callable):
     comptime O = Float32
 
     fn __call__(self, arg: Int) -> Float32:
-        print("int to float...")
+        # print("int to float...")
         sleep(TIME)
         return Float32(arg)
 
@@ -140,7 +145,7 @@ struct IntMulTask[by: Int](generic.Callable):
     comptime O = Int
 
     fn __call__(self, arg: Self.I) -> Self.O:
-        print("Mutliply by", Self.by, "...")
+        # print("Mutliply by", Self.by, "...")
         sleep(TIME)
         return arg * Self.by
 
@@ -151,7 +156,7 @@ struct SumTuple(generic.Callable):
     comptime O = Float32
 
     fn __call__(self, arg: Self.I) -> Self.O:
-        print("Sum tuple...")
+        # print("Sum tuple...")
         sleep(TIME)
         return Float32(arg[0]) + arg[1] + Float32(arg[2])
 
@@ -162,14 +167,14 @@ struct FloatToStringTask(generic.Callable):
     comptime O = String
 
     fn __call__(self, arg: Float32) -> String:
-        print("float to string...")
+        # print("float to string...")
         sleep(TIME)
         return String(arg)
 
 
 fn test_generic_examples() raises:
     # NOTE: Compile times could be faster if you use struct instead of functions.
-    print("Building graph with functions...")
+    # print("Building graph with functions...")
     comptime Fn = generic.Fn
 
     var stoi = Fn(string_to_int)
@@ -181,11 +186,12 @@ fn test_generic_examples() raises:
 
     var final_graph = stoi >> mul2 + itof + mul3 >> sum_tp >> ftos
 
-    print("Starting Graph execution")
+    # print("Starting Graph execution")
     var result = final_graph("32")
-    print("Meet expected?:", result, "vs 192.0:", result == "192.0")
+    # print("Meet expected?:", result, "vs 192.0:", result == "192.0")
+    assert_equal(result, "192.0")
 
-    print("Building Struct graph")
+    # print("Building Struct graph")
 
     var struct_graph = (
         StringToIntTask()
@@ -194,9 +200,10 @@ fn test_generic_examples() raises:
         >> FloatToStringTask()
     )
 
-    print("Starting Graph execution")
+    # print("Starting Graph execution")
     var result_2 = struct_graph("32")
-    print("Meet expected?:", result_2, "vs 192.0:", result_2 == "192.0")
+    # print("Meet expected?:", result_2, "vs 192.0:", result_2 == "192.0")
+    assert_equal(result_2, "192.0")
 
 
 fn test_generic_comptime_parallel() raises:
@@ -235,7 +242,7 @@ fn test_generic_comptime_two_parallels() raises:
 
 
 fn string_to_int_c(str: String) -> Int:
-    print("string to int...")
+    # print("string to int...")
     sleep(TIME)
     try:
         return Int(str)
@@ -244,19 +251,19 @@ fn string_to_int_c(str: String) -> Int:
 
 
 fn int_to_float_t(value: Int) -> Float32:
-    print("int to float...")
+    # print("int to float...")
     sleep(TIME)
     return Float32(value)
 
 
 fn int_mul_c[by: Int](value: Int) -> Int:
-    print("Mutliply by", by, "...")
+    # print("Mutliply by", by, "...")
     sleep(TIME)
     return value * by
 
 
 fn sum_tuple3(value: Tuple[Int, Float32, Int]) -> Float32:
-    print("Sum tuple...")
+    # print("Sum tuple...")
     sleep(TIME)
     return Float32(value[0]) + value[1] + Float32(value[2])
 
@@ -265,7 +272,7 @@ fn sum_tuple3(value: Tuple[Int, Float32, Int]) -> Float32:
 struct FloatToString:
     @staticmethod
     fn call(value: Float32) -> String:
-        print("Float to string...")
+        # print("Float to string...")
         sleep(TIME)
         return String(value)
 
@@ -279,7 +286,7 @@ async fn async_ftoi(v: Float32) -> Int:
 
 
 fn test_generic_comptime_examples() raises:
-    print("Building graph")
+    # print("Building graph")
 
     comptime Fn = compt.F
     comptime f1 = Fn[string_to_int]()
@@ -302,7 +309,8 @@ fn test_generic_comptime_examples() raises:
     # comptime final_g = cnct >> fts
 
     var final_result_f = final_g.F("32")
-    print("final result all comptimeed:", final_result_f)
+    assert_equal(final_result_f, "192.0")
+    # print("final result all comptimeed:", final_result_f)
 
     # comptime final_graph = (
     #     Fn[string_to_int]()
@@ -317,7 +325,7 @@ fn test_generic_comptime_examples() raises:
 
 
 fn test_generic_comptime_explicit() raises:
-    print("Building graph")
+    # print("Building graph")
 
     fn stoi(v: String) -> Int:
         try:
@@ -348,11 +356,12 @@ fn test_generic_comptime_explicit() raises:
     # var f_runt_result = explicit_graph.comptime_run["32"]
     var s_runt_result = explicit_graph.run("32")
 
+    assert_equal(s_runt_result, "192.0")
     # assert_equal(f_compt_result, s_compt_result)
     # assert_equal(s_compt_result, f_runt_result)
     # assert_equal(f_runt_result, s_runt_result)
 
-    print("final result all comptimeed:", s_runt_result)
+    # print("final result all comptimeed:", s_runt_result)
 
 
 struct ImmutParallel(immutable.ImmutCallable):
@@ -416,12 +425,12 @@ struct MyTask[job: StringLiteral](immutable.ImmutCallable):
     var some_data: String
 
     fn __call__(self):
-        print("Running [", Self.job, "]:", self.some_data)
+        # print("Running [", Self.job, "]:", self.some_data)
         sleep(TIME)
 
 
 fn test_immut_examples() raises:
-    print("\n\nHey! Running Immutable Examples...")
+    # print("\n\nHey! Running Immutable Examples...")
     comptime IS = immutable.SequentialTask
     comptime IP = immutable.ParallelTask
 
@@ -440,7 +449,7 @@ fn test_immut_examples() raises:
         IP(find_min, find_max, find_mean, find_median),
         merge_results,
     )
-    print("[GRAPH 1]...")
+    # print("[GRAPH 1]...")
     graph_1()
 
     # Airflow Syntax
@@ -451,7 +460,7 @@ fn test_immut_examples() raises:
         >> find_min + find_max + find_mean + find_median
         >> merge_results
     )
-    print("[GRAPH 2]...")
+    # print("[GRAPH 2]...")
     graph_2()
 
     # What about functions? Yes, those can be considered as ImmTasks.
@@ -459,19 +468,19 @@ fn test_immut_examples() raises:
     # No arguments or captures are allowed, no returns. So it's not so useful.
 
     fn first_task():
-        print("Initialize everything...")
+        # print("Initialize everything...")
         sleep(TIME)
 
     fn last_task():
-        print("Finalize everything...")
+        # print("Finalize everything...")
         sleep(TIME)
 
     fn parallel_some():
-        print("Parallel some...")
+        # print("Parallel some...")
         sleep(TIME)
 
     fn parallel2():
-        print("Parallel 2...")
+        # print("Parallel 2...")
         sleep(TIME)
 
     # NOTE: You need to do it here, because we need to have an Origin to be able to
@@ -485,7 +494,7 @@ fn test_immut_examples() raises:
     ps = Fn(parallel_some)
     p2 = Fn(parallel2)
     lt = Fn(last_task)
-    print("[ Function Graph ]...")
+    # print("[ Function Graph ]...")
     fn_graph = ft >> ps + p2 + ps >> lt
     fn_graph()
 
@@ -552,14 +561,14 @@ struct InitTask[name: String = "Init"](mutable.MutCallable):
     var value: Int
 
     fn __call__(mut self):
-        print("Starting [", Self.name, "Task]: Value is", self.value, "...")
+        # print("Starting [", Self.name, "Task]: Value is", self.value, "...")
         self.value += 1
         sleep(TIME)
-        print("Finishing [", Self.name, "Task]: The value is:", self.value)
+        # print("Finishing [", Self.name, "Task]: The value is:", self.value)
 
 
 fn test_mut_examples() raises:
-    print("\n\nHey! Running Mutable Examples (No cross Reference)...")
+    # print("\n\nHey! Running Mutable Examples (No cross Reference)...")
     # Type syntax. Not so flexible because we cannot mix var / mut refs in Variadic Inputs.
     # * Some need to be owned because those groups will not have origin.
     # * Some need to be mutrefs because we want to point to the original struct without using a wrapper to then transfer the wrapper.
@@ -592,7 +601,7 @@ fn test_mut_examples() raises:
     task4 = InitTask["pre-last"](2)
     task5 = InitTask["last"](2)
 
-    print("Type graph...")
+    # print("Type graph...")
     grp = PT(task31, task32, task33, task34)
     type_graph = ST(task1, task2, grp, task4, task5)
     type_graph()
@@ -602,7 +611,7 @@ fn test_mut_examples() raises:
 
     # For tasks with independent values:
 
-    print("Airflow graph...")
+    # print("Airflow graph...")
     graph = (
         task1 >> task2 >> task31 + task32 + task33 + task34 >> task4 >> task5
     )
@@ -618,7 +627,7 @@ struct MyTypeTask[name: StringLiteral](
 ):
     @staticmethod
     fn __call__():
-        print("Task [", Self.name, "] Running...")
+        # print("Task [", Self.name, "] Running...")
         sleep(TIME)
 
 
@@ -640,7 +649,7 @@ fn test_type_examples() raises:
         PD[FindMin, FindMax, FindMean, FindMedian],
         MergeResults,
     ]
-    print("[Types Graph 1]...")
+    # print("[Types Graph 1]...")
     TypesGraph.__call__()
 
     # # Airflow Syntax.
@@ -651,7 +660,7 @@ fn test_type_examples() raises:
         >> FindMin() + FindMax() + FindMean() + FindMedian()
         >> MergeResults()
     )
-    print("[Airflow Graph]...")
+    # print("[Airflow Graph]...")
     airflow_graph.__call__()
 
 
