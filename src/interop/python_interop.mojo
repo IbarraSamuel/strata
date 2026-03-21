@@ -6,7 +6,7 @@ from std.python.bindings import PythonModuleBuilder
 
 
 @export
-fn PyInit_mojo_strata() -> PythonObject:
+def PyInit_mojo_strata() -> PythonObject:
     try:
         var strata = PythonModuleBuilder("mojo_strata")
 
@@ -32,23 +32,23 @@ struct TaskGroup(Movable, Writable):
     var mode: Int
     var objects: List[PythonObject]
 
-    # fn __init__(out self):
+    # def __init__(out self):
     #     self.mode = -1
     #     self.objects = []
 
-    fn __init__(out self, task: PythonObject):
+    def __init__(out self, task: PythonObject):
         self.mode = -1
         self.objects = [task]
 
-    fn __init__(out self, mode: Int):
+    def __init__(out self, mode: Int):
         self.mode = mode
         self.objects = []
 
-    fn copy(self, out o: Self):
+    def copy(self, out o: Self):
         o = Self(mode=self.mode)
         o.objects = self.objects.copy()
 
-    fn __repr__(self) -> String:
+    def __repr__(self) -> String:
         objs = "[" + String(", ").join(self.objects) + "]"
         mode = (
             "undefined" if self.mode
@@ -57,7 +57,7 @@ struct TaskGroup(Movable, Writable):
         )
         return String("TaskGroup(mode:", mode, ", objects:", objs, ")")
 
-    fn _add_task(mut self, t: PythonObject, mode: Int) raises:
+    def _add_task(mut self, t: PythonObject, mode: Int) raises:
         if self.mode == Self.undefined.mode:
             self.mode = mode
 
@@ -70,7 +70,7 @@ struct TaskGroup(Movable, Writable):
         new_group.objects.append(t)
         self = new_group^
 
-    fn _call(self, msg: PythonObject) raises -> PythonObject:
+    def _call(self, msg: PythonObject) raises -> PythonObject:
         if len(self.objects) == 0:
             return msg
 
@@ -116,7 +116,7 @@ struct TaskGroup(Movable, Writable):
 
         #     @parameter
         #     @always_inline
-        #     fn run_task(i: Int):
+        #     def run_task(i: Int):
         #         tsk = self.objects.unsafe_get(i)
         #         try:
         #             grp = tsk._try_downcast_value[TaskGroup]()
@@ -131,7 +131,7 @@ struct TaskGroup(Movable, Writable):
 
         #     @parameter
         #     @always_inline
-        #     async fn run_async(i: Int):
+        #     async def run_async(i: Int):
         #         run_task(i)
 
         #     tg = TG()
@@ -151,7 +151,7 @@ struct TaskGroup(Movable, Writable):
     # =========================================
 
     @staticmethod
-    fn py_init(out self: Self, args: PythonObject, kwargs: PythonObject) raises:
+    def py_init(out self: Self, args: PythonObject, kwargs: PythonObject) raises:
         """Requires a kw argument called "task" or a positional argument that should be of type task.
         """
         if len(args) != 1 and PythonObject("task") not in kwargs:
@@ -163,7 +163,7 @@ struct TaskGroup(Movable, Writable):
         self = Self(task=task_obj)
 
     @staticmethod
-    fn add_task(
+    def add_task(
         self_ptr: UnsafePointer[Self, MutAnyOrigin],
         t: PythonObject,
         _mode: PythonObject,
@@ -171,11 +171,11 @@ struct TaskGroup(Movable, Writable):
         self_ptr[]._add_task(t, Int(py=_mode))
 
     @staticmethod
-    fn py_method():
+    def py_method():
         pass
 
     @staticmethod
-    fn call(
+    def call(
         self_ptr: UnsafePointer[Self, MutAnyOrigin], v: PythonObject
     ) raises -> PythonObject:
         return self_ptr[]._call(v)

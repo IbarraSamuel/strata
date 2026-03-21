@@ -2,17 +2,17 @@ from std.runtime.asyncrt import TaskGroup, _run
 
 
 trait AsyncCallable:
-    async fn __call__(mut self):
+    async def __call__(mut self):
         ...
 
-    fn __add__[
+    def __add__[
         s: MutOrigin, o: MutOrigin
     ](ref[s] self, ref[o] other: Some[AsyncCallable]) -> ParTaskPair[
         TaskRef[Self, s], TaskRef[type_of(other), o]
     ]:
         return {TaskRef(self), TaskRef(other)}
 
-    fn __add__[
+    def __add__[
         s: MutOrigin,
     ](
         ref[s] self,
@@ -20,7 +20,7 @@ trait AsyncCallable:
     ) -> ParTaskPair[TaskRef[Self, s], type_of(other)]:
         return {TaskRef(self), other^}
 
-    fn __rshift__[
+    def __rshift__[
         s: MutOrigin,
         o: MutOrigin,
     ](ref[s] self, ref[o] other: Some[AsyncCallable]) -> SerTaskPair[
@@ -28,7 +28,7 @@ trait AsyncCallable:
     ]:
         return {TaskRef(self), TaskRef(other)}
 
-    fn __rshift__[
+    def __rshift__[
         s: MutOrigin,
     ](
         ref[s] self,
@@ -38,27 +38,27 @@ trait AsyncCallable:
 
 
 trait AsyncCallableMovable(AsyncCallable, ImplicitlyDestructible, Movable):
-    fn __add__[
+    def __add__[
         o: MutOrigin,
     ](var self, ref[o] other: Some[AsyncCallable]) -> ParTaskPair[
         Self, TaskRef[type_of(other), o]
     ]:
         return {self^, TaskRef(other)}
 
-    fn __add__[](
+    def __add__[](
         var self,
         var other: Some[AsyncCallable & Movable & ImplicitlyDestructible],
     ) -> ParTaskPair[Self, type_of(other)]:
         return {self^, other^}
 
-    fn __rshift__[
+    def __rshift__[
         o: MutOrigin,
     ](var self, ref[o] other: Some[AsyncCallable]) -> SerTaskPair[
         Self, TaskRef[type_of(other), o]
     ]:
         return {self^, TaskRef(other)}
 
-    fn __rshift__(
+    def __rshift__(
         var self,
         var other: Some[AsyncCallable & Movable & ImplicitlyDestructible],
     ) -> SerTaskPair[Self, type_of(other)]:
@@ -69,10 +69,10 @@ struct TaskRef[T: AsyncCallable, origin: MutOrigin](AsyncCallableMovable):
     var v: Pointer[Self.T, Self.origin]
 
     # @implicit
-    fn __init__(out self, ref[Self.origin] v: Self.T):
+    def __init__(out self, ref[Self.origin] v: Self.T):
         self.v = Pointer(to=v)
 
-    async fn __call__(mut self):
+    async def __call__(mut self):
         await self.v[]()
 
 
@@ -84,11 +84,11 @@ struct SerTaskPair[
     var t1: Self.T1
     var t2: Self.T2
 
-    async fn __call__(mut self):
+    async def __call__(mut self):
         await self.t1()
         await self.t2()
 
-    fn run(mut self):
+    def run(mut self):
         _run(self())
 
 
@@ -100,11 +100,11 @@ struct ParTaskPair[
     var t1: Self.T1
     var t2: Self.T2
 
-    async fn __call__(mut self):
+    async def __call__(mut self):
         tg = TaskGroup()
         tg.create_task(self.t1())
         tg.create_task(self.t2())
         await tg
 
-    fn run(mut self):
+    def run(mut self):
         _run(self())

@@ -5,7 +5,7 @@ import subprocess
 comptime CMD = "mojo doc --diagnose-missing-doc-strings --validate-doc-strings {}"
 
 
-fn _flatten_files(var path: Path, mut files: List[Path]) raises:
+def _flatten_files(var path: Path, mut files: List[Path]) raises:
     if path.is_file():
         files.append(path)
         return
@@ -14,25 +14,25 @@ fn _flatten_files(var path: Path, mut files: List[Path]) raises:
         _flatten_files(path / p, files)
 
 
-fn _list_files(var package_dir: Path) raises -> List[Path]:
+def _list_files(var package_dir: Path) raises -> List[Path]:
     files = List[Path]()
     _flatten_files(package_dir^, files)
     return files^
 
 
-fn _run_doctest_cmd(file: Path) raises -> String:
+def _run_doctest_cmd(file: Path) raises -> String:
     path = String(file)
     cmd = StaticString(CMD).format(path)
     return subprocess.run(cmd)
 
 
-fn test_docs_completeness() raises:
+def test_docs_completeness() raises:
     var package_dir = _dir_of_current_file() / ".." / "src"
     var files = _list_files(package_dir)
     var results = List[String](length=len(files), fill="")
 
     @parameter
-    fn calc_file_docs(i: Int) raises:
+    def calc_file_docs(i: Int) raises:
         ref file = files[i]
         results[i] = _run_doctest_cmd(file)
 
@@ -46,7 +46,7 @@ fn test_docs_completeness() raises:
         raise "\n\n".join(errors)
 
 
-fn main() raises:
+def main() raises:
     from testing import TestSuite
 
     TestSuite.discover_tests[(test_docs_completeness,)]().run()

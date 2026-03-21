@@ -12,12 +12,12 @@ trait Call:
     comptime I: AnyType
     comptime O: Movable & ImplicitlyDestructible
 
-    fn __call__(self, arg: Self.I) -> Self.O:
+    def __call__(self, arg: Self.I) -> Self.O:
         ...
 
 
 trait Callable(Call):
-    fn __rshift__[
+    def __rshift__[
         so: ImmutOrigin,
         oo: ImmutOrigin,
         o: Call where _type_is_eq_parse_time[downcast[Self, Call].O, o.I](),
@@ -30,7 +30,7 @@ trait Callable(Call):
     ]:
         return {trait_downcast[Call](self), other}
 
-    fn __add__[
+    def __add__[
         so: ImmutOrigin,
         oo: ImmutOrigin,
         o: Call where InputIsEq[
@@ -56,14 +56,14 @@ struct Sequence[
     var t1: Pointer[Self.T1, Self.O1]
     var t2: Pointer[Self.T2, Self.O2]
 
-    fn __init__(out self, ref[Self.O1] t1: Self.T1, ref[Self.O2] t2: Self.T2):
+    def __init__(out self, ref[Self.O1] t1: Self.T1, ref[Self.O2] t2: Self.T2):
         self.t1 = Pointer(to=t1)
         self.t2 = Pointer(to=t2)
 
-    fn __call__(self, arg: Self.I) -> Self.O:
+    def __call__(self, arg: Self.I) -> Self.O:
         return self.t2[](rebind[Self.T2.I](self.t1[](arg)))
 
-    fn __rshift__[
+    def __rshift__[
         oo: ImmutOrigin, o: Call where _type_is_eq_parse_time[Self.O, o.I]()
     ](self, ref[oo] other: o) -> Sequence[
         O1=origin_of(self),
@@ -74,7 +74,7 @@ struct Sequence[
     ]:
         return {self, other}
 
-    fn __add__[
+    def __add__[
         so: ImmutOrigin,
         oo: ImmutOrigin,
         o: Call where InputIsEq[Variadic.types[T=Call, Self, o]],
@@ -106,7 +106,7 @@ struct Parallel[
 
     var tasks: Self.Tasks
 
-    fn __init__(
+    def __init__(
         out self: Parallel[origin=callables.origin, *Self.elements],
         *callables: * Self.elements,
     ):
@@ -119,7 +119,7 @@ struct Parallel[
             comptime ti = type_of(self.tasks[i])
             self.tasks[i] = rebind_var[ti](Pointer(to=callables[i]))
 
-    fn __call__(self, v: Self.I) -> Self.O:
+    def __call__(self, v: Self.I) -> Self.O:
         # Assume all tasks has the same input type.
         var tg = TaskGroup()
         var _out_tp: Self.O
@@ -131,7 +131,7 @@ struct Parallel[
         comptime for i in range(Variadic.size(Self.elements)):
 
             @parameter
-            async fn task():
+            async def task():
                 comptime to = Self.O.element_types[i]
                 ref task_i = rebind[
                     Pointer[
@@ -147,7 +147,7 @@ struct Parallel[
         tg.wait()
         return _out_tp^
 
-    fn __rshift__[
+    def __rshift__[
         so: ImmutOrigin,
         oo: ImmutOrigin,
         o: Call where _type_is_eq_parse_time[Self.O, o.I](),
@@ -160,7 +160,7 @@ struct Parallel[
     ]:
         return {self, other}
 
-    fn __add__[
+    def __add__[
         oo: ImmutOrigin,
         o: Call where InputIsEq[
             Variadic.concat_types[Self.elements, Variadic.types[o]]
@@ -189,7 +189,7 @@ struct Fn[In: AnyType, Out: Movable & ImplicitlyDestructible](
     comptime I = Self.In
     comptime O = Self.Out
 
-    var func: fn(Self.In) -> Self.Out
+    var func: def(Self.In) -> Self.Out
 
-    fn __call__(self, arg: Self.I) -> Self.O:
+    def __call__(self, arg: Self.I) -> Self.O:
         return self.func(arg)

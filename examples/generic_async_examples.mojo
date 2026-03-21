@@ -1,11 +1,11 @@
-from strata.generic.async_fn import Fn
+from strata.generic.async_def import Fn
 import os
 from time import sleep
 
 comptime time = 0.1
 
 
-async fn string_to_int(str: String) -> Int:
+async def string_to_int(str: String) -> Int:
     print("string to int...")
     sleep(time)
     try:
@@ -14,19 +14,19 @@ async fn string_to_int(str: String) -> Int:
         return 0
 
 
-async fn int_to_float(value: Int) -> Float32:
+async def int_to_float(value: Int) -> Float32:
     print("int to float...")
     sleep(time)
     return value
 
 
-async fn int_mul[by: Int](value: Int) -> Int:
+async def int_mul[by: Int](value: Int) -> Int:
     print("Mutliply by", by, "...")
     sleep(time)
     return value * by
 
 
-async fn sum_tuple(value: Tuple[Int, Float32]) -> Float32:
+async def sum_tuple(value: Tuple[Int, Float32]) -> Float32:
     print("Sum tuple...")
     sleep(time)
     return value[0] + value[1]
@@ -40,13 +40,13 @@ struct FloatToString:
     comptime O = String
 
     @staticmethod
-    async fn call(value: Self.I) -> Self.O:
+    async def call(value: Self.I) -> Self.O:
         print("Float to string...")
         sleep(time)
         return Self.O(value)
 
 
-fn main():
+def main():
     print("Building graph")
 
     # NOTE 2: We need to instanciate because there is no way to implement

@@ -17,21 +17,21 @@ comptime InputsMatch[*fns: FnTrait] = Variadic.size(
 trait FnTrait(Movable, TrivialRegisterPassable):
     comptime I: AnyType
     comptime O: Movable & ImplicitlyDestructible
-    comptime F: fn(Self.I) -> Self.O
+    comptime F: def(Self.I) -> Self.O
 
 
-fn seq_fn[
+def seq_fn[
     In: AnyType,
     M: AnyType & ImplicitlyDestructible,
     O: AnyType & ImplicitlyDestructible,
     //,
-    f: fn(In) -> M,
-    l: fn(M) -> O,
+    f: def(In) -> M,
+    l: def(M) -> O,
 ](val: In) -> O:
     return l(f(val))
 
 
-fn par_fns[
+def par_fns[
     *fns: FnTrait where InputsMatch[*fns]
 ](val: fns[0].I, out outs: Tuple[*Variadic.map_types_to_types[fns, FnToOut]]):
     tg = TaskGroup()
@@ -41,7 +41,7 @@ fn par_fns[
     comptime for ci in range(Variadic.size(fns)):
 
         @parameter
-        async fn task():
+        async def task():
             ref inp = rebind[fns[ci].I](val)
             outs[ci] = rebind_var[outs.element_types[ci]](fns[ci].F(inp))
 
@@ -51,7 +51,7 @@ fn par_fns[
 
 
 @fieldwise_init
-struct F[i: AnyType, o: Movable & ImplicitlyDestructible, //, f: fn(i) -> o](
+struct F[i: AnyType, o: Movable & ImplicitlyDestructible, //, f: def(i) -> o](
     FnTrait
 ):
     comptime I = Self.i
@@ -61,13 +61,13 @@ struct F[i: AnyType, o: Movable & ImplicitlyDestructible, //, f: fn(i) -> o](
     comptime seq[
         other_o: Movable & ImplicitlyDestructible,
         //,
-        other_f: fn(Self.o) -> other_o,
+        other_f: def(Self.o) -> other_o,
     ] = F[seq_fn[Self.f, other_f]]
 
     comptime par[
         other_o: Movable & ImplicitlyDestructible,
         //,
-        other_f: fn(Self.i) -> other_o,
+        other_f: def(Self.i) -> other_o,
     ] = FG[Self, F[other_f]]
 
     # comptime par[
@@ -79,7 +79,7 @@ struct F[i: AnyType, o: Movable & ImplicitlyDestructible, //, f: fn(i) -> o](
     comptime comptime_run[i: Self.i] = Self.f(i)
 
     @staticmethod
-    fn run(inp: Self.i) -> Self.o:
+    def run(inp: Self.i) -> Self.o:
         return Self.f(inp)
 
 
@@ -92,13 +92,13 @@ struct FG[*fns: FnTrait where InputsMatch[*fns]]:
     comptime seq[
         other_o: Movable & ImplicitlyDestructible,
         //,
-        other_f: fn(Self.O) -> other_o,
+        other_f: def(Self.O) -> other_o,
     ] = F[seq_fn[Self.F, other_f]]
 
     comptime par[
         other_o: Movable & ImplicitlyDestructible,
         //,
-        other_f: fn(Self.I) -> other_o where InputsMatch[
+        other_f: def(Self.I) -> other_o where InputsMatch[
             *Variadic.concat_types[Self.fns, Variadic.types[F[other_f]]]
         ],
     ] = FG[*Variadic.concat_types[Self.fns, Variadic.types[F[other_f]]]]
@@ -106,5 +106,5 @@ struct FG[*fns: FnTrait where InputsMatch[*fns]]:
     comptime comptime_run[i: Self.I] = Self.F(i)
 
     @staticmethod
-    fn run(inp: Self.I) -> Self.O:
+    def run(inp: Self.I) -> Self.O:
         return Self.F(inp)

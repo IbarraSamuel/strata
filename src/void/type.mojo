@@ -4,25 +4,25 @@ from std.builtin import Variadic
 
 trait TypeCallable:
     @staticmethod
-    fn __call__():
+    def __call__():
         ...
 
     @always_inline("nodebug")
-    fn __rshift__[
+    def __rshift__[
         t: TypeCallable, //
     ](var self, other: t) -> SeriesTypeTask[Self, t]:
         self^.forget()
         return {}
 
     @always_inline("nodebug")
-    fn __add__[
+    def __add__[
         t: TypeCallable, //
     ](var self, other: t) -> ParallelTypeTask[Self, t]:
         self^.forget()
         return {}
 
     @always_inline("nodebug")
-    fn forget(deinit self):
+    def forget(deinit self):
         pass
 
 
@@ -38,12 +38,12 @@ struct ParallelTypeTask[*Ts: TypeCallable](
 
     @staticmethod
     @always_inline("nodebug")
-    fn __call__():
+    def __call__():
         """Call the tasks based on the types in a parallel order."""
         comptime size = Variadic.size(Self.Ts)
 
         @parameter
-        fn exec(i: Int):
+        def exec(i: Int):
             comptime for ti in range(size):
                 if ti == i:
                     Self.Ts[ti].__call__()
@@ -62,7 +62,7 @@ struct SeriesTypeTask[*Ts: TypeCallable](TrivialRegisterPassable, TypeCallable):
 
     @staticmethod
     @always_inline("nodebug")
-    fn __call__():
+    def __call__():
         """Call the tasks based on the types on a sequence order."""
         comptime size = Variadic.size(Self.Ts)
 

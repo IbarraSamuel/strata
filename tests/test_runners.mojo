@@ -9,7 +9,7 @@ from strata.void import immutable, mutable, type, async_immutable, async_mutable
 comptime TIME = 0.001
 
 
-# fn sleep(time: Float64) -> None:
+# def sleep(time: Float64) -> None:
 #     pass
 
 
@@ -20,17 +20,17 @@ struct GenericParallel(generic.Callable):
     var start: UnsafePointer[UInt, MutAnyOrigin]
     var end: UnsafePointer[UInt, MutAnyOrigin]
 
-    fn __init__(out self, mut s: UInt, mut e: UInt):
+    def __init__(out self, mut s: UInt, mut e: UInt):
         self.start = UnsafePointer(to=s)
         self.end = UnsafePointer(to=e)
 
-    fn __call__(self, v: Int):
+    def __call__(self, v: Int):
         self.start[] = monotonic()
         sleep(TIME)
         self.end[] = monotonic()
 
 
-fn test_generic_parallel() raises:
+def test_generic_parallel() raises:
     comptime GP = GenericParallel
 
     var start1, end1 = (UInt(0), UInt(0))
@@ -56,19 +56,19 @@ fn test_generic_parallel() raises:
     assert_true(p3.start[] < p3.end[])
 
 
-fn int_to_float(v: Int) -> Float32:
+def int_to_float(v: Int) -> Float32:
     return Float32(v)
 
 
-fn int_to_int(v: Int) -> Int:
+def int_to_int(v: Int) -> Int:
     return v
 
 
-fn sum_tuple(v: Tuple[Float32, Int]) -> Int:
+def sum_tuple(v: Tuple[Float32, Int]) -> Int:
     return Int(v[0] + Float32(v[1]))
 
 
-fn test_generic_two_parallels() raises:
+def test_generic_two_parallels() raises:
     var itof = generic.Fn(int_to_float)
     var itoi = generic.Fn(int_to_int)
     var stp = generic.Fn(sum_tuple)
@@ -80,7 +80,7 @@ fn test_generic_two_parallels() raises:
     assert_equal(r2, 2)
 
 
-fn string_to_int(str: String) -> Int:
+def string_to_int(str: String) -> Int:
     # print("string to int...")
     sleep(TIME)
     try:
@@ -89,25 +89,25 @@ fn string_to_int(str: String) -> Int:
         return 0
 
 
-fn int_to_float_g(value: Int) -> Float32:
+def int_to_float_g(value: Int) -> Float32:
     # print("int to float...")
     sleep(TIME)
     return Float32(value)
 
 
-fn int_mul[by: Int](value: Int) -> Int:
+def int_mul[by: Int](value: Int) -> Int:
     # print("Mutliply by", by, "...")
     sleep(TIME)
     return value * by
 
 
-fn sum_tuple_g(value: Tuple[Int, Float32, Int]) -> Float32:
+def sum_tuple_g(value: Tuple[Int, Float32, Int]) -> Float32:
     # print("Sum tuple...")
     sleep(TIME)
     return Float32(value[0]) + value[1] + Float32(value[2])
 
 
-fn float_to_string(value: Float32) -> String:
+def float_to_string(value: Float32) -> String:
     # print("float to string...")
     sleep(TIME)
     return String(value)
@@ -119,7 +119,7 @@ struct StringToIntTask(generic.Callable):
     comptime I = String
     comptime O = Int
 
-    fn __call__(self, arg: Self.I) -> Self.O:
+    def __call__(self, arg: Self.I) -> Self.O:
         # print("string to int...")
         sleep(TIME)
         try:
@@ -133,7 +133,7 @@ struct IntToFloatTask(generic.Callable):
     comptime I = Int
     comptime O = Float32
 
-    fn __call__(self, arg: Int) -> Float32:
+    def __call__(self, arg: Int) -> Float32:
         # print("int to float...")
         sleep(TIME)
         return Float32(arg)
@@ -144,7 +144,7 @@ struct IntMulTask[by: Int](generic.Callable):
     comptime I = Int
     comptime O = Int
 
-    fn __call__(self, arg: Self.I) -> Self.O:
+    def __call__(self, arg: Self.I) -> Self.O:
         # print("Mutliply by", Self.by, "...")
         sleep(TIME)
         return arg * Self.by
@@ -155,7 +155,7 @@ struct SumTuple(generic.Callable):
     comptime I = Tuple[Int, Float32, Int]
     comptime O = Float32
 
-    fn __call__(self, arg: Self.I) -> Self.O:
+    def __call__(self, arg: Self.I) -> Self.O:
         # print("Sum tuple...")
         sleep(TIME)
         return Float32(arg[0]) + arg[1] + Float32(arg[2])
@@ -166,13 +166,13 @@ struct FloatToStringTask(generic.Callable):
     comptime I = Float32
     comptime O = String
 
-    fn __call__(self, arg: Float32) -> String:
+    def __call__(self, arg: Float32) -> String:
         # print("float to string...")
         sleep(TIME)
         return String(arg)
 
 
-fn test_generic_examples() raises:
+def test_generic_examples() raises:
     # NOTE: Compile times could be faster if you use struct instead of functions.
     # print("Building graph with functions...")
     comptime Fn = generic.Fn
@@ -206,8 +206,8 @@ fn test_generic_examples() raises:
     assert_equal(result_2, "192.0")
 
 
-fn test_generic_comptime_parallel() raises:
-    fn comptime_parallel(v: NoneType) -> Tuple[UInt, UInt]:
+def test_generic_comptime_parallel() raises:
+    def comptime_parallel(v: NoneType) -> Tuple[UInt, UInt]:
         var start = monotonic()
         sleep(TIME)
         var end = monotonic()
@@ -230,7 +230,7 @@ fn test_generic_comptime_parallel() raises:
     assert_true(p3[0] < p3[1])
 
 
-fn test_generic_comptime_two_parallels() raises:
+def test_generic_comptime_two_parallels() raises:
     comptime graph = compt.F[int_to_float].par[int_to_int].seq[
         compt.F[sum_tuple].par[sum_tuple].F
     ]
@@ -241,7 +241,7 @@ fn test_generic_comptime_two_parallels() raises:
     assert_equal(r2, 2)
 
 
-fn string_to_int_c(str: String) -> Int:
+def string_to_int_c(str: String) -> Int:
     # print("string to int...")
     sleep(TIME)
     try:
@@ -250,19 +250,19 @@ fn string_to_int_c(str: String) -> Int:
         return 0
 
 
-fn int_to_float_t(value: Int) -> Float32:
+def int_to_float_t(value: Int) -> Float32:
     # print("int to float...")
     sleep(TIME)
     return Float32(value)
 
 
-fn int_mul_c[by: Int](value: Int) -> Int:
+def int_mul_c[by: Int](value: Int) -> Int:
     # print("Mutliply by", by, "...")
     sleep(TIME)
     return value * by
 
 
-fn sum_tuple3(value: Tuple[Int, Float32, Int]) -> Float32:
+def sum_tuple3(value: Tuple[Int, Float32, Int]) -> Float32:
     # print("Sum tuple...")
     sleep(TIME)
     return Float32(value[0]) + value[1] + Float32(value[2])
@@ -271,21 +271,21 @@ fn sum_tuple3(value: Tuple[Int, Float32, Int]) -> Float32:
 # Struct example
 struct FloatToString:
     @staticmethod
-    fn call(value: Float32) -> String:
+    def call(value: Float32) -> String:
         # print("Float to string...")
         sleep(TIME)
         return String(value)
 
 
-async fn async_itof(v: Int) -> Float32:
+async def async_itof(v: Int) -> Float32:
     return Float32(v)
 
 
-async fn async_ftoi(v: Float32) -> Int:
+async def async_ftoi(v: Float32) -> Int:
     return Int(v)
 
 
-fn test_generic_comptime_examples() raises:
+def test_generic_comptime_examples() raises:
     # print("Building graph")
 
     comptime Fn = compt.F
@@ -324,25 +324,25 @@ fn test_generic_comptime_examples() raises:
     # print(final_result)
 
 
-fn test_generic_comptime_explicit() raises:
+def test_generic_comptime_explicit() raises:
     # print("Building graph")
 
-    fn stoi(v: String) -> Int:
+    def stoi(v: String) -> Int:
         try:
             return Int(v)
         except:
             return 0
 
-    fn int_m[q: Int](v: Int) -> Int:
+    def int_m[q: Int](v: Int) -> Int:
         return q * v
 
-    fn itof(v: Int) -> Float32:
+    def itof(v: Int) -> Float32:
         return Float32(v)
 
-    fn sumtp(v: Tuple[Int, Float32, Int]) -> Float32:
+    def sumtp(v: Tuple[Int, Float32, Int]) -> Float32:
         return Float32(v[0]) + v[1] + Float32(v[2])
 
-    fn ftos(v: Float32) -> String:
+    def ftos(v: Float32) -> String:
         return String(v)
 
     comptime F = compt.F
@@ -368,17 +368,17 @@ struct ImmutParallel(immutable.ImmutCallable):
     var start: UnsafePointer[UInt, MutAnyOrigin]
     var end: UnsafePointer[UInt, MutAnyOrigin]
 
-    fn __init__(out self, mut s: UInt, mut e: UInt):
+    def __init__(out self, mut s: UInt, mut e: UInt):
         self.start = UnsafePointer(to=s)
         self.end = UnsafePointer(to=e)
 
-    fn __call__(self):
+    def __call__(self):
         self.start[] = monotonic()
         sleep(TIME)
         self.end[] = monotonic()
 
 
-fn test_immut_parallel() raises:
+def test_immut_parallel() raises:
     comptime GP = ImmutParallel
 
     var start1, end1 = (UInt(0), UInt(0))
@@ -406,11 +406,11 @@ fn test_immut_parallel() raises:
 
 @fieldwise_init
 struct EImmutParallel(immutable.ImmutCallable):
-    fn __call__(self):
+    def __call__(self):
         pass
 
 
-fn test_immut_two_parallels() raises:
+def test_immut_two_parallels() raises:
     comptime GP = EImmutParallel
 
     var p1 = GP()
@@ -424,12 +424,12 @@ fn test_immut_two_parallels() raises:
 struct MyTask[job: StringLiteral](immutable.ImmutCallable):
     var some_data: String
 
-    fn __call__(self):
+    def __call__(self):
         # print("Running [", Self.job, "]:", self.some_data)
         sleep(TIME)
 
 
-fn test_immut_examples() raises:
+def test_immut_examples() raises:
     # print("\n\nHey! Running Immutable Examples...")
     comptime IS = immutable.SequentialTask
     comptime IP = immutable.ParallelTask
@@ -467,19 +467,19 @@ fn test_immut_examples() raises:
     # But, you need to wrap those function into a FnTask type.
     # No arguments or captures are allowed, no returns. So it's not so useful.
 
-    fn first_task():
+    def first_task():
         # print("Initialize everything...")
         sleep(TIME)
 
-    fn last_task():
+    def last_task():
         # print("Finalize everything...")
         sleep(TIME)
 
-    fn parallel_some():
+    def parallel_some():
         # print("Parallel some...")
         sleep(TIME)
 
-    fn parallel2():
+    def parallel2():
         # print("Parallel 2...")
         sleep(TIME)
 
@@ -506,17 +506,17 @@ struct MutParallel(mutable.MutCallable):
     var start: UInt
     var end: UInt
 
-    fn __init__(out self):
+    def __init__(out self):
         self.start = 0
         self.end = 0
 
-    fn __call__(mut self):
+    def __call__(mut self):
         self.start = monotonic()
         sleep(TIME)
         self.end = monotonic()
 
 
-fn test_mut_parallel() raises:
+def test_mut_parallel() raises:
     comptime GP = MutParallel
 
     var p1 = GP()
@@ -540,11 +540,11 @@ fn test_mut_parallel() raises:
 
 @fieldwise_init
 struct EMutParallel(mutable.MutCallable):
-    fn __call__(mut self):
+    def __call__(mut self):
         pass
 
 
-fn test_mut_two_parallels() raises:
+def test_mut_two_parallels() raises:
     comptime GP = EMutParallel
 
     var p1 = GP()
@@ -560,14 +560,14 @@ fn test_mut_two_parallels() raises:
 struct InitTask[name: String = "Init"](mutable.MutCallable):
     var value: Int
 
-    fn __call__(mut self):
+    def __call__(mut self):
         # print("Starting [", Self.name, "Task]: Value is", self.value, "...")
         self.value += 1
         sleep(TIME)
         # print("Finishing [", Self.name, "Task]: The value is:", self.value)
 
 
-fn test_mut_examples() raises:
+def test_mut_examples() raises:
     # print("\n\nHey! Running Mutable Examples (No cross Reference)...")
     # Type syntax. Not so flexible because we cannot mix var / mut refs in Variadic Inputs.
     # * Some need to be owned because those groups will not have origin.
@@ -626,12 +626,12 @@ struct MyTypeTask[name: StringLiteral](
     type.TypeCallable, TrivialRegisterPassable
 ):
     @staticmethod
-    fn __call__():
+    def __call__():
         # print("Task [", Self.name, "] Running...")
         sleep(TIME)
 
 
-fn test_type_examples() raises:
+def test_type_examples() raises:
     comptime SD = type.SeriesTypeTask
     comptime PD = type.ParallelTypeTask
 
@@ -666,19 +666,19 @@ fn test_type_examples() raises:
 
 @fieldwise_init
 struct ATask(async_immutable.AsyncCallable):
-    async fn __call__(self):
+    async def __call__(self):
         sleep(TIME)
         # print("hello")
 
 
 @fieldwise_init
 struct ATask2(async_immutable.AsyncCallable):
-    async fn __call__(self):
+    async def __call__(self):
         sleep(TIME)
         # print("world")
 
 
-fn test_immutable() raises:
+def test_immutable() raises:
     var graph = (
         ATask()
         >> ATask()
@@ -690,5 +690,5 @@ fn test_immutable() raises:
     graph.run()
 
 
-fn main() raises:
+def main() raises:
     TestSuite.discover_tests[__functions_in_module()]().run()

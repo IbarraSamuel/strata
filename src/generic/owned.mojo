@@ -2,12 +2,12 @@
 #     comptime I: AnyType
 #     comptime O: Movable
 
-#     fn __call__(self, var arg: Self.I) -> Self.O:
+#     def __call__(self, var arg: Self.I) -> Self.O:
 #         ...
 
 
 # trait OwnCallable(OwnCall):
-#     fn __rshift__[
+#     def __rshift__[
 #         so: ImmutOrigin, oo: ImmutOrigin, o: OwnCall, s: OwnCall = Self
 #     ](ref [so]self, ref [oo]other: o) -> Sequence[
 #         O1=so, O2=oo, T1=s, T2=o, MakeVariadic[s, o]
@@ -19,12 +19,12 @@
 #     comptime I: AnyType
 #     comptime O: Movable
 
-#     fn __call__(self, var arg: Self.I) -> Self.O:
+#     def __call__(self, var arg: Self.I) -> Self.O:
 #         ...
 
 
 # trait OwnCallable(OwnCall):
-#     fn __rshift__[
+#     def __rshift__[
 #         so: ImmutOrigin, oo: ImmutOrigin, o: OwnCall, s: OwnCall = Self
 #     ](ref [so]self, ref [oo]other: o) -> Sequence[
 #         O1=so, O2=oo, T1=s, T2=o, MakeVariadic[s, o]
@@ -33,7 +33,7 @@
 #         ref _self = rebind[s](self)
 #         return {_self, other}
 
-# fn __add__[
+# def __add__[
 #     so: ImmutOrigin, oo: ImmutOrigin, o: Call, s: Call = Self
 # ](ref [so]self, ref [oo]other: o) -> Parallel[
 #     origin = origin_of(so, oo), s, o
