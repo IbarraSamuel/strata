@@ -16,12 +16,25 @@ async def par_fn[
     In: AnyType, O1: Copyable & ImplicitlyDestructible, O2: Copyable & ImplicitlyDestructible, //, f:
     async def (In) -> O1, l:
     async def (In) -> O2,
-](val: In) -> Tuple[O1, O2]:
-    t1 = create_task(f(val))
-    t2 = create_task(l(val))
-    ref r1 = await t1
-    ref r2 = await t2
-    return (r1.copy(), r2.copy())
+](val: In, out o: Tuple[O1, O2]):
+
+    tg = TaskGroup()
+
+    __mlir_op.`lit.ownership.mark_initialized`(
+        __get_mvalue_as_litref(o)
+    )
+
+    @parameter
+    async def task1():
+        o[0] = await f(val)
+    @parameter
+    async def task2():
+        o[1] = await l(val)
+
+    tg.create_task(task1())
+    tg.create_task(task2())
+
+    await tg
 
 
 struct Fn[i: AnyType, o: Copyable & Movable & ImplicitlyDestructible, //, F: async def (i) -> o](TrivialRegisterPassable):

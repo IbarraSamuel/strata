@@ -2,54 +2,58 @@ from std.runtime.asyncrt import TaskGroup
 from std.sys.intrinsics import _type_is_eq_parse_time
 from std.builtin.rebind import downcast
 
-comptime TaskToRes[t: Call] = t.O
-comptime TaskToPtr[o: Origin, t: Call] = downcast[
+comptime TaskToRes[t: Callable] = t.O
+comptime TaskToPtr[o: Origin, t: Callable] = downcast[
     Pointer[t, origin=o], Movable & ImplicitlyDestructible
 ]
 
 
-trait Call:
+# trait Call:
+#     comptime I: AnyType
+#     comptime O: Movable & ImplicitlyDestructible
+
+#     def __call__(self, arg: Self.I) -> Self.O:
+#         ...
+
+
+trait Callable:
     comptime I: AnyType
     comptime O: Movable & ImplicitlyDestructible
 
     def __call__(self, arg: Self.I) -> Self.O:
         ...
 
-
-trait Callable(Call):
     def __rshift__[
         so: ImmutOrigin,
         oo: ImmutOrigin,
-        o: Call where _type_is_eq_parse_time[downcast[Self, Call].O, o.I](),
+        o: Callable where _type_is_eq_parse_time[Self.O, o.I](),
     ](ref[so] self, ref[oo] other: o) -> Sequence[
         O1=so,
         O2=oo,
-        T1=downcast[Self, Call],
+        T1=Self,
         T2=o,
-        Variadic.types[downcast[Self, Call], o],
+        Variadic.types[Self, o],
     ]:
-        return {trait_downcast[Call](self), other}
+        return {self, other}
 
     def __add__[
         so: ImmutOrigin,
         oo: ImmutOrigin,
-        o: Call where InputIsEq[
-            Variadic.types[T=Call, downcast[Self, Call], o]
-        ],
+        o: Callable where InputIsEq[Variadic.types[Self, o]],
     ](ref[so] self, ref[oo] other: o) -> Parallel[
-        origin=origin_of(so, oo), downcast[Self, Call], o
+        origin=origin_of(so, oo), Self, o
     ]:
-        return Parallel(trait_downcast[Call](self), other)
+        return {self, other}
 
 
 struct Sequence[
     O1: ImmutOrigin,
     O2: ImmutOrigin,
-    T1: Call,
-    T2: Call where _type_is_eq_parse_time[T1.O, T2.I](),
+    T1: Callable,
+    T2: Callable where _type_is_eq_parse_time[T1.O, T2.I](),
     //,
-    elements: Variadic.TypesOfTrait[Call],
-](Call):
+    elements: Variadic.TypesOfTrait[Callable],
+](Callable):
     comptime I = Self.T1.I
     comptime O = Self.T2.O
 
@@ -64,7 +68,7 @@ struct Sequence[
         return self.t2[](rebind[Self.T2.I](self.t1[](arg)))
 
     def __rshift__[
-        oo: ImmutOrigin, o: Call where _type_is_eq_parse_time[Self.O, o.I]()
+        oo: ImmutOrigin, o: Callable where _type_is_eq_parse_time[Self.O, o.I]()
     ](self, ref[oo] other: o) -> Sequence[
         O1=origin_of(self),
         O2=oo,
@@ -77,25 +81,25 @@ struct Sequence[
     def __add__[
         so: ImmutOrigin,
         oo: ImmutOrigin,
-        o: Call where InputIsEq[Variadic.types[T=Call, Self, o]],
+        o: Callable where InputIsEq[Variadic.types[T=Callable, Self, o]],
     ](ref[so] self, ref[oo] other: o) -> Parallel[
         origin=origin_of(so, oo), Self, o
     ]:
         return Parallel(self, other)
 
 
-comptime _InputIsEq[CompareTo: AnyType, V: Call] = _type_is_eq_parse_time[
+comptime _InputIsEq[CompareTo: AnyType, V: Callable] = _type_is_eq_parse_time[
     CompareTo, V.I
 ]()
 
-comptime InputIsEq[CompareTo: Variadic.TypesOfTrait[Call]] = Variadic.size(
+comptime InputIsEq[CompareTo: Variadic.TypesOfTrait[Callable]] = Variadic.size(
     Variadic.filter_types[*CompareTo, predicate=_InputIsEq[CompareTo[0].I, _]]
 ) == Variadic.size(CompareTo)
 
 
 struct Parallel[
-    origin: ImmutOrigin, //, *elements: Call where InputIsEq[elements]
-](Call):
+    origin: ImmutOrigin, //, *elements: Callable where InputIsEq[elements]
+](Callable):
     comptime I = Self.elements[0].I
     comptime ResElems = Variadic.map_types_to_types[Self.elements, TaskToRes]
     comptime PtrElems = Variadic.map_types_to_types[
@@ -150,19 +154,19 @@ struct Parallel[
     def __rshift__[
         so: ImmutOrigin,
         oo: ImmutOrigin,
-        o: Call where _type_is_eq_parse_time[Self.O, o.I](),
+        o: Callable where _type_is_eq_parse_time[Self.O, o.I](),
     ](ref[so] self, ref[oo] other: o) -> Sequence[
         O1=so,
         O2=oo,
         T1=Self,
         T2=o,
-        elements=Variadic.types[T=Call, Self, o],
+        elements=Variadic.types[T=Callable, Self, o],
     ]:
         return {self, other}
 
     def __add__[
         oo: ImmutOrigin,
-        o: Call where InputIsEq[
+        o: Callable where InputIsEq[
             Variadic.concat_types[Self.elements, Variadic.types[o]]
         ],
     ](
