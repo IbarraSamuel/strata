@@ -40,7 +40,7 @@ struct ParallelTypeTask[*Ts: TypeCallable](
     @always_inline("nodebug")
     def __call__():
         """Call the tasks based on the types in a parallel order."""
-        comptime size = Variadic.size(Self.Ts)
+        comptime size = Variadic.size_types[Self.Ts]
 
         @parameter
         def exec(i: Int):
@@ -64,7 +64,7 @@ struct SeriesTypeTask[*Ts: TypeCallable](TrivialRegisterPassable, TypeCallable):
     @always_inline("nodebug")
     def __call__():
         """Call the tasks based on the types on a sequence order."""
-        comptime size = Variadic.size(Self.Ts)
+        comptime size = Variadic.size_types[Self.Ts]
 
         comptime for i in range(size):
             Self.Ts[i].__call__()

@@ -2,8 +2,8 @@ from std.runtime.asyncrt import TaskGroup
 from std.sys.intrinsics import _type_is_eq_parse_time
 from std.builtin.rebind import downcast
 
-comptime TaskToRes[t: Callable] = t.O
-comptime TaskToPtr[o: Origin, t: Callable] = downcast[
+comptime TaskToRes[t: Call] = t.O
+comptime TaskToPtr[o: Origin, t: Call] = downcast[
     Pointer[t, origin=o], Movable & ImplicitlyDestructible
 ]
 
@@ -17,29 +17,20 @@ trait Call:
 
 
 trait Callable(Call):
-    comptime I: AnyType
-    comptime O: Movable & ImplicitlyDestructible
-
-    def __call__(self, arg: Self.I) -> Self.O:
-        ...
-
     def __rshift__[
         so: ImmutOrigin,
         oo: ImmutOrigin,
-        o: Callable where _type_is_eq_parse_time[Self.O, o.I](),
+        o: Call where _type_is_eq_parse_time[Self.O, o.I](),
+        s: Call where _type_is_eq_parse_time[s.O, o.I]() = downcast[Self, Call],
     ](ref[so] self, ref[oo] other: o) -> Sequence[
-        O1=so,
-        O2=oo,
-        T1=Self,
-        T2=o,
-        Variadic.types[Self, o],
+        O1=so, O2=oo, T1=s, T2=o, s, o
     ]:
-        return {self, other}
+        return {rebind[s](self), other}
 
     def __add__[
         so: ImmutOrigin,
         oo: ImmutOrigin,
-        o: Callable where InputIsEq[Variadic.types[Self, o]],
+        o: Call where InputIsEq[Variadic.types[T=Call, Self, o]],
     ](ref[so] self, ref[oo] other: o) -> Parallel[
         origin=origin_of(so, oo), Self, o
     ]:
@@ -52,7 +43,7 @@ struct Sequence[
     T1: Call,
     T2: Call where _type_is_eq_parse_time[T1.O, T2.I](),
     //,
-    elements: Variadic.TypesOfTrait[Call],
+    *elements: Call,
 ](Call):
     comptime I = Self.T1.I
     comptime O = Self.T2.O
@@ -74,7 +65,7 @@ struct Sequence[
         O2=oo,
         T1=Self,
         T2=o,
-        Variadic.concat_types[Self.elements, Variadic.types[o]],
+        *Variadic.concat_types[Self.elements, Variadic.types[T=Call, o]],
     ]:
         return {self, other}
 
@@ -92,9 +83,13 @@ comptime _InputIsEq[CompareTo: AnyType, V: Call] = _type_is_eq_parse_time[
     CompareTo, V.I
 ]()
 
-comptime InputIsEq[CompareTo: Variadic.TypesOfTrait[Call]] = Variadic.size(
+comptime InputIsEq[
+    CompareTo: Variadic.TypesOfTrait[Call]
+] = Variadic.size_types[
     Variadic.filter_types[*CompareTo, predicate=_InputIsEq[CompareTo[0].I, _]]
-) == Variadic.size(CompareTo)
+] == Variadic.size_types[
+    CompareTo
+]
 
 
 struct Parallel[
@@ -118,7 +113,7 @@ struct Parallel[
             __get_mvalue_as_litref(self.tasks)
         )
 
-        comptime for i in range(Variadic.size(Self.elements)):
+        comptime for i in range(Variadic.size_types[Self.elements]):
             # comptime ti = Self.PtrElems[i]
             comptime ti = type_of(self.tasks[i])
             self.tasks[i] = rebind_var[ti](Pointer(to=callables[i]))
@@ -132,7 +127,7 @@ struct Parallel[
             __get_mvalue_as_litref(_out_tp)
         )
 
-        comptime for i in range(Variadic.size(Self.elements)):
+        comptime for i in range(Variadic.size_types[Self.elements]):
 
             @parameter
             async def task():
@@ -160,7 +155,8 @@ struct Parallel[
         O2=oo,
         T1=Self,
         T2=o,
-        elements=Variadic.types[T=Call, Self, o],
+        Self,
+        o,
     ]:
         return {self, other}
 

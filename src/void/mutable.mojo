@@ -84,7 +84,7 @@ struct SeriesTask[origin: MutOrigin, //, *ts: MutCallable](MutCallable):
         self.storage = MutCallablePack(args._value)
 
     def __call__(mut self):
-        comptime size = Variadic.size(Self.ts)
+        comptime size = Variadic.size_types[Self.ts]
 
         comptime for ci in range(size):
             self.storage[ci].__call__()
@@ -100,7 +100,7 @@ struct ParallelTask[origin: MutOrigin, //, *ts: MutCallable](MutCallable):
         self.storage = MutCallablePack(args._value)
 
     def __call__(mut self):
-        comptime size = Variadic.size(Self.ts)
+        comptime size = Variadic.size_types[Self.ts]
 
         @parameter
         def run_task(i: Int):

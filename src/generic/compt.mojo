@@ -9,9 +9,9 @@ comptime _FnInputMatch[I: AnyType, T: FnTrait] = _type_is_eq_parse_time[
     I, T.I
 ]()
 
-comptime InputsMatch[*fns: FnTrait] = Variadic.size(
+comptime InputsMatch[*fns: FnTrait] = Variadic.size_types[
     Variadic.filter_types[*fns, predicate=_FnInputMatch[fns[0].I, _]]
-) == Variadic.size(fns)
+] == Variadic.size_types[fns]
 
 
 trait FnTrait(Movable, TrivialRegisterPassable):
@@ -38,7 +38,7 @@ def par_fns[
 
     __mlir_op.`lit.ownership.mark_initialized`(__get_mvalue_as_litref(outs))
 
-    comptime for ci in range(Variadic.size(fns)):
+    comptime for ci in range(Variadic.size_types[fns]):
 
         @parameter
         async def task():

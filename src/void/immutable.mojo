@@ -110,7 +110,7 @@ struct ParallelTask[origin: ImmutOrigin, //, *Ts: ImmutCallable](ImmutCallable):
 
     def __call__(self):
         """This function executes all tasks at the same time."""
-        comptime size = Variadic.size(Self.Ts)
+        comptime size = Variadic.size_types[Self.Ts]
 
         @parameter
         def exec(i: Int):
@@ -149,7 +149,7 @@ struct SequentialTask[origin: ImmutOrigin, //, *Ts: ImmutCallable](
 
     def __call__(self):
         """This function executes all tasks in ordered sequence."""
-        comptime size = Variadic.size(Self.Ts)
+        comptime size = Variadic.size_types[Self.Ts]
 
         comptime for ci in range(size):
             self.callables[ci].__call__()
