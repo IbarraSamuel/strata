@@ -15,17 +15,26 @@ trait Call:
     def __call__(self, arg: Self.I) -> Self.O:
         ...
 
-
-trait Callable(Call):
     def __rshift__[
         so: ImmutOrigin,
         oo: ImmutOrigin,
         o: Call where _type_is_eq_parse_time[Self.O, o.I](),
-        s: Call where _type_is_eq_parse_time[s.O, o.I]() = downcast[Self, Call],
     ](ref[so] self, ref[oo] other: o) -> Sequence[
-        O1=so, O2=oo, T1=s, T2=o, s, o
+        O1=so, O2=oo, T1=Self, T2=o, Self, o
     ]:
-        return {rebind[s](self), other}
+        return {self, other}
+
+
+trait Callable(Call):
+    # TODO: Fix when #6352 gets fixed.
+    # def __rshift__[
+    #     so: ImmutOrigin,
+    #     oo: ImmutOrigin,
+    #     o: Call where _type_is_eq_parse_time[Self.O, o.I](),
+    # ](ref[so] self, ref[oo] other: o) -> Sequence[
+    #     O1=so, O2=oo, T1=Self, T2=o, Self, o
+    # ]:
+    #     return {self, other}
 
     def __add__[
         so: ImmutOrigin,
@@ -58,16 +67,16 @@ struct Sequence[
     def __call__(self, arg: Self.I) -> Self.O:
         return self.t2[](rebind[Self.T2.I](self.t1[](arg)))
 
-    def __rshift__[
-        oo: ImmutOrigin, o: Call where _type_is_eq_parse_time[Self.O, o.I]()
-    ](self, ref[oo] other: o) -> Sequence[
-        O1=origin_of(self),
-        O2=oo,
-        T1=Self,
-        T2=o,
-        *Variadic.concat_types[Self.elements, Variadic.types[T=Call, o]],
-    ]:
-        return {self, other}
+    # def __rshift__[
+    #     oo: ImmutOrigin, o: Call where _type_is_eq_parse_time[Self.O, o.I]()
+    # ](self, ref[oo] other: o) -> Sequence[
+    #     O1=origin_of(self),
+    #     O2=oo,
+    #     T1=Self,
+    #     T2=o,
+    #     *Variadic.concat_types[Self.elements, Variadic.types[T=Call, o]],
+    # ]:
+    #     return {self, other}
 
     def __add__[
         so: ImmutOrigin,
@@ -146,19 +155,19 @@ struct Parallel[
         tg.wait()
         return _out_tp^
 
-    def __rshift__[
-        so: ImmutOrigin,
-        oo: ImmutOrigin,
-        o: Call where _type_is_eq_parse_time[Self.O, o.I](),
-    ](ref[so] self, ref[oo] other: o) -> Sequence[
-        O1=so,
-        O2=oo,
-        T1=Self,
-        T2=o,
-        Self,
-        o,
-    ]:
-        return {self, other}
+    # def __rshift__[
+    #     so: ImmutOrigin,
+    #     oo: ImmutOrigin,
+    #     o: Call where _type_is_eq_parse_time[Self.O, o.I](),
+    # ](ref[so] self, ref[oo] other: o) -> Sequence[
+    #     O1=so,
+    #     O2=oo,
+    #     T1=Self,
+    #     T2=o,
+    #     Self,
+    #     o,
+    # ]:
+    #     return {self, other}
 
     def __add__[
         oo: ImmutOrigin,

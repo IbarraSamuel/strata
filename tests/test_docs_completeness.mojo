@@ -1,8 +1,8 @@
-from pathlib import _dir_of_current_file, Path
-from algorithm import sync_parallelize
-import subprocess
+from std.pathlib import _dir_of_current_file, Path
+from std.algorithm import sync_parallelize
+import std.subprocess as subprocess
 
-comptime CMD = "mojo doc --diagnose-missing-doc-strings --validate-doc-strings {}"
+comptime CMD = "mojo doc --diagnose-missing-doc-strings -Werror {}"
 
 
 def _flatten_files(var path: Path, mut files: List[Path]) raises:
@@ -47,6 +47,6 @@ def test_docs_completeness() raises:
 
 
 def main() raises:
-    from testing import TestSuite
+    from std.testing import TestSuite
 
     TestSuite.discover_tests[(test_docs_completeness,)]().run()
