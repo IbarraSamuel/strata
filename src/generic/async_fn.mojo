@@ -4,8 +4,8 @@ from std.runtime.asyncrt import _run, create_task, TaskGroup
 @always_inline("nodebug")
 async def seq_fn[
     In: AnyType, Om: ImplicitlyDestructible, O: ImplicitlyDestructible, //, f:
-    async def (In) -> Om, l:
-    async def (Om) -> O,
+    async def (In) thin -> Om, l:
+    async def (Om) thin  -> O,
 ](val: In) -> O:
     ref r1 = await f(val)
     return await l(r1)
@@ -14,8 +14,8 @@ async def seq_fn[
 @always_inline("nodebug")
 async def par_fn[
     In: AnyType, O1: Copyable & ImplicitlyDestructible, O2: Copyable & ImplicitlyDestructible, //, f:
-    async def (In) -> O1, l:
-    async def (In) -> O2,
+    async def (In) thin -> O1, l:
+    async def (In) thin -> O2,
 ](val: In, out o: Tuple[O1, O2]):
 
     tg = TaskGroup()
@@ -37,7 +37,7 @@ async def par_fn[
     await tg
 
 
-struct Fn[i: AnyType, o: Copyable & Movable & ImplicitlyDestructible, //, F: async def (i) -> o](TrivialRegisterPassable):
+struct Fn[i: AnyType, o: Copyable & Movable & ImplicitlyDestructible, //, F: async def (i) thin -> o](TrivialRegisterPassable):
     @always_inline("builtin")
     def __init__(out self):
         pass

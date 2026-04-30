@@ -1,11 +1,10 @@
 [workspace]
 authors = ["Samuel Ibarra <ing.samuelibarra@gmail.com>"]
+channels = ["https://prefix.dev/max-nightly", "https://prefix.dev/conda-forge"]
+name = "strata"
 platforms = ["linux-64", "osx-arm64"]
+version = "0.0.1"
 preview = ["pixi-build"]
-channels = [
-    "https://prefix.dev/max-nightly",
-    "https://prefix.dev/conda-forge",
-]
 
 [package]
 name = "strata"
@@ -26,7 +25,7 @@ mojo-compiler = "<=1.0.0"
 
 [dependencies]
 mojo = "*"
-strata = { path = "." }
+# strata = { path = "." }
 
 [tasks]
 # Build

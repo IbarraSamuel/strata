@@ -25,6 +25,9 @@ trait Call:
         return {self, other}
 
 
+comptime CallableInIs[T: AnyType, C: Call] = _type_is_eq_parse_time[T, C.I]()
+
+
 trait Callable(Call):
     # TODO: Fix when #6352 gets fixed.
     # def __rshift__[
@@ -39,9 +42,16 @@ trait Callable(Call):
     def __add__[
         so: ImmutOrigin,
         oo: ImmutOrigin,
-        o: Call where InputIsEq[Variadic.types[T=Call, Self, o]],
+        o: Call where _type_is_eq_parse_time[Self.I, o.I]() where TypeList.of[
+            Trait=Call, Self, o
+        ]().all_satisfies[
+            CallableInIs[TypeList.of[Trait=Call, Self, o]()[0].I, _]
+        ]()
+        # o: Call where TypeList.of[downcast[Self, Call], o]().all_satisfies[
+        #     CallableInIs[TypeList.of[downcast[Self, Call], o]()[0].I, _]
+        # ](),
     ](ref[so] self, ref[oo] other: o) -> Parallel[
-        origin=origin_of(so, oo), Self, o
+        origin=origin_of(so, oo), *TypeList.of[Trait=Call, Self, o]()
     ]:
         return {self, other}
 
@@ -81,34 +91,25 @@ struct Sequence[
     def __add__[
         so: ImmutOrigin,
         oo: ImmutOrigin,
-        o: Call where InputIsEq[Variadic.types[T=Call, Self, o]],
+        o: Call where TypeList.of[Trait=Call, Self, o].all_satisfies[
+            CallableInIs[Self.I, _]
+        ](),
     ](ref[so] self, ref[oo] other: o) -> Parallel[
         origin=origin_of(so, oo), Self, o
     ]:
         return Parallel(self, other)
 
 
-comptime _InputIsEq[CompareTo: AnyType, V: Call] = _type_is_eq_parse_time[
-    CompareTo, V.I
-]()
-
-comptime InputIsEq[
-    CompareTo: Variadic.TypesOfTrait[Call]
-] = Variadic.size_types[
-    Variadic.filter_types[*CompareTo, predicate=_InputIsEq[CompareTo[0].I, _]]
-] == Variadic.size_types[
-    CompareTo
-]
-
-
 struct Parallel[
-    origin: ImmutOrigin, //, *elements: Call where InputIsEq[elements]
+    origin: ImmutOrigin,
+    //,
+    *elements: Call where elements.all_satisfies[
+        CallableInIs[elements[0].I, _]
+    ](),
 ](Call):
     comptime I = Self.elements[0].I
-    comptime ResElems = Variadic.map_types_to_types[Self.elements, TaskToRes]
-    comptime PtrElems = Variadic.map_types_to_types[
-        Self.elements, TaskToPtr[Self.origin, _]
-    ]
+    comptime ResElems = Self.elements.map[TaskToRes]()
+    comptime PtrElems = Self.elements.map[TaskToPtr[Self.origin, _]]()
     comptime O = Tuple[*Self.ResElems]
     comptime Tasks = Tuple[*Self.PtrElems]
 
@@ -116,13 +117,13 @@ struct Parallel[
 
     def __init__(
         out self: Parallel[origin=callables.origin, *Self.elements],
-        *callables: * Self.elements,
+        *callables: *Self.elements,
     ):
         __mlir_op.`lit.ownership.mark_initialized`(
             __get_mvalue_as_litref(self.tasks)
         )
 
-        comptime for i in range(Variadic.size_types[Self.elements]):
+        comptime for i in range(Self.elements.size):
             # comptime ti = Self.PtrElems[i]
             comptime ti = type_of(self.tasks[i])
             self.tasks[i] = rebind_var[ti](Pointer(to=callables[i]))
@@ -136,7 +137,7 @@ struct Parallel[
             __get_mvalue_as_litref(_out_tp)
         )
 
-        comptime for i in range(Variadic.size_types[Self.elements]):
+        comptime for i in range(Self.elements.size):
 
             @parameter
             async def task():
@@ -171,15 +172,22 @@ struct Parallel[
 
     def __add__[
         oo: ImmutOrigin,
-        o: Call where InputIsEq[
-            Variadic.concat_types[Self.elements, Variadic.types[o]]
-        ],
+        o: Call where TypeList._concat[
+            Self.elements.values, TypeList.of[o].values
+        ]().all_satisfies[
+            CallableInIs[
+                TypeList._concat[Self.elements.values, TypeList.of[o].values]()[
+                    0
+                ].I,
+                _,
+            ]
+        ](),
     ](
         deinit self,
         ref[oo] other: o,
         out final: Parallel[
             origin=origin_of(Self.origin, oo),
-            *Variadic.concat_types[Self.elements, Variadic.types[o]],
+            *TypeList._concat[Self.elements.values, TypeList.of[o].values](),
         ],
     ):
         __mlir_op.`lit.ownership.mark_initialized`(
@@ -198,7 +206,7 @@ struct Fn[In: AnyType, Out: Movable & ImplicitlyDestructible](
     comptime I = Self.In
     comptime O = Self.Out
 
-    var func: def(Self.In) -> Self.Out
+    var func: def(Self.In) thin -> Self.Out
 
     def __call__(self, arg: Self.I) -> Self.O:
         return self.func(arg)

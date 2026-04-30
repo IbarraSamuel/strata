@@ -1,5 +1,4 @@
 from std.algorithm import sync_parallelize
-from std.builtin import Variadic
 
 
 trait TypeCallable:
@@ -40,16 +39,15 @@ struct ParallelTypeTask[*Ts: TypeCallable](
     @always_inline("nodebug")
     def __call__():
         """Call the tasks based on the types in a parallel order."""
-        comptime size = Variadic.size_types[Self.Ts]
 
         @parameter
         def exec(i: Int):
-            comptime for ti in range(size):
+            comptime for ti in range(Self.Ts.size):
                 if ti == i:
                     Self.Ts[ti].__call__()
                     return
 
-        sync_parallelize[exec](size)
+        sync_parallelize[exec](Self.Ts.size)
 
 
 @fieldwise_init
@@ -64,7 +62,6 @@ struct SeriesTypeTask[*Ts: TypeCallable](TrivialRegisterPassable, TypeCallable):
     @always_inline("nodebug")
     def __call__():
         """Call the tasks based on the types on a sequence order."""
-        comptime size = Variadic.size_types[Self.Ts]
 
-        comptime for i in range(size):
+        comptime for i in range(Self.Ts.size):
             Self.Ts[i].__call__()

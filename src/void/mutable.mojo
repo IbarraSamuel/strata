@@ -1,8 +1,7 @@
 from std.algorithm import sync_parallelize
-from std.builtin import Variadic
 
 comptime MutCallablePack = VariadicPack[
-    elt_is_mutable=True, False, MutCallable, ...
+    elt_is_mutable=True, element_trait=MutCallable, False, ...
 ]
 
 
@@ -79,14 +78,14 @@ struct SeriesTask[origin: MutOrigin, //, *ts: MutCallable](MutCallable):
 
     def __init__(
         out self: SeriesTask[origin=args.origin, *Self.ts],
-        mut *args: * Self.ts,
+        mut *args: *Self.ts,
     ):
-        self.storage = MutCallablePack(args._value)
+        self.storage = MutCallablePack[origin=args.origin, *Self.ts](
+            args._value
+        )
 
     def __call__(mut self):
-        comptime size = Variadic.size_types[Self.ts]
-
-        comptime for ci in range(size):
+        comptime for ci in range(Self.ts.size):
             self.storage[ci].__call__()
 
 
@@ -95,12 +94,14 @@ struct ParallelTask[origin: MutOrigin, //, *ts: MutCallable](MutCallable):
 
     def __init__(
         out self: ParallelTask[origin=args.origin, *Self.ts],
-        mut *args: * Self.ts,
+        mut *args: *Self.ts,
     ):
-        self.storage = MutCallablePack(args._value)
+        self.storage = MutCallablePack[origin=args.origin, *Self.ts](
+            args._value
+        )
 
     def __call__(mut self):
-        comptime size = Variadic.size_types[Self.ts]
+        comptime size = Self.ts.size
 
         @parameter
         def run_task(i: Int):

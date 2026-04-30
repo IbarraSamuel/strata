@@ -1,8 +1,7 @@
 from std.algorithm import sync_parallelize
-from std.builtin import Variadic
 
 comptime CallablePack = VariadicPack[
-    elt_is_mutable=False, False, ImmutCallable, ...
+    elt_is_mutable=False, element_trait=ImmutCallable, False, ...
 ]
 
 
@@ -32,7 +31,7 @@ struct Fn(ImmutCallable):
     """This function takes any function with a signature: `def() -> None` and hold it to later call it using `__call__()`.
     """
 
-    var func: def()
+    var func: def() thin
     """Pointer to the function to call."""
 
     def __call__(self):
@@ -99,18 +98,19 @@ struct ParallelTask[origin: ImmutOrigin, //, *Ts: ImmutCallable](ImmutCallable):
     """Underlying storage for tasks pointers."""
 
     def __init__(
-        out self: ParallelTask[origin=args.origin, *Self.Ts], *args: * Self.Ts
+        out self: ParallelTask[origin=args.origin, *Self.Ts], *args: *Self.Ts
     ):
         """Create a Parallel group, using the args provided. Origin need to be casted.
 
         Args:
             args: All tasks to be executed in parallel.
         """
-        self.callables = CallablePack(args._value)
+        # self.callables = CallablePack[origin=args.origin, *Self.Ts](args._value)
+        self.callables = CallablePack[origin=args.origin, *Self.Ts](args._value)
 
     def __call__(self):
         """This function executes all tasks at the same time."""
-        comptime size = Variadic.size_types[Self.Ts]
+        comptime size = Self.Ts.size
 
         @parameter
         def exec(i: Int):
@@ -138,18 +138,17 @@ struct SequentialTask[origin: ImmutOrigin, //, *Ts: ImmutCallable](
 
     def __init__(
         out self: SequentialTask[origin=args.origin, *Self.Ts],
-        *args: * Self.Ts,
+        *args: *Self.Ts,
     ):
         """Create a Series group, using the args provided. Origin need to be casted.
 
         Args:
             args: All tasks to be executed in series.
         """
-        self.callables = CallablePack(args._value)
+        self.callables = CallablePack[origin=args.origin, *Self.Ts](args._value)
 
     def __call__(self):
         """This function executes all tasks in ordered sequence."""
-        comptime size = Variadic.size_types[Self.Ts]
 
-        comptime for ci in range(size):
+        comptime for ci in range(Self.Ts.size):
             self.callables[ci].__call__()
