@@ -15,6 +15,11 @@ trait Call:
     def __call__(self, arg: Self.I) -> Self.O:
         ...
 
+
+comptime CallableInIs[T: AnyType, C: Call] = _type_is_eq_parse_time[T, C.I]()
+
+
+trait Callable(Call):
     def __rshift__[
         so: ImmutOrigin,
         oo: ImmutOrigin,
@@ -24,32 +29,12 @@ trait Call:
     ]:
         return {self, other}
 
-
-comptime CallableInIs[T: AnyType, C: Call] = _type_is_eq_parse_time[T, C.I]()
-
-
-trait Callable(Call):
-    # TODO: Fix when #6352 gets fixed.
-    # def __rshift__[
-    #     so: ImmutOrigin,
-    #     oo: ImmutOrigin,
-    #     o: Call where _type_is_eq_parse_time[Self.O, o.I](),
-    # ](ref[so] self, ref[oo] other: o) -> Sequence[
-    #     O1=so, O2=oo, T1=Self, T2=o, Self, o
-    # ]:
-    #     return {self, other}
-
     def __add__[
         so: ImmutOrigin,
         oo: ImmutOrigin,
-        o: Call where _type_is_eq_parse_time[Self.I, o.I]() where TypeList.of[
-            Trait=Call, Self, o
-        ]().all_satisfies[
+        o: Call where TypeList.of[Trait=Call, Self, o]().all_satisfies[
             CallableInIs[TypeList.of[Trait=Call, Self, o]()[0].I, _]
-        ]()
-        # o: Call where TypeList.of[downcast[Self, Call], o]().all_satisfies[
-        #     CallableInIs[TypeList.of[downcast[Self, Call], o]()[0].I, _]
-        # ](),
+        ](),
     ](ref[so] self, ref[oo] other: o) -> Parallel[
         origin=origin_of(so, oo), *TypeList.of[Trait=Call, Self, o]()
     ]:
@@ -60,7 +45,7 @@ struct Sequence[
     O1: ImmutOrigin,
     O2: ImmutOrigin,
     T1: Call,
-    T2: Call where _type_is_eq_parse_time[T1.O, T2.I](),
+    T2: Call,
     //,
     *elements: Call,
 ](Call):
@@ -70,42 +55,44 @@ struct Sequence[
     var t1: Pointer[Self.T1, Self.O1]
     var t2: Pointer[Self.T2, Self.O2]
 
-    def __init__(out self, ref[Self.O1] t1: Self.T1, ref[Self.O2] t2: Self.T2):
+    def __init__(
+        out self, ref[Self.O1] t1: Self.T1, ref[Self.O2] t2: Self.T2
+    ) where _type_is_eq_parse_time[Self.T1.O, Self.T2.I]():
         self.t1 = Pointer(to=t1)
         self.t2 = Pointer(to=t2)
 
     def __call__(self, arg: Self.I) -> Self.O:
         return self.t2[](rebind[Self.T2.I](self.t1[](arg)))
 
-    # def __rshift__[
-    #     oo: ImmutOrigin, o: Call where _type_is_eq_parse_time[Self.O, o.I]()
-    # ](self, ref[oo] other: o) -> Sequence[
-    #     O1=origin_of(self),
-    #     O2=oo,
-    #     T1=Self,
-    #     T2=o,
-    #     *Variadic.concat_types[Self.elements, Variadic.types[T=Call, o]],
-    # ]:
-    #     return {self, other}
+    def __rshift__[
+        so: ImmutOrigin, oo: ImmutOrigin, o: Call
+    ](ref[so] self, ref[oo] other: o) -> Sequence[
+        O1=so,
+        O2=oo,
+        T1=Self,
+        T2=o,
+        *TypeList._concat[
+            Self.elements.values, TypeList.of[Trait=Call, o].values
+        ](),
+    ] where _type_is_eq_parse_time[Self.O, o.I]():
+        return {self, other}
 
     def __add__[
         so: ImmutOrigin,
         oo: ImmutOrigin,
-        o: Call where TypeList.of[Trait=Call, Self, o].all_satisfies[
-            CallableInIs[Self.I, _]
-        ](),
+        o: Call,
     ](ref[so] self, ref[oo] other: o) -> Parallel[
         origin=origin_of(so, oo), Self, o
-    ]:
+    ] where TypeList.of[Trait=Call, Self, o].all_satisfies[
+        CallableInIs[Self.I, _]
+    ]():
         return Parallel(self, other)
 
 
 struct Parallel[
     origin: ImmutOrigin,
     //,
-    *elements: Call where elements.all_satisfies[
-        CallableInIs[elements[0].I, _]
-    ](),
+    *elements: Call,
 ](Call):
     comptime I = Self.elements[0].I
     comptime ResElems = Self.elements.map[TaskToRes]()
@@ -118,7 +105,7 @@ struct Parallel[
     def __init__(
         out self: Parallel[origin=callables.origin, *Self.elements],
         *callables: *Self.elements,
-    ):
+    ) where Self.elements.all_satisfies[CallableInIs[Self.elements[0].I, _]]():
         __mlir_op.`lit.ownership.mark_initialized`(
             __get_mvalue_as_litref(self.tasks)
         )
@@ -156,32 +143,17 @@ struct Parallel[
         tg.wait()
         return _out_tp^
 
-    # def __rshift__[
-    #     so: ImmutOrigin,
-    #     oo: ImmutOrigin,
-    #     o: Call where _type_is_eq_parse_time[Self.O, o.I](),
-    # ](ref[so] self, ref[oo] other: o) -> Sequence[
-    #     O1=so,
-    #     O2=oo,
-    #     T1=Self,
-    #     T2=o,
-    #     Self,
-    #     o,
-    # ]:
-    #     return {self, other}
+    def __rshift__[
+        so: ImmutOrigin,
+        oo: ImmutOrigin,
+        o: Call,
+    ](ref[so] self, ref[oo] other: o) -> Sequence[
+        O1=so, O2=oo, T1=Self, T2=o, Self, o
+    ] where _type_is_eq_parse_time[Self.O, o.I]():
+        return {self, other}
 
     def __add__[
-        oo: ImmutOrigin,
-        o: Call where TypeList._concat[
-            Self.elements.values, TypeList.of[o].values
-        ]().all_satisfies[
-            CallableInIs[
-                TypeList._concat[Self.elements.values, TypeList.of[o].values]()[
-                    0
-                ].I,
-                _,
-            ]
-        ](),
+        oo: ImmutOrigin, o: Call
     ](
         deinit self,
         ref[oo] other: o,
@@ -189,7 +161,16 @@ struct Parallel[
             origin=origin_of(Self.origin, oo),
             *TypeList._concat[Self.elements.values, TypeList.of[o].values](),
         ],
-    ):
+    ) where TypeList._concat[
+        Self.elements.values, TypeList.of[o].values
+    ]().all_satisfies[
+        CallableInIs[
+            TypeList._concat[Self.elements.values, TypeList.of[o].values]()[
+                0
+            ].I,
+            _,
+        ]
+    ]():
         __mlir_op.`lit.ownership.mark_initialized`(
             __get_mvalue_as_litref(final)
         )
@@ -200,9 +181,7 @@ struct Parallel[
 
 
 @fieldwise_init("implicit")
-struct Fn[In: AnyType, Out: Movable & ImplicitlyDestructible](
-    Callable, Movable
-):
+struct Fn[In: AnyType, Out: Movable & ImplicitlyDestructible](Call, Movable):
     comptime I = Self.In
     comptime O = Self.Out
 
@@ -210,3 +189,19 @@ struct Fn[In: AnyType, Out: Movable & ImplicitlyDestructible](
 
     def __call__(self, arg: Self.I) -> Self.O:
         return self.func(arg)
+
+    def __rshift__[
+        so: ImmutOrigin, oo: ImmutOrigin, o: Call
+    ](ref[so] self, ref[oo] other: o) -> Sequence[
+        O1=so, O2=oo, T1=Self, T2=o, Self, o
+    ] where _type_is_eq_parse_time[Self.O, o.I]():
+        return {self, other}
+
+    def __add__[
+        so: ImmutOrigin, oo: ImmutOrigin, o: Call
+    ](ref[so] self, ref[oo] other: o) -> Parallel[
+        origin=origin_of(so, oo), *TypeList.of[Trait=Call, Self, o]()
+    ] where TypeList.of[Trait=Call, Self, o]().all_satisfies[
+        CallableInIs[TypeList.of[Trait=Call, Self, o]()[0].I, _]
+    ]():
+        return {self, other}

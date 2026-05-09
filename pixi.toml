@@ -43,7 +43,7 @@ async_mutable_task_examples = "mojo examples/async_mutable_task_examples.mojo"
 generic_async_examples = "mojo examples/generic_async_examples.mojo"
 
 # Testing
-test_runners = {cmd = "mojo run tests/test_runners.mojo"}
+test_runners = {cmd = "pixi run mojo test_runners.mojo", cwd = "tests"}
 python_test = {cmd = "cd python && uv run --group test pytest && cd ..", depends-on = ["prepare_python"] }
 
 # Docs completeness

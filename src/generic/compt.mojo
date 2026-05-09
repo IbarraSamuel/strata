@@ -30,8 +30,10 @@ def seq_fn[
 
 
 def par_fns[
-    *fns: FnTrait where fns.all_satisfies[FnInputMatch[fns[0].I, _]]()
-](val: fns[0].I, out outs: Tuple[*fns.map[FnToOut]()]):
+    *fns: FnTrait
+](val: fns[0].I, out outs: Tuple[*fns.map[FnToOut]()]) where fns.all_satisfies[
+    FnInputMatch[fns[0].I, _]
+]():
     tg = TaskGroup()
 
     __mlir_op.`lit.ownership.mark_initialized`(__get_mvalue_as_litref(outs))
@@ -81,6 +83,7 @@ struct F[
         return Self.f(inp)
 
 
+# TODO: Solve this deprecated message once we have an alternative for this...
 @fieldwise_init
 struct FG[*fns: FnTrait where fns.all_satisfies[FnInputMatch[fns[0].I, _]]()]:
     comptime I = Self.fns[0].I
