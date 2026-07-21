@@ -12,7 +12,7 @@ version = "0.0.1"
 description = "Series/Parallel Runner on top of mojo asyncrt"
 
 [package.build]
-backend = { name = "pixi-build-mojo", version = "0.1.*" }
+backend = { name = "pixi-build-mojo", version = "0.*" }
 
 [package.host-dependencies]
 mojo-compiler = "<=1.0.0"
