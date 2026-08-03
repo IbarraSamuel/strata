@@ -1,27 +1,20 @@
 from std.runtime.asyncrt import Task, TaskGroup
-from std.sys.intrinsics import _type_is_eq_parse_time
 from std.memory import UnsafeMaybeUninit
 
 comptime FnToOut[f: FnTrait] = f.O
-
-
-comptime FnInputMatch[I: AnyType, T: FnTrait] = _type_is_eq_parse_time[I, T.I]()
-
-# comptime InputsMatch[*fns: FnTrait] = Variadic.size_types[
-#     Variadic.filter_types[*fns, predicate=_FnInputMatch[fns[0].I, _]]
-# ] == Variadic.size_types[fns]
+comptime FnInputMatch[I: AnyType, T: FnTrait] = I == T.I
 
 
 trait FnTrait(Movable, TrivialRegisterPassable):
     comptime I: AnyType
-    comptime O: Movable & ImplicitlyDestructible
+    comptime O: Movable & ImplicitlyDeletable
     comptime F: def(Self.I) thin -> Self.O
 
 
 def seq_fn[
     In: AnyType,
-    M: AnyType & ImplicitlyDestructible,
-    O: AnyType & ImplicitlyDestructible,
+    M: ImplicitlyDeletable,
+    O: AnyType,
     //,
     f: def(In) thin -> M,
     l: def(M) thin -> O,
@@ -38,7 +31,7 @@ def par_fns[
 
     __mlir_op.`lit.ownership.mark_initialized`(__get_mvalue_as_litref(outs))
 
-    comptime for ci in range(fns.size):
+    comptime for ci in range(fns.length):
 
         @parameter
         async def task():
@@ -51,30 +44,24 @@ def par_fns[
 
 
 @fieldwise_init
-struct F[
-    i: AnyType, o: Movable & ImplicitlyDestructible, //, f: def(i) thin -> o
-](FnTrait):
+struct F[i: AnyType, o: Movable & ImplicitlyDeletable, //, f: def(i) thin -> o](
+    FnTrait
+):
     comptime I = Self.i
     comptime O = Self.o
     comptime F = Self.f
 
     comptime seq[
-        other_o: Movable & ImplicitlyDestructible,
+        other_o: Movable & ImplicitlyDeletable,
         //,
         other_f: def(Self.o) thin -> other_o,
     ] = F[seq_fn[Self.f, other_f]]
 
     comptime par[
-        other_o: Movable & ImplicitlyDestructible,
+        other_o: Movable & ImplicitlyDeletable,
         //,
         other_f: def(Self.i) thin -> other_o,
     ] = FG[Self, F[other_f]]
-
-    # comptime par[
-    #     *fns: FnTrait where InputsMatch[
-    #         *Variadic.concat_types[T=FnTrait, Variadic.types[Self], fns]
-    #     ]
-    # ] = FG[*Variadic.concat_types[T=FnTrait, Variadic.types[Self], fns]]
 
     comptime comptime_run[i: Self.i] = Self.f(i)
 
@@ -85,31 +72,33 @@ struct F[
 
 # TODO: Solve this deprecated message once we have an alternative for this...
 @fieldwise_init
-struct FG[*fns: FnTrait where fns.all_satisfies[FnInputMatch[fns[0].I, _]]()]:
+struct FG[*fns: FnTrait] where fns.all_satisfies[FnInputMatch[fns[0].I, _]]():
     comptime I = Self.fns[0].I
     comptime O = Tuple[*Self.fns.map[FnToOut]()]
     comptime F = par_fns[*Self.fns]
 
     comptime seq[
-        other_o: Movable & ImplicitlyDestructible,
+        other_o: Movable & ImplicitlyDeletable,
         //,
         other_f: def(Self.O) thin -> other_o,
     ] = F[seq_fn[Self.F, other_f]]
 
     comptime par[
-        other_o: Movable & ImplicitlyDestructible,
+        other_o: Movable & ImplicitlyDeletable,
         //,
-        other_f: def(Self.I) thin -> other_o where TypeList._concat[
-            Self.fns.values, TypeList.of[F[other_f]].values
-        ]().all_satisfies[
-            FnInputMatch[
-                TypeList._concat[
-                    Self.fns.values, TypeList.of[F[other_f]].values
-                ]()[0].I,
-                _,
-            ]
-        ](),
-    ] = FG[*TypeList._concat[Self.fns.values, TypeList.of[F[other_f]].values]()]
+        other_f: def(Self.I) thin -> other_o,
+    ] where TypeList._concat[
+        Self.fns.values, TypeList.of[F[other_f]].values
+    ]().all_satisfies[
+        FnInputMatch[
+            TypeList._concat[Self.fns.values, TypeList.of[F[other_f]].values]()[
+                0
+            ].I,
+            _,
+        ]
+    ]() = FG[
+        *TypeList._concat[Self.fns.values, TypeList.of[F[other_f]].values]()
+    ]
 
     comptime comptime_run[i: Self.I] = Self.F(i)
 

@@ -6,7 +6,7 @@ from std.python.bindings import PythonModuleBuilder
 
 
 @export
-def PyInit_mojo_strata() -> PythonObject:
+def PyInit_mojo_strata() abi("C") -> PythonObject:
     try:
         var strata = PythonModuleBuilder("mojo_strata")
 
@@ -151,7 +151,9 @@ struct TaskGroup(Movable, Writable):
     # =========================================
 
     @staticmethod
-    def py_init(out self: Self, args: PythonObject, kwargs: PythonObject) raises:
+    def py_init(
+        out self: Self, args: PythonObject, kwargs: PythonObject
+    ) raises:
         """Requires a kw argument called "task" or a positional argument that should be of type task.
         """
         if len(args) != 1 and PythonObject("task") not in kwargs:

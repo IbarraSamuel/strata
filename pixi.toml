@@ -25,7 +25,6 @@ mojo-compiler = "<=1.0.0"
 
 [dependencies]
 mojo = "*"
-max = ">=26.5.0.dev2026080206,<27"
 # strata = { path = "." }
 
 [tasks]

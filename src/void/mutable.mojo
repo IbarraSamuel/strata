@@ -1,4 +1,4 @@
-from max.algorithm import sync_parallelize
+from std.runtime.asyncrt import TaskGroup, _run
 
 comptime MutCallablePack = VariadicPack[
     elt_is_mutable=True, element_trait=MutCallable, False, ...
@@ -103,14 +103,15 @@ struct ParallelTask[origin: MutOrigin, //, *ts: MutCallable](MutCallable):
     def __call__(mut self):
         comptime size = Self.ts.length
 
-        @parameter
-        def run_task(i: Int):
-            comptime for ci in range(size):
-                if ci == i:
-                    self.storage[ci].__call__()
-                    return
+        var tg = TaskGroup()
+        comptime for ci in range(size):
 
-        sync_parallelize[run_task](size)
+            async def t() {mut}:
+                self.storage[ci].__call__()
+
+            tg.create_task(t())
+
+        tg.wait()
 
 
 @fieldwise_init
@@ -135,14 +136,17 @@ struct ParallelTaskPair[
     var t2: Self.T2
 
     def __call__(mut self):
-        @parameter
-        def run_task(i: Int):
-            if i == 0:
-                self.t1.__call__()
-            else:
-                self.t2.__call__()
+        var tg = TaskGroup()
 
-        sync_parallelize[run_task](2)
+        async def t1() {mut}:
+            self.t1.__call__()
+
+        async def t2() {mut}:
+            self.t2.__call__()
+
+        tg.create_task(t1())
+        tg.create_task(t2())
+        tg.wait()
 
 
 struct _TaskRef[origin: MutOrigin, //, T: _Callable](

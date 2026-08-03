@@ -16,7 +16,7 @@ trait AsyncCallable:
         s: MutOrigin,
     ](
         ref[s] self,
-        var other: Some[AsyncCallable & Movable & ImplicitlyDestructible],
+        var other: Some[AsyncCallable & Movable & ImplicitlyDeletable],
     ) -> ParTaskPair[TaskRef[Self, s], type_of(other)]:
         return {TaskRef(self), other^}
 
@@ -32,12 +32,12 @@ trait AsyncCallable:
         s: MutOrigin,
     ](
         ref[s] self,
-        var other: Some[AsyncCallable & Movable & ImplicitlyDestructible],
+        var other: Some[AsyncCallable & Movable & ImplicitlyDeletable],
     ) -> SerTaskPair[TaskRef[Self, s], type_of(other)]:
         return {TaskRef(self), other^}
 
 
-trait AsyncCallableMovable(AsyncCallable, ImplicitlyDestructible, Movable):
+trait AsyncCallableMovable(AsyncCallable, ImplicitlyDeletable, Movable):
     def __add__[
         o: MutOrigin,
     ](var self, ref[o] other: Some[AsyncCallable]) -> ParTaskPair[
@@ -47,7 +47,7 @@ trait AsyncCallableMovable(AsyncCallable, ImplicitlyDestructible, Movable):
 
     def __add__[](
         var self,
-        var other: Some[AsyncCallable & Movable & ImplicitlyDestructible],
+        var other: Some[AsyncCallable & Movable & ImplicitlyDeletable],
     ) -> ParTaskPair[Self, type_of(other)]:
         return {self^, other^}
 
@@ -60,7 +60,7 @@ trait AsyncCallableMovable(AsyncCallable, ImplicitlyDestructible, Movable):
 
     def __rshift__(
         var self,
-        var other: Some[AsyncCallable & Movable & ImplicitlyDestructible],
+        var other: Some[AsyncCallable & Movable & ImplicitlyDeletable],
     ) -> SerTaskPair[Self, type_of(other)]:
         return {self^, other^}
 
@@ -78,8 +78,8 @@ struct TaskRef[T: AsyncCallable, origin: MutOrigin](AsyncCallableMovable):
 
 @fieldwise_init
 struct SerTaskPair[
-    T1: AsyncCallable & Movable & ImplicitlyDestructible,
-    T2: AsyncCallable & Movable & ImplicitlyDestructible,
+    T1: AsyncCallable & Movable & ImplicitlyDeletable,
+    T2: AsyncCallable & Movable & ImplicitlyDeletable,
 ](AsyncCallableMovable):
     var t1: Self.T1
     var t2: Self.T2
@@ -94,8 +94,8 @@ struct SerTaskPair[
 
 @fieldwise_init
 struct ParTaskPair[
-    T1: AsyncCallable & Movable & ImplicitlyDestructible,
-    T2: AsyncCallable & Movable & ImplicitlyDestructible,
+    T1: AsyncCallable & Movable & ImplicitlyDeletable,
+    T2: AsyncCallable & Movable & ImplicitlyDeletable,
 ](AsyncCallableMovable):
     var t1: Self.T1
     var t2: Self.T2

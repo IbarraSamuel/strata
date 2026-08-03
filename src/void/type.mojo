@@ -1,4 +1,4 @@
-from max.algorithm import sync_parallelize
+from std.runtime.asyncrt import TaskGroup
 
 
 trait TypeCallable:
@@ -40,14 +40,15 @@ struct ParallelTypeTask[*Ts: TypeCallable](
     def __call__():
         """Call the tasks based on the types in a parallel order."""
 
-        @parameter
-        def exec(i: Int):
-            comptime for ti in range(Self.Ts.length):
-                if ti == i:
-                    Self.Ts[ti].__call__()
-                    return
+        var tg = TaskGroup()
+        comptime for ti in range(Self.Ts.length):
 
-        sync_parallelize[exec](Self.Ts.length)
+            async def t() {imm}:
+                Self.Ts[ti].__call__()
+
+            tg.create_task(t())
+
+        tg.wait()
 
 
 @fieldwise_init

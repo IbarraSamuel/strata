@@ -1,4 +1,4 @@
-from max.algorithm import sync_parallelize
+from std.runtime.asyncrt import TaskGroup, _run
 
 comptime CallablePack = VariadicPack[
     elt_is_mutable=False, element_trait=ImmCallable, False, ...
@@ -82,7 +82,18 @@ struct ParallelTaskPairRef[
             else:
                 self.t2[].__call__()
 
-        sync_parallelize[exec](2)
+        var tg = TaskGroup()
+
+        async def t1() {imm}:
+            self.t1[].__call__()
+
+        async def t2() {imm}:
+            self.t2[].__call__()
+
+        tg.create_task(t1())
+        tg.create_task(t2())
+
+        tg.wait()
 
 
 # Variadic Parallel
@@ -112,14 +123,15 @@ struct ParallelTask[origin: ImmOrigin, //, *Ts: ImmCallable](ImmCallable):
         """This function executes all tasks at the same time."""
         comptime size = Self.Ts.length
 
-        @parameter
-        def exec(i: Int):
-            comptime for ti in range(size):
-                if ti == i:
-                    self.callables[ti].__call__()
-                    return
+        var tg = TaskGroup()
+        comptime for ti in range(size):
 
-        sync_parallelize[exec](size)
+            async def t() {imm}:
+                self.callables[ti].__call__()
+
+            tg.create_task(t())
+
+        tg.wait()
 
 
 # # Variadic Series

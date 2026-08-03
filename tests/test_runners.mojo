@@ -13,14 +13,14 @@ comptime TIME = 0.001
 #     pass
 
 
-struct GenericParallel(generic.Callable):
+struct GenericParallel[o1: MutOrigin, o2: MutOrigin](generic.Callable):
     comptime I = Int
     comptime O = NoneType
 
-    var start: UnsafePointer[UInt, MutAnyOrigin]
-    var end: UnsafePointer[UInt, MutAnyOrigin]
+    var start: UnsafePointer[Int, Self.o1]
+    var end: UnsafePointer[Int, Self.o2]
 
-    def __init__(out self, mut s: UInt, mut e: UInt):
+    def __init__(out self, ref[Self.o1] s: Int, ref[Self.o2] e: Int):
         self.start = UnsafePointer(to=s)
         self.end = UnsafePointer(to=e)
 
@@ -33,9 +33,9 @@ struct GenericParallel(generic.Callable):
 def test_generic_parallel() raises:
     comptime GP = GenericParallel
 
-    var start1, end1 = (UInt(0), UInt(0))
-    var start2, end2 = (UInt(0), UInt(0))
-    var start3, end3 = (UInt(0), UInt(0))
+    var start1, end1 = (0, 0)
+    var start2, end2 = (0, 0)
+    var start3, end3 = (0, 0)
 
     var p1 = GP(start1, end1)
     var p2 = GP(start2, end2)
@@ -43,7 +43,7 @@ def test_generic_parallel() raises:
 
     var graph = p1 + p2 + p3
 
-    var result = graph(0)
+    var _ = graph(0)
 
     assert_true(p1.start[] < p1.end[])
     assert_true(p1.start[] < p2.end[])
@@ -207,7 +207,7 @@ def test_generic_examples() raises:
 
 
 def test_generic_comptime_parallel() raises:
-    def comptime_parallel(v: NoneType) -> Tuple[UInt, UInt]:
+    def comptime_parallel(v: NoneType) -> Tuple[Int, Int]:
         var start = monotonic()
         sleep(TIME)
         var end = monotonic()
@@ -364,11 +364,11 @@ def test_generic_comptime_explicit() raises:
     # print("final result all comptimeed:", s_runt_result)
 
 
-struct ImmutParallel(immutable.ImmutCallable):
-    var start: UnsafePointer[UInt, MutAnyOrigin]
-    var end: UnsafePointer[UInt, MutAnyOrigin]
+struct ImmutParallel[o1: MutOrigin, o2: MutOrigin](immutable.ImmCallable):
+    var start: UnsafePointer[Int, Self.o1]
+    var end: UnsafePointer[Int, Self.o2]
 
-    def __init__(out self, mut s: UInt, mut e: UInt):
+    def __init__(out self, ref[Self.o1] s: Int, ref[Self.o2] e: Int):
         self.start = UnsafePointer(to=s)
         self.end = UnsafePointer(to=e)
 
@@ -381,9 +381,9 @@ struct ImmutParallel(immutable.ImmutCallable):
 def test_immut_parallel() raises:
     comptime GP = ImmutParallel
 
-    var start1, end1 = (UInt(0), UInt(0))
-    var start2, end2 = (UInt(0), UInt(0))
-    var start3, end3 = (UInt(0), UInt(0))
+    var start1, end1 = (0, 0)
+    var start2, end2 = (0, 0)
+    var start3, end3 = (0, 0)
 
     var p1 = GP(start1, end1)
     var p2 = GP(start2, end2)
@@ -405,7 +405,7 @@ def test_immut_parallel() raises:
 
 
 @fieldwise_init
-struct EImmutParallel(immutable.ImmutCallable):
+struct EImmutParallel(immutable.ImmCallable):
     def __call__(self):
         pass
 
@@ -421,7 +421,7 @@ def test_immut_two_parallels() raises:
 
 
 @fieldwise_init
-struct MyTask[job: StringLiteral](immutable.ImmutCallable):
+struct MyTask[job: StringLiteral](immutable.ImmCallable):
     var some_data: String
 
     def __call__(self):
@@ -503,8 +503,8 @@ def test_immut_examples() raises:
 
 
 struct MutParallel(mutable.MutCallable):
-    var start: UInt
-    var end: UInt
+    var start: Int
+    var end: Int
 
     def __init__(out self):
         self.start = 0
