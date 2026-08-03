@@ -1,11 +1,11 @@
-from std.algorithm import sync_parallelize
+from max.algorithm import sync_parallelize
 
 comptime CallablePack = VariadicPack[
-    elt_is_mutable=False, element_trait=ImmutCallable, False, ...
+    elt_is_mutable=False, element_trait=ImmCallable, False, ...
 ]
 
 
-trait ImmutCallable:
+trait ImmCallable:
     """The struct should contain a def `__call__` method."""
 
     def __call__(self):
@@ -13,13 +13,13 @@ trait ImmutCallable:
 
     @always_inline("nodebug")
     def __add__[
-        s: ImmutOrigin, o: ImmutOrigin, t: ImmutCallable, //
+        s: ImmOrigin, o: ImmOrigin, t: ImmCallable, //
     ](ref[s] self, ref[o] other: t) -> ParallelTaskPairRef[o1=s, o2=o, Self, t]:
         return {self, other}
 
     @always_inline("nodebug")
     def __rshift__[
-        s: ImmutOrigin, o: ImmutOrigin, t: ImmutCallable, //
+        s: ImmOrigin, o: ImmOrigin, t: ImmCallable, //
     ](ref[s] self, ref[o] other: t) -> SequentialTaskPairRef[
         o1=s, o2=o, Self, t
     ]:
@@ -27,7 +27,7 @@ trait ImmutCallable:
 
 
 @fieldwise_init("implicit")
-struct Fn(ImmutCallable):
+struct Fn(ImmCallable):
     """This function takes any function with a signature: `def() -> None` and hold it to later call it using `__call__()`.
     """
 
@@ -41,12 +41,12 @@ struct Fn(ImmutCallable):
 
 @fieldwise_init
 struct SequentialTaskPairRef[
-    o1: ImmutOrigin,
-    o2: ImmutOrigin,
+    o1: ImmOrigin,
+    o2: ImmOrigin,
     //,
-    T1: ImmutCallable,
-    T2: ImmutCallable,
-](ImmutCallable, TrivialRegisterPassable):
+    T1: ImmCallable,
+    T2: ImmCallable,
+](ImmCallable, TrivialRegisterPassable):
     var t1: Pointer[Self.T1, Self.o1]
     var t2: Pointer[Self.T2, Self.o2]
 
@@ -61,12 +61,12 @@ struct SequentialTaskPairRef[
 
 @fieldwise_init
 struct ParallelTaskPairRef[
-    o1: ImmutOrigin,
-    o2: ImmutOrigin,
+    o1: ImmOrigin,
+    o2: ImmOrigin,
     //,
-    T1: ImmutCallable,
-    T2: ImmutCallable,
-](ImmutCallable, TrivialRegisterPassable):
+    T1: ImmCallable,
+    T2: ImmCallable,
+](ImmCallable, TrivialRegisterPassable):
     var t1: Pointer[Self.T1, Self.o1]
     var t2: Pointer[Self.T2, Self.o2]
 
@@ -86,7 +86,7 @@ struct ParallelTaskPairRef[
 
 
 # Variadic Parallel
-struct ParallelTask[origin: ImmutOrigin, //, *Ts: ImmutCallable](ImmutCallable):
+struct ParallelTask[origin: ImmOrigin, //, *Ts: ImmCallable](ImmCallable):
     """Collection of immutable tasks to run in Parallel.
 
     Parameters:
@@ -110,7 +110,7 @@ struct ParallelTask[origin: ImmutOrigin, //, *Ts: ImmutCallable](ImmutCallable):
 
     def __call__(self):
         """This function executes all tasks at the same time."""
-        comptime size = Self.Ts.size
+        comptime size = Self.Ts.length
 
         @parameter
         def exec(i: Int):
@@ -123,9 +123,7 @@ struct ParallelTask[origin: ImmutOrigin, //, *Ts: ImmutCallable](ImmutCallable):
 
 
 # # Variadic Series
-struct SequentialTask[origin: ImmutOrigin, //, *Ts: ImmutCallable](
-    ImmutCallable
-):
+struct SequentialTask[origin: ImmOrigin, //, *Ts: ImmCallable](ImmCallable):
     """Collection of immutable tasks to run in Series.
 
     Parameters:
@@ -150,5 +148,5 @@ struct SequentialTask[origin: ImmutOrigin, //, *Ts: ImmutCallable](
     def __call__(self):
         """This function executes all tasks in ordered sequence."""
 
-        comptime for ci in range(Self.Ts.size):
+        comptime for ci in range(Self.Ts.length):
             self.callables[ci].__call__()

@@ -1,4 +1,4 @@
-from std.algorithm import sync_parallelize
+from max.algorithm import sync_parallelize
 
 
 trait TypeCallable:
@@ -42,12 +42,12 @@ struct ParallelTypeTask[*Ts: TypeCallable](
 
         @parameter
         def exec(i: Int):
-            comptime for ti in range(Self.Ts.size):
+            comptime for ti in range(Self.Ts.length):
                 if ti == i:
                     Self.Ts[ti].__call__()
                     return
 
-        sync_parallelize[exec](Self.Ts.size)
+        sync_parallelize[exec](Self.Ts.length)
 
 
 @fieldwise_init
@@ -63,5 +63,5 @@ struct SeriesTypeTask[*Ts: TypeCallable](TrivialRegisterPassable, TypeCallable):
     def __call__():
         """Call the tasks based on the types on a sequence order."""
 
-        comptime for i in range(Self.Ts.size):
+        comptime for i in range(Self.Ts.length):
             Self.Ts[i].__call__()

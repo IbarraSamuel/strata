@@ -1,4 +1,4 @@
-from std.algorithm import sync_parallelize
+from max.algorithm import sync_parallelize
 
 comptime MutCallablePack = VariadicPack[
     elt_is_mutable=True, element_trait=MutCallable, False, ...
@@ -31,7 +31,7 @@ trait MutCallable(_Callable):
         s: MutOrigin, //
     ](
         ref[s] self,
-        var other: Some[Movable & _Callable & ImplicitlyDestructible],
+        var other: Some[Movable & _Callable & ImplicitlyDeletable],
     ) -> ParallelTaskPair[_TaskRef[origin=s, Self], type_of(other)]:
         return {_TaskRef(self), other^}
 
@@ -39,12 +39,12 @@ trait MutCallable(_Callable):
         s: MutOrigin, //
     ](
         ref[s] self,
-        var other: Some[Movable & _Callable & ImplicitlyDestructible],
+        var other: Some[Movable & _Callable & ImplicitlyDeletable],
     ) -> SequentialTaskPair[_TaskRef[origin=s, Self], type_of(other)]:
         return {_TaskRef(self), other^}
 
 
-trait _MovableMutCallable(ImplicitlyDestructible, Movable, _Callable):
+trait _MovableMutCallable(ImplicitlyDeletable, Movable, _Callable):
     def __call__(mut self):
         ...
 
@@ -63,12 +63,12 @@ trait _MovableMutCallable(ImplicitlyDestructible, Movable, _Callable):
         return {self^, _TaskRef(other)}
 
     def __add__(
-        var self, var other: Some[_Callable & Movable & ImplicitlyDestructible]
+        var self, var other: Some[_Callable & Movable & ImplicitlyDeletable]
     ) -> ParallelTaskPair[Self, type_of(other)]:
         return {self^, other^}
 
     def __rshift__(
-        var self, var other: Some[_Callable & Movable & ImplicitlyDestructible]
+        var self, var other: Some[_Callable & Movable & ImplicitlyDeletable]
     ) -> SequentialTaskPair[Self, type_of(other)]:
         return {self^, other^}
 
@@ -85,7 +85,7 @@ struct SeriesTask[origin: MutOrigin, //, *ts: MutCallable](MutCallable):
         )
 
     def __call__(mut self):
-        comptime for ci in range(Self.ts.size):
+        comptime for ci in range(Self.ts.length):
             self.storage[ci].__call__()
 
 
@@ -101,7 +101,7 @@ struct ParallelTask[origin: MutOrigin, //, *ts: MutCallable](MutCallable):
         )
 
     def __call__(mut self):
-        comptime size = Self.ts.size
+        comptime size = Self.ts.length
 
         @parameter
         def run_task(i: Int):
@@ -115,8 +115,8 @@ struct ParallelTask[origin: MutOrigin, //, *ts: MutCallable](MutCallable):
 
 @fieldwise_init
 struct SequentialTaskPair[
-    T1: Movable & _Callable & ImplicitlyDestructible,
-    T2: Movable & _Callable & ImplicitlyDestructible,
+    T1: Movable & _Callable & ImplicitlyDeletable,
+    T2: Movable & _Callable & ImplicitlyDeletable,
 ](_MovableMutCallable):
     var t1: Self.T1
     var t2: Self.T2
@@ -128,8 +128,8 @@ struct SequentialTaskPair[
 
 @fieldwise_init
 struct ParallelTaskPair[
-    T1: Movable & _Callable & ImplicitlyDestructible,
-    T2: Movable & _Callable & ImplicitlyDestructible,
+    T1: Movable & _Callable & ImplicitlyDeletable,
+    T2: Movable & _Callable & ImplicitlyDeletable,
 ](_MovableMutCallable):
     var t1: Self.T1
     var t2: Self.T2
