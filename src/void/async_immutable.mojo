@@ -1,4 +1,4 @@
-from std.runtime.asyncrt import TaskGroup, _run
+from std.runtime._asyncrt import TaskGroup
 
 
 trait AsyncCallable:
@@ -38,7 +38,9 @@ struct SerTaskPair[
         await self.t2[]()
 
     def run(self):
-        _run(self.__call__())
+        var tg = TaskGroup()
+        tg.create_task(self())
+        tg.wait()
 
 
 struct ParTaskPair[
@@ -59,10 +61,12 @@ struct ParTaskPair[
 
     @always_inline("nodebug")
     async def __call__(self):
-        tg = TaskGroup()
+        var tg = TaskGroup()
         tg.create_task(self.t1[]())
         tg.create_task(self.t2[]())
         await tg
 
     def run(self):
-        _run(self.__call__())
+        var tg = TaskGroup()
+        tg.create_task(self())
+        tg.wait()

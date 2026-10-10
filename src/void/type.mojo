@@ -1,4 +1,4 @@
-from std.runtime.asyncrt import TaskGroup
+from std.runtime._asyncrt import TaskGroup
 
 
 trait TypeCallable:
@@ -43,7 +43,8 @@ struct ParallelTypeTask[*Ts: TypeCallable](
         var tg = TaskGroup()
         comptime for ti in range(Self.Ts.length):
 
-            async def t() {imm}:
+            @__parameter
+            async def t():
                 Self.Ts[ti].__call__()
 
             tg.create_task(t())

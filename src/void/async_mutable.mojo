@@ -1,4 +1,4 @@
-from std.runtime.asyncrt import TaskGroup, _run
+from std.runtime._asyncrt import TaskGroup
 
 
 trait AsyncCallable:
@@ -16,7 +16,7 @@ trait AsyncCallable:
         s: MutOrigin,
     ](
         ref[s] self,
-        var other: Some[AsyncCallable & Movable & ImplicitlyDeletable],
+        var other: Some[AsyncCallable & Movable & Deinitable],
     ) -> ParTaskPair[TaskRef[Self, s], type_of(other)]:
         return {TaskRef(self), other^}
 
@@ -32,12 +32,12 @@ trait AsyncCallable:
         s: MutOrigin,
     ](
         ref[s] self,
-        var other: Some[AsyncCallable & Movable & ImplicitlyDeletable],
+        var other: Some[AsyncCallable & Movable & Deinitable],
     ) -> SerTaskPair[TaskRef[Self, s], type_of(other)]:
         return {TaskRef(self), other^}
 
 
-trait AsyncCallableMovable(AsyncCallable, ImplicitlyDeletable, Movable):
+trait AsyncCallableMovable(AsyncCallable, Deinitable, Movable):
     def __add__[
         o: MutOrigin,
     ](var self, ref[o] other: Some[AsyncCallable]) -> ParTaskPair[
@@ -47,7 +47,7 @@ trait AsyncCallableMovable(AsyncCallable, ImplicitlyDeletable, Movable):
 
     def __add__[](
         var self,
-        var other: Some[AsyncCallable & Movable & ImplicitlyDeletable],
+        var other: Some[AsyncCallable & Movable & Deinitable],
     ) -> ParTaskPair[Self, type_of(other)]:
         return {self^, other^}
 
@@ -60,7 +60,7 @@ trait AsyncCallableMovable(AsyncCallable, ImplicitlyDeletable, Movable):
 
     def __rshift__(
         var self,
-        var other: Some[AsyncCallable & Movable & ImplicitlyDeletable],
+        var other: Some[AsyncCallable & Movable & Deinitable],
     ) -> SerTaskPair[Self, type_of(other)]:
         return {self^, other^}
 
@@ -78,8 +78,8 @@ struct TaskRef[T: AsyncCallable, origin: MutOrigin](AsyncCallableMovable):
 
 @fieldwise_init
 struct SerTaskPair[
-    T1: AsyncCallable & Movable & ImplicitlyDeletable,
-    T2: AsyncCallable & Movable & ImplicitlyDeletable,
+    T1: AsyncCallable & Movable & Deinitable,
+    T2: AsyncCallable & Movable & Deinitable,
 ](AsyncCallableMovable):
     var t1: Self.T1
     var t2: Self.T2
@@ -89,22 +89,26 @@ struct SerTaskPair[
         await self.t2()
 
     def run(mut self):
-        _run(self())
+        var tg = TaskGroup()
+        tg.create_task(self())
+        tg.wait()
 
 
 @fieldwise_init
 struct ParTaskPair[
-    T1: AsyncCallable & Movable & ImplicitlyDeletable,
-    T2: AsyncCallable & Movable & ImplicitlyDeletable,
+    T1: AsyncCallable & Movable & Deinitable,
+    T2: AsyncCallable & Movable & Deinitable,
 ](AsyncCallableMovable):
     var t1: Self.T1
     var t2: Self.T2
 
     async def __call__(mut self):
-        tg = TaskGroup()
+        var tg = TaskGroup()
         tg.create_task(self.t1())
         tg.create_task(self.t2())
         await tg
 
     def run(mut self):
-        _run(self())
+        var tg = TaskGroup()
+        tg.create_task(self())
+        tg.wait()

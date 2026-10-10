@@ -1,11 +1,11 @@
-from std.runtime.asyncrt import _run, create_task, TaskGroup
+from std.runtime._asyncrt import TaskGroup, _run
 
 
 @always_inline("nodebug")
 async def seq_fn[
-    In: AnyType, Om: ImplicitlyDeletable, O: ImplicitlyDeletable, //, f:
-    async def (In) thin -> Om, l:
-    async def (Om) thin  -> O,
+    In: AnyType, Om: Deinitable, O: Deinitable, //, f:
+    async def(In) thin -> Om, l:
+    async def(Om) thin -> O,
 ](val: In) -> O:
     ref r1 = await f(val)
     return await l(r1)
@@ -13,21 +13,19 @@ async def seq_fn[
 
 @always_inline("nodebug")
 async def par_fn[
-    In: AnyType, O1: Movable & ImplicitlyDeletable, O2: Movable & ImplicitlyDeletable, //, f:
-    async def (In) thin -> O1, l:
-    async def (In) thin -> O2,
+    In: AnyType, O1: Movable & Deinitable, O2: Movable & Deinitable, //, f:
+    async def(In) thin -> O1, l:
+    async def(In) thin -> O2,
 ](val: In, out o: Tuple[O1, O2]):
+    var tg = TaskGroup()
 
-    tg = TaskGroup()
+    __mlir_op.`lit.ownership.mark_initialized`(__get_mvalue_as_litref(o))
 
-    __mlir_op.`lit.ownership.mark_initialized`(
-        __get_mvalue_as_litref(o)
-    )
-
-    @parameter
+    @__parameter
     async def task1():
         o[0] = await f(val)
-    @parameter
+
+    @__parameter
     async def task2():
         o[1] = await l(val)
 
@@ -37,20 +35,21 @@ async def par_fn[
     await tg
 
 
-struct Fn[i: AnyType, o: Movable & ImplicitlyDeletable, //, F: async def (i) thin -> o](TrivialRegisterPassable):
+struct Fn[i: AnyType, o: Movable & Deinitable, //, F: async def(i) thin -> o](
+    TrivialRegisterPassable
+):
     @always_inline("builtin")
     def __init__(out self):
         pass
 
     def run(self, val: Self.i) -> Self.o:
-        return _run(self.F(val))
+        var result = _run(self.F(val))
+        return result^
 
     @always_inline("builtin")
-    def __rshift__(
-        self, other: Fn[i = Self.o, _]
-    ) -> Fn[seq_fn[Self.F, other.F]]:
+    def __rshift__(self, other: Fn[i=Self.o, _]) -> Fn[seq_fn[Self.F, other.F]]:
         return {}
 
     @always_inline("builtin")
-    def __add__(self, other: Fn[i = Self.i, _]) -> Fn[par_fn[Self.F, other.F]]:
+    def __add__(self, other: Fn[i=Self.i, _]) -> Fn[par_fn[Self.F, other.F]]:
         return {}

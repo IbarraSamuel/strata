@@ -17,12 +17,12 @@ struct GenericParallel[o1: MutOrigin, o2: MutOrigin](generic.Callable):
     comptime I = Int
     comptime O = NoneType
 
-    var start: UnsafePointer[Int, Self.o1]
-    var end: UnsafePointer[Int, Self.o2]
+    var start: Pointer[Int, Self.o1]
+    var end: Pointer[Int, Self.o2]
 
     def __init__(out self, ref[Self.o1] s: Int, ref[Self.o2] e: Int):
-        self.start = UnsafePointer(to=s)
-        self.end = UnsafePointer(to=e)
+        self.start = Pointer(to=s)
+        self.end = Pointer(to=e)
 
     def __call__(self, v: Int):
         self.start[] = monotonic()
@@ -365,12 +365,12 @@ def test_generic_comptime_explicit() raises:
 
 
 struct ImmutParallel[o1: MutOrigin, o2: MutOrigin](immutable.ImmCallable):
-    var start: UnsafePointer[Int, Self.o1]
-    var end: UnsafePointer[Int, Self.o2]
+    var start: Pointer[Int, Self.o1]
+    var end: Pointer[Int, Self.o2]
 
     def __init__(out self, ref[Self.o1] s: Int, ref[Self.o2] e: Int):
-        self.start = UnsafePointer(to=s)
-        self.end = UnsafePointer(to=e)
+        self.start = Pointer(to=s)
+        self.end = Pointer(to=e)
 
     def __call__(self):
         self.start[] = monotonic()
@@ -416,7 +416,7 @@ def test_immut_two_parallels() raises:
     var p1 = GP()
     var p2 = GP()
 
-    f = p1 + p2 >> p1 + p2
+    var f = p1 + p2 >> p1 + p2
     f()
 
 
@@ -434,16 +434,16 @@ def test_immut_examples() raises:
     comptime IS = immutable.SequentialTask
     comptime IP = immutable.ParallelTask
 
-    init = MyTask["Initialize"]("Setting up...")
-    load = MyTask["Load Data"]("Reading from some place...")
-    find_min = MyTask["Min"]("Calculating...")
-    find_max = MyTask["Max"]("Calculating...")
-    find_mean = MyTask["Mean"]("Calculating...")
-    find_median = MyTask["Median"]("Calculating...")
-    merge_results = MyTask["Merge Results"]("Getting all together...")
+    var init = MyTask["Initialize"]("Setting up...")
+    var load = MyTask["Load Data"]("Reading from some place...")
+    var find_min = MyTask["Min"]("Calculating...")
+    var find_max = MyTask["Max"]("Calculating...")
+    var find_mean = MyTask["Mean"]("Calculating...")
+    var find_median = MyTask["Median"]("Calculating...")
+    var merge_results = MyTask["Merge Results"]("Getting all together...")
 
     # Using Type syntax
-    graph_1 = IS(
+    var graph_1 = IS(
         init,
         load,
         IP(find_min, find_max, find_mean, find_median),
@@ -454,7 +454,7 @@ def test_immut_examples() raises:
 
     # Airflow Syntax
 
-    graph_2 = (
+    var graph_2 = (
         init
         >> load
         >> find_min + find_max + find_mean + find_median
@@ -490,12 +490,12 @@ def test_immut_examples() raises:
 
     comptime Fn = immutable.Fn
 
-    ft = Fn(first_task)
-    ps = Fn(parallel_some)
-    p2 = Fn(parallel2)
-    lt = Fn(last_task)
+    var ft = Fn(first_task)
+    var ps = Fn(parallel_some)
+    var p2 = Fn(parallel2)
+    var lt = Fn(last_task)
     # print("[ Function Graph ]...")
-    fn_graph = ft >> ps + p2 + ps >> lt
+    var fn_graph = ft >> ps + p2 + ps >> lt
     fn_graph()
 
     # Hey, but these things are not useful, because you cannot mutate anything.
@@ -552,7 +552,7 @@ def test_mut_two_parallels() raises:
     var p3 = GP()
     var p4 = GP()
 
-    f = p1 + p2 >> p3 + p4
+    var f = p1 + p2 >> p3 + p4
     f()
 
 
@@ -592,18 +592,18 @@ def test_mut_examples() raises:
     comptime ST = mutable.SeriesTask
     comptime PT = mutable.ParallelTask
 
-    task1 = InitTask["first"](0)
-    task2 = InitTask["second"](0)
-    task31 = InitTask["third parallel 1"](1)
-    task32 = InitTask["third parallel 2"](1)
-    task33 = InitTask["third parallel 2"](1)
-    task34 = InitTask["third parallel 2"](1)
-    task4 = InitTask["pre-last"](2)
-    task5 = InitTask["last"](2)
+    var task1 = InitTask["first"](0)
+    var task2 = InitTask["second"](0)
+    var task31 = InitTask["third parallel 1"](1)
+    var task32 = InitTask["third parallel 2"](1)
+    var task33 = InitTask["third parallel 2"](1)
+    var task34 = InitTask["third parallel 2"](1)
+    var task4 = InitTask["pre-last"](2)
+    var task5 = InitTask["last"](2)
 
     # print("Type graph...")
-    grp = PT(task31, task32, task33, task34)
-    type_graph = ST(task1, task2, grp, task4, task5)
+    var grp = PT(task31, task32, task33, task34)
+    var type_graph = ST(task1, task2, grp, task4, task5)
     type_graph()
 
     # Airflow Syntax. We solve all these problems.
@@ -612,7 +612,7 @@ def test_mut_examples() raises:
     # For tasks with independent values:
 
     # print("Airflow graph...")
-    graph = (
+    var graph = (
         task1 >> task2 >> task31 + task32 + task33 + task34 >> task4 >> task5
     )
     graph()

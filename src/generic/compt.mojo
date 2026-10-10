@@ -11,6 +11,10 @@ trait FnTrait(Movable, TrivialRegisterPassable):
     comptime O: Movable & Deinitable
     comptime F: def(Self.I) thin -> Self.O
 
+    @staticmethod
+    def run(inp: Self.I) -> Self.O:
+        ...
+
 
 def seq_fn[
     In: AnyType,
@@ -23,25 +27,43 @@ def seq_fn[
     return l(f(val))
 
 
+# def par_fns[
+#     *fns: FnTrait
+# ](val: fns[0].I, out outs: Tuple[*fns.map[FnToOut]()]) where fns.all[
+#     FnInputMatch[fns[0].I, _]
+# ]():
+#     var tg = TaskGroup()
+
+#     __mlir_op.`lit.ownership.mark_initialized`(__get_mvalue_as_litref(outs))
+
+#     comptime for ci in range(fns.length):
+
+#         @__parameter
+#         async def task():
+#             ref inp = rebind[fns[ci].I](val)
+#             comptime f = fns[ci].F
+#             outs[ci] = rebind_var[outs.Ts[ci]](f(inp))
+
+#         tg.create_task(task())
+
+
+#     tg.wait()
 def par_fns[
     *fns: FnTrait
-](val: fns[0].I, out outs: Tuple[*fns.map[FnToOut]()]) where fns.all[
+](val: fns[0].I, out o: Tuple[*fns.map[FnToOut]()]) where fns.all[
     FnInputMatch[fns[0].I, _]
 ]():
     var tg = TaskGroup()
-
-    __mlir_op.`lit.ownership.mark_initialized`(__get_mvalue_as_litref(outs))
+    __mlir_op.`lit.ownership.mark_initialized`(__get_mvalue_as_litref(o))
 
     comptime for ci in range(fns.length):
 
         @__parameter
         async def task():
             ref inp = rebind[fns[ci].I](val)
-            comptime f = fns[ci].F
-            outs[ci] = rebind_var[outs.Ts[ci]](f(inp))
+            o[ci] = rebind_var[o.Ts[ci]](fns[ci].run(inp))
 
         tg.create_task(task())
-
     tg.wait()
 
 
@@ -70,7 +92,7 @@ struct F[i: AnyType, o: Movable & Deinitable, //, f: def(i) thin -> o](FnTrait):
         return Self.f(inp)
 
 
-# TODO: Solve this deprecated message once we have an alternative for this...
+# # TODO: Solve this deprecated message once we have an alternative for this...
 @fieldwise_init
 struct FG[*fns: FnTrait] where fns.all[FnInputMatch[fns[0].I, _]]():
     comptime I = Self.fns[0].I

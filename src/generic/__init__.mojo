@@ -1,15 +1,15 @@
-from std.runtime.asyncrt import TaskGroup
+from std.runtime._asyncrt import TaskGroup
 from std.builtin.rebind import downcast
 
 comptime TaskToRes[t: Call] = t.O
 comptime TaskToPtr[o: Origin, t: Call] = downcast[
-    Pointer[t, origin=o], Movable & ImplicitlyDeletable
+    Pointer[t, origin=o], Movable & Deinitable
 ]
 
 
 trait Call:
     comptime I: AnyType
-    comptime O: Movable & ImplicitlyDeletable
+    comptime O: Movable & Deinitable
 
     def __call__(self, arg: Self.I) -> Self.O:
         ...
@@ -34,7 +34,7 @@ trait Callable(Call):
     ](ref[so] self, ref[oo] other: o) -> Parallel[
         origin=origin_of(so, oo), *TypeList.of[Trait=Call, Self, o]()
     ]:
-        comptime assert TypeList.of[Trait=Call, Self, o]().all_satisfies[
+        comptime assert TypeList.of[Trait=Call, Self, o]().all[
             CallableInIs[TypeList.of[Trait=Call, Self, o]()[0].I, _]
         ]()
         return {self, other}
@@ -82,9 +82,7 @@ struct Sequence[
         o: Call,
     ](ref[so] self, ref[oo] other: o) -> Parallel[
         origin=origin_of(so, oo), Self, o
-    ] where TypeList.of[Trait=Call, Self, o].all_satisfies[
-        CallableInIs[Self.I, _]
-    ]():
+    ] where TypeList.of[Trait=Call, Self, o].all[CallableInIs[Self.I, _]]():
         return Parallel(self, other)
 
 
@@ -104,7 +102,7 @@ struct Parallel[
     def __init__(
         out self: Parallel[origin=callables.origin, *Self.elements],
         *callables: *Self.elements,
-    ) where Self.elements.all_satisfies[CallableInIs[Self.elements[0].I, _]]():
+    ) where Self.elements.all[CallableInIs[Self.elements[0].I, _]]():
         __mlir_op.`lit.ownership.mark_initialized`(
             __get_mvalue_as_litref(self.tasks)
         )
@@ -125,9 +123,9 @@ struct Parallel[
 
         comptime for i in range(Self.elements.length):
 
-            @parameter
+            @__parameter
             async def task():
-                comptime to = Self.O.element_types[i]
+                comptime to = Self.O.Ts[i]
                 ref task_i = rebind[
                     Pointer[
                         Self.elements[i],
@@ -160,9 +158,7 @@ struct Parallel[
             origin=origin_of(Self.origin, oo),
             *TypeList._concat[Self.elements.values, TypeList.of[o].values](),
         ],
-    ) where TypeList._concat[
-        Self.elements.values, TypeList.of[o].values
-    ]().all_satisfies[
+    ) where TypeList._concat[Self.elements.values, TypeList.of[o].values]().all[
         CallableInIs[
             TypeList._concat[Self.elements.values, TypeList.of[o].values]()[
                 0
@@ -180,7 +176,7 @@ struct Parallel[
 
 
 @fieldwise_init("implicit")
-struct Fn[In: AnyType, Out: Movable & ImplicitlyDeletable](Call, Movable):
+struct Fn[In: AnyType, Out: Movable & Deinitable](Call, Movable):
     comptime I = Self.In
     comptime O = Self.Out
 
@@ -200,7 +196,7 @@ struct Fn[In: AnyType, Out: Movable & ImplicitlyDeletable](Call, Movable):
         so: ImmOrigin, oo: ImmOrigin, o: Call
     ](ref[so] self, ref[oo] other: o) -> Parallel[
         origin=origin_of(so, oo), *TypeList.of[Trait=Call, Self, o]()
-    ] where TypeList.of[Trait=Call, Self, o]().all_satisfies[
+    ] where TypeList.of[Trait=Call, Self, o]().all[
         CallableInIs[TypeList.of[Trait=Call, Self, o]()[0].I, _]
     ]():
         return {self, other}

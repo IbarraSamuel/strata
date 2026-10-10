@@ -1,4 +1,4 @@
-from std.runtime.asyncrt import TaskGroup, _run
+from std.runtime._asyncrt import TaskGroup, _run
 
 comptime CallablePack = VariadicPack[
     elt_is_mutable=False, element_trait=ImmCallable, False, ...
@@ -75,19 +75,14 @@ struct ParallelTaskPairRef[
         self.t2 = Pointer(to=t2)
 
     def __call__(self):
-        @parameter
-        def exec(i: Int):
-            if i == 0:
-                self.t1[].__call__()
-            else:
-                self.t2[].__call__()
-
         var tg = TaskGroup()
 
-        async def t1() {imm}:
+        @__parameter
+        async def t1():
             self.t1[].__call__()
 
-        async def t2() {imm}:
+        @__parameter
+        async def t2():
             self.t2[].__call__()
 
         tg.create_task(t1())
@@ -126,7 +121,8 @@ struct ParallelTask[origin: ImmOrigin, //, *Ts: ImmCallable](ImmCallable):
         var tg = TaskGroup()
         comptime for ti in range(size):
 
-            async def t() {imm}:
+            @__parameter
+            async def t():
                 self.callables[ti].__call__()
 
             tg.create_task(t())

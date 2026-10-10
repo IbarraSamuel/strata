@@ -1,4 +1,4 @@
-from std.runtime.asyncrt import TaskGroup, _run
+from std.runtime._asyncrt import TaskGroup, _run
 
 comptime MutCallablePack = VariadicPack[
     elt_is_mutable=True, element_trait=MutCallable, False, ...
@@ -31,7 +31,7 @@ trait MutCallable(_Callable):
         s: MutOrigin, //
     ](
         ref[s] self,
-        var other: Some[Movable & _Callable & ImplicitlyDeletable],
+        var other: Some[Movable & _Callable & Deinitable],
     ) -> ParallelTaskPair[_TaskRef[origin=s, Self], type_of(other)]:
         return {_TaskRef(self), other^}
 
@@ -39,12 +39,12 @@ trait MutCallable(_Callable):
         s: MutOrigin, //
     ](
         ref[s] self,
-        var other: Some[Movable & _Callable & ImplicitlyDeletable],
+        var other: Some[Movable & _Callable & Deinitable],
     ) -> SequentialTaskPair[_TaskRef[origin=s, Self], type_of(other)]:
         return {_TaskRef(self), other^}
 
 
-trait _MovableMutCallable(ImplicitlyDeletable, Movable, _Callable):
+trait _MovableMutCallable(Deinitable, Movable, _Callable):
     def __call__(mut self):
         ...
 
@@ -63,12 +63,12 @@ trait _MovableMutCallable(ImplicitlyDeletable, Movable, _Callable):
         return {self^, _TaskRef(other)}
 
     def __add__(
-        var self, var other: Some[_Callable & Movable & ImplicitlyDeletable]
+        var self, var other: Some[_Callable & Movable & Deinitable]
     ) -> ParallelTaskPair[Self, type_of(other)]:
         return {self^, other^}
 
     def __rshift__(
-        var self, var other: Some[_Callable & Movable & ImplicitlyDeletable]
+        var self, var other: Some[_Callable & Movable & Deinitable]
     ) -> SequentialTaskPair[Self, type_of(other)]:
         return {self^, other^}
 
@@ -106,7 +106,8 @@ struct ParallelTask[origin: MutOrigin, //, *ts: MutCallable](MutCallable):
         var tg = TaskGroup()
         comptime for ci in range(size):
 
-            async def t() {mut}:
+            @__parameter
+            async def t():
                 self.storage[ci].__call__()
 
             tg.create_task(t())
@@ -116,8 +117,8 @@ struct ParallelTask[origin: MutOrigin, //, *ts: MutCallable](MutCallable):
 
 @fieldwise_init
 struct SequentialTaskPair[
-    T1: Movable & _Callable & ImplicitlyDeletable,
-    T2: Movable & _Callable & ImplicitlyDeletable,
+    T1: Movable & _Callable & Deinitable,
+    T2: Movable & _Callable & Deinitable,
 ](_MovableMutCallable):
     var t1: Self.T1
     var t2: Self.T2
@@ -129,8 +130,8 @@ struct SequentialTaskPair[
 
 @fieldwise_init
 struct ParallelTaskPair[
-    T1: Movable & _Callable & ImplicitlyDeletable,
-    T2: Movable & _Callable & ImplicitlyDeletable,
+    T1: Movable & _Callable & Deinitable,
+    T2: Movable & _Callable & Deinitable,
 ](_MovableMutCallable):
     var t1: Self.T1
     var t2: Self.T2
@@ -138,10 +139,12 @@ struct ParallelTaskPair[
     def __call__(mut self):
         var tg = TaskGroup()
 
-        async def t1() {mut}:
+        @__parameter
+        async def t1():
             self.t1.__call__()
 
-        async def t2() {mut}:
+        @__parameter
+        async def t2():
             self.t2.__call__()
 
         tg.create_task(t1())

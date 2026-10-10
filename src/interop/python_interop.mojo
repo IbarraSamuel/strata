@@ -1,7 +1,7 @@
 from std.os import abort
 from std.python import PythonObject, Python
 from std.python._cpython import GILReleased
-from std.runtime.asyncrt import TaskGroup as TG
+from std.runtime._asyncrt import TaskGroup as TG
 from std.python.bindings import PythonModuleBuilder
 
 
@@ -49,8 +49,8 @@ struct TaskGroup(Movable, Writable):
         o.objects = self.objects.copy()
 
     def __repr__(self) -> String:
-        objs = "[" + String(", ").join(self.objects) + "]"
-        mode = (
+        var objs = "[" + String(", ").join(self.objects) + "]"
+        var mode = (
             "undefined" if self.mode
             == Self.undefined.mode else "Serial" if self.mode
             == Self.Serial.mode else "Parallel"
@@ -65,7 +65,7 @@ struct TaskGroup(Movable, Writable):
             self.objects.append(t)
             return
 
-        new_group = TaskGroup(mode=mode)
+        var new_group = TaskGroup(mode=mode)
         new_group.objects.append(PythonObject(alloc=self.copy()))
         new_group.objects.append(t)
         self = new_group^
@@ -85,9 +85,9 @@ struct TaskGroup(Movable, Writable):
         )
 
         if self.mode == Self.Serial.mode:
-            iv = msg
+            var iv = msg
             for obj in self.objects:
-                pg = obj._try_downcast_value[TaskGroup]()
+                var pg = obj._try_downcast_value[TaskGroup]()
                 if pg:
                     return pg.value()[]._call(iv)
 
@@ -102,7 +102,7 @@ struct TaskGroup(Movable, Writable):
         # WORKAROUND:
         for i in range(len(self.objects)):
             ref task = self.objects.unsafe_get(i)
-            pg = task._try_downcast_value[TaskGroup]()
+            var pg = task._try_downcast_value[TaskGroup]()
             if pg:
                 values[i] = pg.value()[]._call(msg)
                 continue
@@ -141,7 +141,7 @@ struct TaskGroup(Movable, Writable):
         #     tg.wait()
 
         print("Done!..")
-        tp = Python.tuple()
+        var tp = Python.tuple()
         for res in values:
             tp += Python.tuple(res)
         return tp
@@ -166,7 +166,7 @@ struct TaskGroup(Movable, Writable):
 
     @staticmethod
     def add_task(
-        self_ptr: UnsafePointer[Self, MutAnyOrigin],
+        self_ptr: Pointer[Self, MutAnyOrigin],
         t: PythonObject,
         _mode: PythonObject,
     ) raises:
@@ -178,6 +178,6 @@ struct TaskGroup(Movable, Writable):
 
     @staticmethod
     def call(
-        self_ptr: UnsafePointer[Self, MutAnyOrigin], v: PythonObject
+        self_ptr: Pointer[Self, MutAnyOrigin], v: PythonObject
     ) raises -> PythonObject:
         return self_ptr[]._call(v)
