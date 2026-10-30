@@ -277,11 +277,11 @@ struct FloatToString:
         return String(value)
 
 
-async def async_itof(v: Int) -> Float32:
+__async def async_itof(v: Int) -> Float32:
     return Float32(v)
 
 
-async def async_ftoi(v: Float32) -> Int:
+__async def async_ftoi(v: Float32) -> Int:
     return Int(v)
 
 
@@ -666,14 +666,14 @@ def test_type_examples() raises:
 
 @fieldwise_init
 struct ATask(async_immutable.AsyncCallable):
-    async def __call__(self):
+    __async def __call__(self):
         sleep(TIME)
         # print("hello")
 
 
 @fieldwise_init
 struct ATask2(async_immutable.AsyncCallable):
-    async def __call__(self):
+    __async def __call__(self):
         sleep(TIME)
         # print("world")
 

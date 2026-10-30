@@ -59,7 +59,7 @@ def par_fns[
     comptime for ci in range(fns.length):
 
         @__parameter
-        async def task():
+        __async def task():
             ref inp = rebind[fns[ci].I](val)
             o[ci] = rebind_var[o.Ts[ci]](fns[ci].run(inp))
 

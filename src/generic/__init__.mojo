@@ -124,7 +124,7 @@ struct Parallel[
         comptime for i in range(Self.elements.length):
 
             @__parameter
-            async def task():
+            __async def task():
                 comptime to = Self.O.Ts[i]
                 ref task_i = rebind[
                     Pointer[

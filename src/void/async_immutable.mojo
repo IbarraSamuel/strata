@@ -2,7 +2,7 @@ from std.runtime._asyncrt import TaskGroup
 
 
 trait AsyncCallable:
-    async def __call__(self):
+    __async def __call__(self):
         ...
 
     def __add__[
@@ -33,9 +33,9 @@ struct SerTaskPair[
         self.t2 = Pointer(to=t2)
 
     @always_inline("nodebug")
-    async def __call__(self):
-        await self.t1[]()
-        await self.t2[]()
+    __async def __call__(self):
+        __await self.t1[]()
+        __await self.t2[]()
 
     def run(self):
         var tg = TaskGroup()
@@ -60,11 +60,11 @@ struct ParTaskPair[
         self.t2 = Pointer(to=t2)
 
     @always_inline("nodebug")
-    async def __call__(self):
+    __async def __call__(self):
         var tg = TaskGroup()
         tg.create_task(self.t1[]())
         tg.create_task(self.t2[]())
-        await tg
+        __await tg
 
     def run(self):
         var tg = TaskGroup()

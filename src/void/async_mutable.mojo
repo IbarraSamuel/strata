@@ -2,7 +2,7 @@ from std.runtime._asyncrt import TaskGroup
 
 
 trait AsyncCallable:
-    async def __call__(mut self):
+    __async def __call__(mut self):
         ...
 
     def __add__[
@@ -72,8 +72,8 @@ struct TaskRef[T: AsyncCallable, origin: MutOrigin](AsyncCallableMovable):
     def __init__(out self, ref[Self.origin] v: Self.T):
         self.v = Pointer(to=v)
 
-    async def __call__(mut self):
-        await self.v[]()
+    __async def __call__(mut self):
+        __await self.v[]()
 
 
 @fieldwise_init
@@ -84,9 +84,9 @@ struct SerTaskPair[
     var t1: Self.T1
     var t2: Self.T2
 
-    async def __call__(mut self):
-        await self.t1()
-        await self.t2()
+    __async def __call__(mut self):
+        __await self.t1()
+        __await self.t2()
 
     def run(mut self):
         var tg = TaskGroup()
@@ -102,11 +102,11 @@ struct ParTaskPair[
     var t1: Self.T1
     var t2: Self.T2
 
-    async def __call__(mut self):
+    __async def __call__(mut self):
         var tg = TaskGroup()
         tg.create_task(self.t1())
         tg.create_task(self.t2())
-        await tg
+        __await tg
 
     def run(mut self):
         var tg = TaskGroup()

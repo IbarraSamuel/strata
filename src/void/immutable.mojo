@@ -78,11 +78,11 @@ struct ParallelTaskPairRef[
         var tg = TaskGroup()
 
         @__parameter
-        async def t1():
+        __async def t1():
             self.t1[].__call__()
 
         @__parameter
-        async def t2():
+        __async def t2():
             self.t2[].__call__()
 
         tg.create_task(t1())
@@ -122,7 +122,7 @@ struct ParallelTask[origin: ImmOrigin, //, *Ts: ImmCallable](ImmCallable):
         comptime for ti in range(size):
 
             @__parameter
-            async def t():
+            __async def t():
                 self.callables[ti].__call__()
 
             tg.create_task(t())
