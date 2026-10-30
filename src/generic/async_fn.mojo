@@ -2,40 +2,38 @@ from std.runtime._asyncrt import TaskGroup, _run
 
 
 @always_inline("nodebug")
-async def seq_fn[
+__async def seq_fn[
     In: AnyType, Om: Deinitable, O: Deinitable, //, f:
-    async def(In) thin -> Om, l:
-    async def(Om) thin -> O,
+    __async def(In) thin -> Om, l:
+    __async def(Om) thin -> O,
 ](val: In) -> O:
-    ref r1 = await f(val)
-    return await l(r1)
+    ref r1 = __await f(val)
+    return __await l(r1)
 
 
 @always_inline("nodebug")
-async def par_fn[
+__async def par_fn[
     In: AnyType, O1: Movable & Deinitable, O2: Movable & Deinitable, //, f:
-    async def(In) thin -> O1, l:
-    async def(In) thin -> O2,
+    __async def(In) thin -> O1, l:
+    __async def(In) thin -> O2,
 ](val: In, out o: Tuple[O1, O2]):
     var tg = TaskGroup()
 
     __mlir_op.`lit.ownership.mark_initialized`(__get_mvalue_as_litref(o))
 
-    @__parameter
-    async def task1():
-        o[0] = await f(val)
+    __async def task1() {imm val, mut o}:
+        o[0] = __await f(val)
 
-    @__parameter
-    async def task2():
-        o[1] = await l(val)
+    __async def task2() {imm val, mut o}:
+        o[1] = __await l(val)
 
     tg.create_task(task1())
     tg.create_task(task2())
 
-    await tg
+    __await tg
 
 
-struct Fn[i: AnyType, o: Movable & Deinitable, //, F: async def(i) thin -> o](
+struct Fn[i: AnyType, o: Movable & Deinitable, //, F: __async def(i) thin -> o](
     TrivialRegisterPassable
 ):
     @always_inline("builtin")

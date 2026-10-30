@@ -106,8 +106,7 @@ struct ParallelTask[origin: MutOrigin, //, *ts: MutCallable](MutCallable):
         var tg = TaskGroup()
         comptime for ci in range(size):
 
-            @__parameter
-            async def t():
+            __async def t() {imm self}:
                 self.storage[ci].__call__()
 
             tg.create_task(t())
@@ -139,12 +138,10 @@ struct ParallelTaskPair[
     def __call__(mut self):
         var tg = TaskGroup()
 
-        @__parameter
-        async def t1():
+        __async def t1() {mut self}:
             self.t1.__call__()
 
-        @__parameter
-        async def t2():
+        __async def t2() {mut self}:
             self.t2.__call__()
 
         tg.create_task(t1())

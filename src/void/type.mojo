@@ -43,8 +43,7 @@ struct ParallelTypeTask[*Ts: TypeCallable](
         var tg = TaskGroup()
         comptime for ti in range(Self.Ts.length):
 
-            @__parameter
-            async def t():
+            __async def t():
                 Self.Ts[ti].__call__()
 
             tg.create_task(t())
