@@ -50,22 +50,22 @@ target-version = "py313"
 select = ["ALL"]
 preview = true
 ignore = [
-    "D203",   # One blank line before class docstring. Conflicts with D213.
-    "D212",   # No blank lines allowed before function docstring. Conflicts with D213.
+    "incorrect-blank-line-before-class",   # One blank line before class docstring. Conflicts with D213.
+    "multi-line-summary-first-line",   # No blank lines allowed before function docstring. Conflicts with D213.
     "EXE",    # Executable python files lints. Don't work on Windows so we cannot use it.
-    "COM812", # Conflicts with Formatter
-    "ISC001", # Conflicts with Formatter
-    "CPY001", # Copyright missing.
-    "D101",   # Missing docstring in public class
-    "D102",   # Missing docstring in public method
-    "D103",   # Missing docstring in public function
-    "D105",   # Missing docstring in magic method
-    "D100",   # Missing docstring in public module
-    "T201",   # Print Stmt
+    "missing-trailing-comma", # Conflicts with Formatter
+    "single-line-implicit-string-concatenation", # Conflicts with Formatter
+    "missing-copyright-notice", # Copyright missing.
+    "undocumented-public-class",   # Missing docstring in public class
+    "undocumented-public-method",   # Missing docstring in public method
+    "undocumented-public-function",   # Missing docstring in public function
+    "undocumented-magic-method",   # Missing docstring in magic method
+    "undocumented-public-module",   # Missing docstring in public module
+    "print",   # Print Stmt
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["S101", "ANN201", "D104"]
+"tests/*" = ["assert", "missing-return-type-undocumented-public-function", "undocumented-public-package"]
 
 
 [tool.ruff.lint.pydocstyle]

@@ -13,22 +13,44 @@ class GroupMode(IntEnum):
 
 
 class Task[I, O](Protocol):
+    """Protocol representing a single runnable unit of work.
+
+    Classes implementing `Task` must provide a `__call__(self, msg: I, /) -> O` method.
+    Tasks can inherit from `Combinable` to support `>>` (serial) and `+` (parallel)
+    composition operators.
+    """
+
     def __call__(self, msg: I, /) -> O: ...
 
 
 class SerTaskGroup[I, O]:
+    """A series composition of tasks.
+
+    Represents an unbuilt sequential pipeline where each stage passes its output
+    to the next stage. Serial groups cannot be called directly; finalize them into a
+    `BuildedGraph` using `>> Graph()` or `Graph.build(group)`.
+    """
+
     inner: mojo_strata.TaskGroup[I, O]
 
     def __init__(self, task: mojo_strata.TaskGroup[I, O]) -> None:
         self.inner = task
 
+    @overload
+    def __rshift__(self, other: Graph) -> BuildedGraph[I, O]: ...
+    @overload
     def __rshift__[T](
         self,
         other: Task[O, T] | ParTaskGroup[O, T] | mojo_strata.TaskGroup[O, T],
-    ) -> SerTaskGroup[I, T]:
-        if isinstance(other, ParTaskGroup):
-            other = other.inner
-        self.inner.add_task(other, GroupMode.SERIAL.value)
+    ) -> SerTaskGroup[I, T]: ...
+    def __rshift__[T](
+        self,
+        other: Task[O, T] | ParTaskGroup[O, T] | mojo_strata.TaskGroup[O, T] | Graph,
+    ) -> SerTaskGroup[I, T] | BuildedGraph[I, O]:
+        if isinstance(other, Graph):
+            return BuildedGraph(elements=self.inner)
+        target = other.inner if isinstance(other, ParTaskGroup) else other
+        self.inner.add_task(target, GroupMode.SERIAL.value)
         return cast("SerTaskGroup[I, T]", self)
 
     def __add__[*Os, T](
@@ -41,26 +63,53 @@ class SerTaskGroup[I, O]:
 
 
 class ParTaskGroup[I, O]:
+    """A parallel composition of tasks.
+
+    Represents an unbuilt parallel stage where tasks receive the same input and produce
+    a tuple of results. Parallel groups cannot be called directly; finalize them into a
+    `BuildedGraph` using `>> Graph()` or `Graph.build(group)`.
+    """
+
     inner: mojo_strata.TaskGroup[I, O]
 
     def __init__(self, task: mojo_strata.TaskGroup[I, O]) -> None:
         self.inner = task
 
-    def __rshift__[T](self, other: Task[O, T]) -> SerTaskGroup[I, T]:
-        self.inner.add_task(other, GroupMode.SERIAL.value)
+    @overload
+    def __rshift__(self, other: Graph) -> BuildedGraph[I, O]: ...
+    @overload
+    def __rshift__[T](
+        self, other: Task[O, T] | ParTaskGroup[O, T] | mojo_strata.TaskGroup[O, T]
+    ) -> SerTaskGroup[I, T]: ...
+    def __rshift__[T](
+        self,
+        other: Task[O, T] | ParTaskGroup[O, T] | mojo_strata.TaskGroup[O, T] | Graph,
+    ) -> SerTaskGroup[I, T] | BuildedGraph[I, O]:
+        if isinstance(other, Graph):
+            return BuildedGraph(elements=self.inner)
+        target = other.inner if isinstance(other, ParTaskGroup) else other
+        self.inner.add_task(target, GroupMode.SERIAL.value)
         return SerTaskGroup[I, T](cast("mojo_strata.TaskGroup[I, T]", self.inner))
 
     def __add__[*Os, T](
         self: ParTaskGroup[I, tuple[*Os]],
         other: Task[I, T] | SerTaskGroup[I, T] | mojo_strata.TaskGroup[I, T],
     ) -> ParTaskGroup[I, tuple[*Os, T]]:
-        if isinstance(other, SerTaskGroup):
-            other = other.inner
-        self.inner.add_task(other, GroupMode.PARALLEL.value)
-        return cast("ParTaskGroup[I, tuple[*Os, T]]", self)
+        target = other.inner if isinstance(other, SerTaskGroup) else other
+        self.inner.add_task(target, GroupMode.PARALLEL.value)
+        return ParTaskGroup[I, tuple[*Os, T]](
+            cast("mojo_strata.TaskGroup[I, tuple[*Os, T]]", self.inner)
+        )
 
 
 class TaskGroup[I, O]:
+    """A single-task or intermediate group wrapper.
+
+    Acts as the entrypoint for composition when lifting a single `Task` into a group.
+    Task groups cannot be called directly; build them with `>> Graph()`
+    or `Graph.build(...)`.
+    """
+
     inner: mojo_strata.TaskGroup[I, O]
 
     def __init__(self, task: Task[I, O]) -> None:
@@ -78,24 +127,28 @@ class TaskGroup[I, O]:
     ) -> SerTaskGroup[I, T] | BuildedGraph[I, O]:
         if isinstance(other, Graph):
             return BuildedGraph(elements=self.inner)
-        if isinstance(other, ParTaskGroup):
-            other = other.inner
-        self.inner.add_task(other, GroupMode.SERIAL.value)
+        target = other.inner if isinstance(other, ParTaskGroup) else other
+        self.inner.add_task(target, GroupMode.SERIAL.value)
         return SerTaskGroup[I, T](cast("mojo_strata.TaskGroup[I, T]", self.inner))
 
     def __add__[*Os, T](
         self: TaskGroup[I, tuple[*Os]],
         other: Task[I, T] | SerTaskGroup[I, T] | mojo_strata.TaskGroup[I, T],
     ) -> ParTaskGroup[I, tuple[*Os, T]]:
-        if isinstance(other, SerTaskGroup):
-            other = other.inner
-        self.inner.add_task(other, GroupMode.PARALLEL.value)
+        target = other.inner if isinstance(other, SerTaskGroup) else other
+        self.inner.add_task(target, GroupMode.PARALLEL.value)
         return ParTaskGroup[I, tuple[*Os, T]](
             cast("mojo_strata.TaskGroup[I, tuple[*Os, T]]", self.inner)
         )
 
 
 class Graph:
+    """Builder and compiler for execution graphs.
+
+    Use `Graph.build(pipeline)` or `pipeline >> Graph()` or `Graph() << pipeline`
+    to compile an unbuilt task/group pipeline into a callable `BuildedGraph`.
+    """
+
     @staticmethod
     def __lshift__[In, Out](
         other: SerTaskGroup[In, Out]
@@ -137,6 +190,12 @@ class Graph:
 
 
 class BuildedGraph[I, O]:
+    """An executable, compiled task graph.
+
+    This is the sole execution target. Calling `builded_graph(msg)` runs the underlying
+    Mojo async runtime engine and returns the final computation result.
+    """
+
     inner: mojo_strata.TaskGroup[I, O]
 
     def __init__(self, elements: mojo_strata.TaskGroup[I, O]) -> None:
@@ -147,6 +206,8 @@ class BuildedGraph[I, O]:
 
 
 class Combinable(Protocol):
+    """Protocol / mixin providing pipeline operator overloads (`>>`, `+`) for tasks."""
+
     def __rshift__[I, O, T](
         self: Task[I, O], other: Task[O, T] | ParTaskGroup[O, T]
     ) -> SerTaskGroup[I, T]:
@@ -158,88 +219,3 @@ class Combinable(Protocol):
     ) -> ParTaskGroup[I, tuple[O, T]]:
         group = cast("TaskGroup[I, tuple[O]]", TaskGroup(self))
         return group + other
-
-
-from dataclasses import dataclass  # noqa: E402
-from time import sleep, time_ns  # noqa: E402
-
-
-@dataclass
-class MyTask:
-    value: int = 0
-
-    def __call__(self, message: int) -> int:
-        self.value += message
-        return self.value
-
-
-@dataclass
-class AddOneTask(Combinable):
-    start: int = 0
-    end: int = 0
-
-    def __call__(self, message: int) -> int:
-        self.start = time_ns()
-        sleep(1.0)
-        self.end = time_ns()
-        return message + 1
-
-
-@dataclass
-class IntToStrTask(Combinable):
-    start: int = 0
-    end: int = 0
-
-    def __call__(self, message: int) -> str:
-        self.start = time_ns()
-        sleep(1.0)
-        self.end = time_ns()
-        return str(message)
-
-
-@dataclass
-class StrToIntTask(Combinable):
-    start: int = 0
-    end: int = 0
-
-    def __call__(self, message: str) -> int:
-        self.start = time_ns()
-        sleep(1.0)
-        self.end = time_ns()
-        return int(message)
-
-
-@dataclass
-class SumTuple(Combinable):
-    start: int = 0
-    end: int = 0
-
-    def __call__(self, message: tuple[int, int, int]) -> int:
-        self.start = time_ns()
-        sleep(1.0)
-        self.end = time_ns()
-        return sum(message)
-
-
-str_to_int = StrToIntTask()
-add_one_task_1 = AddOneTask()
-add_one_task_2 = AddOneTask()
-add_one_task_3 = AddOneTask()
-sum_tuple = SumTuple()
-int_to_str = IntToStrTask()
-
-graph = Graph() << (
-    str_to_int
-    >> (add_one_task_1 + add_one_task_2 + add_one_task_3)
-    >> sum_tuple
-    >> int_to_str
-)
-
-graph2 = Graph.build(
-    str_to_int
-    >> (add_one_task_1 + add_one_task_2 + add_one_task_3)
-    >> sum_tuple
-    >> int_to_str
-)
-res = graph("4")
-print(res)

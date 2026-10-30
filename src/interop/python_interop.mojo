@@ -75,6 +75,11 @@ struct TaskGroup(Movable, Writable):
             return msg
 
         if self.mode == Self.undefined.mode:
+            if len(self.objects) == 1:
+                var pg = self.objects[0]._try_downcast_value[TaskGroup]()
+                if pg:
+                    return pg.value()[]._call(msg)
+                return self.objects[0].__call__(msg)
             raise "Group mode not set up"
 
         print(
@@ -89,9 +94,9 @@ struct TaskGroup(Movable, Writable):
             for obj in self.objects:
                 var pg = obj._try_downcast_value[TaskGroup]()
                 if pg:
-                    return pg.value()[]._call(iv)
-
-                iv = obj.__call__(iv)
+                    iv = pg.value()[]._call(iv)
+                else:
+                    iv = obj.__call__(iv)
             print("Done!..")
             return iv  # Before, here we had a tuple
 
