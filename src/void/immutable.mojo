@@ -59,6 +59,11 @@ struct SequentialTaskPairRef[
         self.t2[].__call__()
 
 
+@always_inline
+__async def _run_imm_task[T: ImmCallable, o: ImmOrigin](t: Pointer[T, o]):
+    t[].__call__()
+
+
 @fieldwise_init
 struct ParallelTaskPairRef[
     o1: ImmOrigin,
@@ -77,16 +82,8 @@ struct ParallelTaskPairRef[
     def __call__(self):
         var tg = TaskGroup()
 
-        @__parameter
-        __async def t1():
-            self.t1[].__call__()
-
-        @__parameter
-        __async def t2():
-            self.t2[].__call__()
-
-        tg.create_task(t1())
-        tg.create_task(t2())
+        tg.create_task(_run_imm_task(self.t1))
+        tg.create_task(_run_imm_task(self.t2))
 
         tg.wait()
 
@@ -120,12 +117,11 @@ struct ParallelTask[origin: ImmOrigin, //, *Ts: ImmCallable](ImmCallable):
 
         var tg = TaskGroup()
         comptime for ti in range(size):
-
-            @__parameter
-            __async def t():
-                self.callables[ti].__call__()
-
-            tg.create_task(t())
+            tg.create_task(
+                _run_imm_task(
+                    Pointer(to=self.callables[ti])
+                )
+            )
 
         tg.wait()
 

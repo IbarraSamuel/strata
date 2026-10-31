@@ -112,6 +112,20 @@ struct Parallel[
             comptime ti = type_of(self.tasks[i])
             self.tasks[i] = rebind_var[ti](Pointer(to=callables[i]))
 
+    @staticmethod
+    __async def _run_elem[
+        i: Int,
+        in_orig: ImmOrigin,
+        out_orig: MutOrigin,
+    ](
+        task_ptr: Pointer[Self.elements[i], Self.origin],
+        in_ptr: Pointer[Self.I, in_orig],
+        out_ptr: Pointer[Self.O.Ts[i], out_orig],
+    ):
+        comptime to = downcast[Self.O.Ts[i], Movable]
+        ref in_value = rebind[Self.elements[i].I](in_ptr[])
+        out_ptr[] = rebind_var[to](task_ptr[](in_value))
+
     def __call__(self, v: Self.I) -> Self.O:
         # Assume all tasks has the same input type.
         var tg = TaskGroup()
@@ -121,21 +135,16 @@ struct Parallel[
             __get_mvalue_as_litref(_out_tp)
         )
 
+        var in_ptr = Pointer(to=v)
         comptime for i in range(Self.elements.length):
-
-            @__parameter
-            __async def task():
-                comptime to = Self.O.Ts[i]
-                ref task_i = rebind[
-                    Pointer[
-                        Self.elements[i],
-                        origin=Self.origin,
-                    ]
-                ](self.tasks[i])
-                ref in_value = rebind[Self.elements[i].I](v)
-                _out_tp[i] = rebind_var[to](task_i[](in_value))
-
-            tg.create_task(task())
+            ref task_i = rebind[
+                Pointer[
+                    Self.elements[i],
+                    origin=Self.origin,
+                ]
+            ](self.tasks[i])
+            var out_ptr = Pointer(to=_out_tp[i])
+            tg.create_task(Self._run_elem[i](task_i, in_ptr, out_ptr))
 
         tg.wait()
         return _out_tp^

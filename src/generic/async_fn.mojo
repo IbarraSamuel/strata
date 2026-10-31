@@ -11,6 +11,34 @@ __async def seq_fn[
     return __await l(r1)
 
 
+@always_inline
+__async def _run_async_f[
+    In: AnyType,
+    O1: Movable & Deinitable,
+    f: __async def(In) thin -> O1,
+    in_origin: ImmOrigin = origin_of(),
+    out_origin: MutOrigin = origin_of(),
+](
+    in_ptr: Pointer[In, in_origin],
+    out_ptr: Pointer[O1, out_origin],
+):
+    out_ptr[] = __await f(in_ptr[])
+
+
+@always_inline
+__async def _run_async_l[
+    In: AnyType,
+    O2: Movable & Deinitable,
+    l: __async def(In) thin -> O2,
+    in_origin: ImmOrigin = origin_of(),
+    out_origin: MutOrigin = origin_of(),
+](
+    in_ptr: Pointer[In, in_origin],
+    out_ptr: Pointer[O2, out_origin],
+):
+    out_ptr[] = __await l(in_ptr[])
+
+
 @always_inline("nodebug")
 __async def par_fn[
     In: AnyType, O1: Movable & Deinitable, O2: Movable & Deinitable, //, f:
@@ -21,14 +49,12 @@ __async def par_fn[
 
     __mlir_op.`lit.ownership.mark_initialized`(__get_mvalue_as_litref(o))
 
-    __async def task1() {imm val, mut o}:
-        o[0] = __await f(val)
+    var in_ptr = Pointer(to=val)
+    var o0_ptr = Pointer(to=o[0])
+    var o1_ptr = Pointer(to=o[1])
 
-    __async def task2() {imm val, mut o}:
-        o[1] = __await l(val)
-
-    tg.create_task(task1())
-    tg.create_task(task2())
+    tg.create_task(_run_async_f[In, O1, f](in_ptr, o0_ptr))
+    tg.create_task(_run_async_l[In, O2, l](in_ptr, o1_ptr))
 
     __await tg
 

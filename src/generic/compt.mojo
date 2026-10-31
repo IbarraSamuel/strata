@@ -48,6 +48,20 @@ def seq_fn[
 
 
 #     tg.wait()
+@always_inline
+__async def _run_fn_task[
+    ci: Int,
+    *fns: FnTrait,
+    in_orig: ImmOrigin,
+    out_orig: MutOrigin,
+](
+    in_ptr: Pointer[fns[0].I, in_orig],
+    out_ptr: Pointer[Tuple[*fns.map[FnToOut]()].Ts[ci], out_orig],
+):
+    ref inp = rebind[fns[ci].I](in_ptr[])
+    out_ptr[] = rebind_var[Tuple[*fns.map[FnToOut]()].Ts[ci]](fns[ci].run(inp))
+
+
 def par_fns[
     *fns: FnTrait
 ](val: fns[0].I, out o: Tuple[*fns.map[FnToOut]()]) where fns.all[
@@ -56,14 +70,10 @@ def par_fns[
     var tg = TaskGroup()
     __mlir_op.`lit.ownership.mark_initialized`(__get_mvalue_as_litref(o))
 
+    var in_ptr = Pointer(to=val)
     comptime for ci in range(fns.length):
-
-        @__parameter
-        __async def task():
-            ref inp = rebind[fns[ci].I](val)
-            o[ci] = rebind_var[o.Ts[ci]](fns[ci].run(inp))
-
-        tg.create_task(task())
+        var out_ptr = Pointer(to=o[ci])
+        tg.create_task(_run_fn_task[ci, *fns](in_ptr, out_ptr))
     tg.wait()
 
 

@@ -100,16 +100,20 @@ struct ParallelTask[origin: MutOrigin, //, *ts: MutCallable](MutCallable):
             args._value
         )
 
+    @staticmethod
+    __async def _run_mut_task[T: MutCallable, o: MutOrigin](t: Pointer[T, o]):
+        t[].__call__()
+
     def __call__(mut self):
         comptime size = Self.ts.length
 
         var tg = TaskGroup()
         comptime for ci in range(size):
-
-            __async def t() {imm self}:
-                self.storage[ci].__call__()
-
-            tg.create_task(t())
+            tg.create_task(
+                Self._run_mut_task[Self.ts[ci], Self.origin](
+                    Pointer(to=self.storage[ci])
+                )
+            )
 
         tg.wait()
 
@@ -135,17 +139,15 @@ struct ParallelTaskPair[
     var t1: Self.T1
     var t2: Self.T2
 
+    @staticmethod
+    __async def _run_pair_task[T: _Callable, o: MutOrigin](t: Pointer[T, o]):
+        t[].__call__()
+
     def __call__(mut self):
         var tg = TaskGroup()
 
-        __async def t1() {mut self}:
-            self.t1.__call__()
-
-        __async def t2() {mut self}:
-            self.t2.__call__()
-
-        tg.create_task(t1())
-        tg.create_task(t2())
+        tg.create_task(Self._run_pair_task(Pointer(to=self.t1)))
+        tg.create_task(Self._run_pair_task(Pointer(to=self.t2)))
         tg.wait()
 
 
