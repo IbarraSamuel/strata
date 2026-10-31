@@ -34,7 +34,7 @@ def PyInit_mojo_strata() abi("C") -> PythonObject:
         var strata = PythonModuleBuilder("mojo_strata")
 
         _ = (
-            strata.add_type[TaskGroup]("TaskGroup")
+            strata.add_type[TaskGroup]("mojo_strata.TaskGroup")
             .def_py_init[TaskGroup.py_init]()
             .def_method[TaskGroup.add_task](
                 "add_task", "Add a task to the group."
@@ -42,7 +42,11 @@ def PyInit_mojo_strata() abi("C") -> PythonObject:
             .def_method[TaskGroup.call]("call", "Make this group callable.")
         )
 
-        return strata.finalize()
+        var mod = strata.finalize()
+        var tg_type = mod.__getattr__("mojo_strata.TaskGroup")
+        mod.TaskGroup = tg_type
+        _ = Python.import_module("builtins").delattr(mod, "mojo_strata.TaskGroup")
+        return mod
     except e:
         abort(String("failed to create Python module: ", e))
 
