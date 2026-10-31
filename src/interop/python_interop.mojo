@@ -1,8 +1,24 @@
 from std.os import abort
 from std.python import PythonObject, Python
-from std.python._cpython import GILReleased
+from std.python._cpython import GILReleased, GILAcquired
 from std.runtime._asyncrt import TaskGroup as TG
 from std.python.bindings import PythonModuleBuilder
+
+
+__async def _run_async_task(
+    task_ptr: Pointer[PythonObject, ImmUntrackedOrigin],
+    msg_ptr: Pointer[PythonObject, ImmUntrackedOrigin],
+    out_ptr: Pointer[PythonObject, MutUntrackedOrigin],
+):
+    with GILAcquired(Python()):
+        try:
+            var grp = task_ptr[]._try_downcast_value[TaskGroup]()
+            if grp:
+                out_ptr[] = grp.value()[]._call(msg_ptr[])
+                return
+            out_ptr[] = task_ptr[](msg_ptr[])
+        except:
+            pass
 
 
 @export
@@ -104,46 +120,17 @@ struct TaskGroup(Movable, Writable):
             length=len(self.objects), fill=PythonObject()
         )
 
-        # WORKAROUND:
-        for i in range(len(self.objects)):
-            ref task = self.objects.unsafe_get(i)
-            var pg = task._try_downcast_value[TaskGroup]()
-            if pg:
-                values[i] = pg.value()[]._call(msg)
-                continue
+        var tg = TG()
+        var msg_copy = msg
+        var msg_ptr = Pointer(to=msg_copy).unsafe_origin_cast[MutUntrackedOrigin]()
 
-            values[i] = task.__call__(msg)
+        for idx in range(len(self.objects)):
+            var t_ptr = Pointer(to=self.objects[idx]).unsafe_origin_cast[MutUntrackedOrigin]()
+            var out_ptr = Pointer(to=values[idx]).unsafe_origin_cast[MutUntrackedOrigin]()
+            tg.create_task(_run_async_task(t_ptr, msg_ptr, out_ptr))
 
-        # TODO: Turn on when NO GIL is possible
-        # RELEASE GIL
-        # var python = Python()
-        # with GILReleased(python):
-
-        #     @parameter
-        #     @always_inline
-        #     def run_task(i: Int):
-        #         tsk = self.objects.unsafe_get(i)
-        #         try:
-        #             grp = tsk._try_downcast_value[TaskGroup]()
-        #             if grp:
-        #                 values[i] = grp.value()[]._call(msg)
-        #                 return
-
-        #             values[i] = tsk.__call__(msg)
-        #         except:
-        #             print("Task Failed!")
-        #             values[i] = PythonObject(None)
-
-        #     @parameter
-        #     @always_inline
-        #     async def run_async(i: Int):
-        #         run_task(i)
-
-        #     tg = TG()
-        #     for idx in range(len(self.objects)):
-        #         tg.create_task(run_async(idx))
-
-        #     tg.wait()
+        with GILReleased(Python()):
+            tg.wait()
 
         print("Done!..")
         var tp = Python.tuple()

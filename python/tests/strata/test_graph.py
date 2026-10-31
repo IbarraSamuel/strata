@@ -126,9 +126,8 @@ def test_parallel_task():
     print("[End of Task]...")
 
     assert out == (message + 1, message + 1), "tasks should add 1 to each input"
-    # TODO: Add when mojo properly handles parallelism  # ruff: ignore[line-contains-todo, missing-todo-author, missing-todo-link]
-    # assert my_task_1.end > my_task_2.start, "t2 starts before t1 finishes"
-    # assert my_task_2.end > my_task_1.start, "t1 starts before t2 finishes"
+    assert my_task_1.end > my_task_2.start, "t2 starts before t1 finishes"
+    assert my_task_2.end > my_task_1.start, "t1 starts before t2 finishes"
 
 
 # @pytest.mark.skip("Causes sigfoult when trying to run in parallel.")
@@ -146,9 +145,8 @@ def test_parallel_task_combination():
     print("[End of Task]...")
 
     assert out == (msg + 1, msg + 1, msg + 1), "tasks should add 1 to each input"
-    # TODO: Add when mojo properly handles parallelism  # ruff: ignore[line-contains-todo, missing-todo-author, missing-todo-link]
-    # assert my_task_1.end > my_task_2.start, "t2 should start before t1 finishes"
-    # assert my_task_2.end > my_task_1.start, "t1 should start before t2 finishes"
+    assert my_task_1.end > my_task_2.start, "t2 should start before t1 finishes"
+    assert my_task_2.end > my_task_1.start, "t1 should start before t2 finishes"
 
 
 # @pytest.mark.skip("Causes sigfoult when trying to run in parallel.")
@@ -171,6 +169,5 @@ def test_mixed_task_combination():
     print("[End of Task]...")
 
     assert out == "12", "tasks should add 1 to each input"
-    # TODO: Add when mojo properly handles parallelism  # ruff: ignore[line-contains-todo, missing-todo-author, missing-todo-link]
-    # assert my_task_1.end > my_task_2.start, "t2 starts before t1 finishes"
-    # assert my_task_2.end > my_task_1.start, "t1 starts before t2 finishes"
+    assert my_task_1.end > my_task_2.start, "t2 starts before t1 finishes"
+    assert my_task_2.end > my_task_1.start, "t1 starts before t2 finishes"
