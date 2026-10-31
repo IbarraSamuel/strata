@@ -1,15 +1,31 @@
+"""Static type-level task pipelines for stateless task execution."""
+
 from std.runtime._asyncrt import TaskGroup
 
 
 trait TypeCallable:
+    """Trait for types that can be invoked statically without an instance."""
+
     @staticmethod
     def __call__():
+        """Invoke the static callable."""
         ...
 
     @always_inline("nodebug")
     def __rshift__[
         t: TypeCallable, //
     ](var self, other: t) -> SeriesTypeTask[Self, t]:
+        """Sequence two static type callables.
+
+        Parameters:
+            t: Type of next stage.
+
+        Args:
+            other: Next type callable.
+
+        Returns:
+            A SeriesTypeTask executing self then other.
+        """
         self^.forget()
         return {}
 
@@ -17,11 +33,23 @@ trait TypeCallable:
     def __add__[
         t: TypeCallable, //
     ](var self, other: t) -> ParallelTypeTask[Self, t]:
+        """Combine two static type callables in parallel.
+
+        Parameters:
+            t: Type of parallel stage.
+
+        Args:
+            other: Parallel type callable.
+
+        Returns:
+            A ParallelTypeTask executing self and other.
+        """
         self^.forget()
         return {}
 
     @always_inline("nodebug")
     def forget(deinit self):
+        """Consume and discard this instance."""
         pass
 
 

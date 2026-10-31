@@ -159,12 +159,16 @@ def test_mixed_task_combination():
     int_to_str = IntToStrTask()
 
     serial_task = (
-        str_to_int >> my_task_1 + my_task_2 + my_task_3 >> sum_tuple >> int_to_str
+        str_to_int
+        >> my_task_1 + my_task_2 + my_task_3
+        >> sum_tuple
+        >> int_to_str
+        >> Graph()
     )
     print("[Serial Task]...")
 
     message = "5"
-    out = Graph.build(serial_task)(message)
+    out = serial_task(message)
 
     print("[End of Task]...")
 

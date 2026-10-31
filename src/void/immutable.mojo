@@ -1,20 +1,37 @@
+"""Immutable void-returning task pipeline primitives."""
+
 from std.runtime._asyncrt import TaskGroup, _run
 
 comptime CallablePack = VariadicPack[
     elt_is_mutable=False, element_trait=ImmCallable, False, ...
 ]
+"""Variadic pack alias for immutable callables."""
 
 
 trait ImmCallable:
-    """The struct should contain a def `__call__` method."""
+    """Trait for immutable callables without return values."""
 
     def __call__(self):
+        """Invoke the callable."""
         ...
 
     @always_inline("nodebug")
     def __add__[
         s: ImmOrigin, o: ImmOrigin, t: ImmCallable, //
     ](ref[s] self, ref[o] other: t) -> ParallelTaskPairRef[o1=s, o2=o, Self, t]:
+        """Combine two immutable callables in parallel.
+
+        Parameters:
+            s: Origin of self.
+            o: Origin of other.
+            t: Type of other callable.
+
+        Args:
+            other: Other immutable callable.
+
+        Returns:
+            A ParallelTaskPairRef executing both in parallel.
+        """
         return {self, other}
 
     @always_inline("nodebug")
@@ -23,6 +40,19 @@ trait ImmCallable:
     ](ref[s] self, ref[o] other: t) -> SequentialTaskPairRef[
         o1=s, o2=o, Self, t
     ]:
+        """Sequence two immutable callables.
+
+        Parameters:
+            s: Origin of self.
+            o: Origin of other.
+            t: Type of other callable.
+
+        Args:
+            other: Next immutable callable.
+
+        Returns:
+            A SequentialTaskPairRef executing self then other.
+        """
         return {self, other}
 
 
@@ -47,14 +77,32 @@ struct SequentialTaskPairRef[
     T1: ImmCallable,
     T2: ImmCallable,
 ](ImmCallable, TrivialRegisterPassable):
+    """Sequential pair of immutable task references.
+
+    Parameters:
+        o1: Origin of first task reference.
+        o2: Origin of second task reference.
+        T1: Type of first task.
+        T2: Type of second task.
+    """
+
     var t1: Pointer[Self.T1, Self.o1]
+    """Pointer to first task."""
     var t2: Pointer[Self.T2, Self.o2]
+    """Pointer to second task."""
 
     def __init__(out self, ref[Self.o1] t1: Self.T1, ref[Self.o2] t2: Self.T2):
+        """Initialize the pair with references to both tasks.
+
+        Args:
+            t1: Reference to first task.
+            t2: Reference to second task.
+        """
         self.t1 = Pointer(to=t1)
         self.t2 = Pointer(to=t2)
 
     def __call__(self):
+        """Execute the two tasks sequentially."""
         self.t1[].__call__()
         self.t2[].__call__()
 
@@ -72,14 +120,32 @@ struct ParallelTaskPairRef[
     T1: ImmCallable,
     T2: ImmCallable,
 ](ImmCallable, TrivialRegisterPassable):
+    """Parallel pair of immutable task references.
+
+    Parameters:
+        o1: Origin of first task reference.
+        o2: Origin of second task reference.
+        T1: Type of first task.
+        T2: Type of second task.
+    """
+
     var t1: Pointer[Self.T1, Self.o1]
+    """Pointer to first task."""
     var t2: Pointer[Self.T2, Self.o2]
+    """Pointer to second task."""
 
     def __init__(out self, ref[Self.o1] t1: Self.T1, ref[Self.o2] t2: Self.T2):
+        """Initialize the pair with references to both tasks.
+
+        Args:
+            t1: Reference to first task.
+            t2: Reference to second task.
+        """
         self.t1 = Pointer(to=t1)
         self.t2 = Pointer(to=t2)
 
     def __call__(self):
+        """Execute both tasks concurrently in a TaskGroup."""
         var tg = TaskGroup()
 
         tg.create_task(_run_imm_task(self.t1))
@@ -88,7 +154,6 @@ struct ParallelTaskPairRef[
         tg.wait()
 
 
-# Variadic Parallel
 struct ParallelTask[origin: ImmOrigin, //, *Ts: ImmCallable](ImmCallable):
     """Collection of immutable tasks to run in Parallel.
 
@@ -108,7 +173,6 @@ struct ParallelTask[origin: ImmOrigin, //, *Ts: ImmCallable](ImmCallable):
         Args:
             args: All tasks to be executed in parallel.
         """
-        # self.callables = CallablePack[origin=args.origin, *Self.Ts](args._value)
         self.callables = CallablePack[origin=args.origin, *Self.Ts](args._value)
 
     def __call__(self):
@@ -126,7 +190,6 @@ struct ParallelTask[origin: ImmOrigin, //, *Ts: ImmCallable](ImmCallable):
         tg.wait()
 
 
-# # Variadic Series
 struct SequentialTask[origin: ImmOrigin, //, *Ts: ImmCallable](ImmCallable):
     """Collection of immutable tasks to run in Series.
 

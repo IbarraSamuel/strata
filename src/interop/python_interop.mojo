@@ -1,3 +1,5 @@
+"""Python interoperability module for task group execution."""
+
 from std.os import abort
 from std.python import PythonObject, Python
 from std.python._cpython import GILReleased, GILAcquired
@@ -23,6 +25,11 @@ __async def _run_async_task(
 
 @export
 def PyInit_mojo_strata() abi("C") -> PythonObject:
+    """Initialize the CPython extension module for mojo_strata.
+
+    Returns:
+        The initialized Python module object.
+    """
     try:
         var strata = PythonModuleBuilder("mojo_strata")
 
@@ -41,30 +48,53 @@ def PyInit_mojo_strata() abi("C") -> PythonObject:
 
 
 struct TaskGroup(Movable, Writable):
+    """Python-interoperable task group managing serial or parallel task pipelines."""
+
     comptime undefined = TaskGroup(-1)
+    """Undefined group mode constant."""
     comptime Serial = TaskGroup(0)
+    """Serial execution group mode constant."""
     comptime Parallel = TaskGroup(1)
+    """Parallel execution group mode constant."""
 
     var mode: Int
+    """Execution mode of the task group (-1: undefined, 0: serial, 1: parallel)."""
     var objects: List[PythonObject]
-
-    # def __init__(out self):
-    #     self.mode = -1
-    #     self.objects = []
+    """List of task PythonObjects in the group."""
 
     def __init__(out self, task: PythonObject):
+        """Construct a TaskGroup with a single initial task.
+
+        Args:
+            task: Initial Python task object.
+        """
         self.mode = -1
         self.objects = [task]
 
     def __init__(out self, mode: Int):
+        """Construct an empty TaskGroup with a specific execution mode.
+
+        Args:
+            mode: Mode integer (0 for serial, 1 for parallel).
+        """
         self.mode = mode
         self.objects = []
 
     def copy(self, out o: Self):
+        """Copy the TaskGroup.
+
+        Returns:
+            A cloned copy of this TaskGroup.
+        """
         o = Self(mode=self.mode)
         o.objects = self.objects.copy()
 
     def __repr__(self) -> String:
+        """Return string representation of the TaskGroup.
+
+        Returns:
+            A string describing mode and contained tasks.
+        """
         var objs = "[" + String(", ").join(self.objects) + "]"
         var mode = (
             "undefined" if self.mode
@@ -114,7 +144,7 @@ struct TaskGroup(Movable, Writable):
                 else:
                     iv = obj.__call__(iv)
             print("Done!..")
-            return iv  # Before, here we had a tuple
+            return iv
 
         var values = List[PythonObject](
             length=len(self.objects), fill=PythonObject()
@@ -138,15 +168,21 @@ struct TaskGroup(Movable, Writable):
             tp += Python.tuple(res)
         return tp
 
-    # =========================================
-    # ====== Python exported functions. =======
-    # =========================================
-
     @staticmethod
     def py_init(
         out self: Self, args: PythonObject, kwargs: PythonObject
     ) raises:
-        """Requires a kw argument called "task" or a positional argument that should be of type task.
+        """Initialize from Python arguments.
+
+        Args:
+            args: Positional Python arguments.
+            kwargs: Keyword Python arguments.
+
+        Returns:
+            The initialized TaskGroup.
+
+        Raises:
+            Error if invalid arguments are passed.
         """
         if len(args) != 1 and PythonObject("task") not in kwargs:
             raise "Bad arguments."
@@ -162,14 +198,37 @@ struct TaskGroup(Movable, Writable):
         t: PythonObject,
         _mode: PythonObject,
     ) raises:
+        """Add a task to the group from Python.
+
+        Args:
+            self_ptr: Pointer to self.
+            t: Python task to add.
+            _mode: Mode integer.
+
+        Raises:
+            Error if task addition fails.
+        """
         self_ptr[]._add_task(t, Int(py=_mode))
 
     @staticmethod
     def py_method():
+        """Stub method for Python interop."""
         pass
 
     @staticmethod
     def call(
         self_ptr: Pointer[Self, MutAnyOrigin], v: PythonObject
     ) raises -> PythonObject:
+        """Invoke the task group from Python.
+
+        Args:
+            self_ptr: Pointer to self.
+            v: Input argument.
+
+        Returns:
+            Output from group execution.
+
+        Raises:
+            Error if execution fails.
+        """
         return self_ptr[]._call(v)

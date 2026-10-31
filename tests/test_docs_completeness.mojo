@@ -1,13 +1,15 @@
+"""Test documentation completeness for all Mojo source files."""
+
 from std.pathlib import _dir_of_current_file, Path
-from std.algorithm import sync_parallelize
 import std.subprocess as subprocess
 
-comptime CMD = "mojo doc --diagnose-missing-doc-strings -Werror {}"
+comptime CMD = "mojo doc --diagnose-missing-doc-strings -Werror -I {} {} 2>&1"
 
 
 def _flatten_files(var path: Path, mut files: List[Path]) raises:
     if path.is_file():
-        files.append(path)
+        if String(path).endswith(".mojo"):
+            files.append(path)
         return
 
     for p in path.listdir():
@@ -15,35 +17,28 @@ def _flatten_files(var path: Path, mut files: List[Path]) raises:
 
 
 def _list_files(var package_dir: Path) raises -> List[Path]:
-    files = List[Path]()
+    var files = List[Path]()
     _flatten_files(package_dir^, files)
     return files^
 
 
-def _run_doctest_cmd(file: Path) raises -> String:
-    path = String(file)
-    cmd = StaticString(CMD).format(path)
+def _run_doctest_cmd(package_dir: Path, file: Path) raises -> String:
+    var cmd = StaticString(CMD).format(String(package_dir), String(file))
     return subprocess.run(cmd)
 
 
 def test_docs_completeness() raises:
     var package_dir = _dir_of_current_file() / ".." / "src"
     var files = _list_files(package_dir)
-    var results = List[String](length=len(files), fill="")
+    var errors = List[String]()
 
-    @parameter
-    def calc_file_docs(i: Int) raises:
-        ref file = files[i]
-        results[i] = _run_doctest_cmd(file)
+    for file in files:
+        var res = _run_doctest_cmd(package_dir, file)
+        if not ('"decl"' in res and '"version"' in res):
+            errors.append(String(file) + ":\n" + res)
 
-    sync_parallelize[calc_file_docs](len(files))
-
-    var errors = [
-        res for res in results if not ('"decl"' in res and '"version"' in res)
-    ]
-
-    if errors:
-        raise "\n\n".join(errors)
+    if len(errors) > 0:
+        raise Error("\n\n".join(errors))
 
 
 def main() raises:
