@@ -10,6 +10,7 @@ Strata provides an intuitive, operator-driven API for constructing complex depen
 
 ## Table of Contents
 
+- [Installation](#installation)
 - [Features](#features)
 - [Project Architecture](#project-architecture)
 - [Using Strata from Mojo](#using-strata-from-mojo)
@@ -26,6 +27,65 @@ Strata provides an intuitive, operator-driven API for constructing complex depen
   - [5. Mixed Pipelines & Compilation (`Graph.build`)](#5-mixed-pipelines--compilation-graphbuild)
 - [Development and Testing](#development-and-testing)
 - [License](#license)
+
+---
+
+## Installation
+
+### Mojo
+
+Clone the repository and let Pixi install the Mojo compiler and build Strata's
+Mojo package into the project environment:
+
+```bash
+git clone https://github.com/IbarraSamuel/strata.git
+cd strata
+pixi install
+```
+
+Run Mojo commands from the repository with `pixi run mojo ...`. The Pixi package
+also declares `mojo-compiler` as a runtime dependency.
+
+To use Strata from another Pixi project, add this GitHub repository as a Pixi
+Git dependency. The consuming project needs the same channels and the
+`pixi-build` preview enabled so Pixi can build Strata:
+
+```bash
+pixi workspace preview add pixi-build
+pixi workspace channel add https://prefix.dev/max-nightly https://prefix.dev/conda-forge
+pixi add strata --git https://github.com/IbarraSamuel/strata.git
+pixi install
+```
+
+Then import Strata in Mojo code as usual:
+
+```mojo
+from strata import generic
+```
+
+By default, Pixi uses the repository's default branch. To pin a branch, tag, or
+commit, use `--branch <branch>`, `--tag <tag>`, or `--rev <commit>` with
+`pixi add`.
+
+### Python
+
+Install directly from the `python/` subdirectory of this GitHub repository with
+either pip or uv:
+
+```bash
+python -m pip install "git+https://github.com/IbarraSamuel/strata.git#subdirectory=python"
+uv pip install "git+https://github.com/IbarraSamuel/strata.git#subdirectory=python"
+```
+
+To add it as a dependency to a uv project instead:
+
+```bash
+uv add "strata @ git+https://github.com/IbarraSamuel/strata.git#subdirectory=python"
+```
+
+These Python install commands build the native Mojo extension during
+installation and install Mojo as a Python dependency. Mojo's Linux wheels
+require glibc 2.34 or newer.
 
 ---
 
