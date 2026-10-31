@@ -4,15 +4,23 @@ Python bindings for **Strata**, a high-performance composable task graph runner 
 
 ## Installation / Build
 
-The native extension is built from Mojo sources using Pixi:
+Install the Python package from this directory:
 
 ```bash
-# Build the native C-extension
-pixi run build_mojo_python
-pixi run prepare_python
+python -m pip install .
 ```
 
-This places `mojo_strata.so` inside `src/strata/`.
+The package build installs Mojo as a Python build dependency and compiles
+`mojo_strata.so` from the repository's Mojo sources during installation. Mojo is
+also installed as a runtime dependency.
+On Linux, the Mojo wheels require glibc 2.34 or newer.
+
+For development, run the tests with the build tools available in the active
+environment:
+
+```bash
+uv run --no-build-isolation --reinstall-package strata --group dev --group test pytest
+```
 
 ## Quickstart
 

@@ -204,14 +204,16 @@ Strata exposes a native Python interface via `mojo_strata.so`, allowing you to c
 
 ### 1. Building the Python Extension
 
-Ensure the native shared library is built and available:
+Installing the Python package from the `python/` directory builds the native
+shared library automatically:
 
 ```bash
-pixi run build_mojo_python
-pixi run prepare_python
+python -m pip install ./python
 ```
 
-This compiles `src/interop/python_interop.mojo` to `python/src/strata/mojo_strata.so`.
+Mojo is installed as a Python dependency and compiles
+`src/interop/python_interop.mojo` to `python/src/strata/mojo_strata.so` during
+the package build.
 
 ### 2. Defining Tasks (`Combinable`)
 
@@ -345,7 +347,7 @@ pixi run test_generic_async
 pixi run test_void_mutable
 pixi run test_void_immutable
 
-# Run Python tests (builds mojo_strata.so and runs pytest via uv)
+# Run Python tests (rebuilds mojo_strata.so before pytest)
 pixi run python_test
 
 # Validate docstring completeness for all Mojo source files

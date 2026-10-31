@@ -5,14 +5,23 @@ description = "Series/Parallel Runner on top of mojo asyncrt"
 readme = "README.md"
 authors = [{ name = "Samuel Ibarra", email = "Samuel.E.Ibarra@dell.com" }]
 requires-python = ">=3.13.5"
-dependencies = []
+dependencies = ["mojo>=1.2.0,<2.0.0"]
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "mojo>=1.2.0,<2.0.0"]
 build-backend = "hatchling.build"
 
+[tool.hatch.build.hooks.custom]
+path = "hatch_build.py"
+
+[tool.hatch.build.targets.sdist]
+exclude = ["src/strata/mojo_strata.so"]
+
+[tool.hatch.build.targets.sdist.force-include]
+"../src/interop/python_interop.mojo" = "src/interop/python_interop.mojo"
+
 [dependency-groups]
-dev = []
+dev = ["editables>=0.5", "hatchling>=1.26"]
 test = ["pytest>=8.3.2", "pytest-xdist>=3.6.1", "pytest-cov>=5.0.0"]
 
 [tool.pytest.ini_options]
