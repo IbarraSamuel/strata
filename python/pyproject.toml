@@ -11,6 +11,13 @@ dependencies = ["mojo>=1.2.0,<2.0.0"]
 requires = ["hatchling", "mojo>=1.2.0,<2.0.0"]
 build-backend = "hatchling.build"
 
+[[tool.uv.index]]
+name = "modular-nightly"
+url = "https://whl.modular.com/nightly/simple/"
+
+[tool.uv.sources]
+mojo = { index = "modular-nightly" }
+
 [tool.hatch.build.hooks.custom]
 path = "hatch_build.py"
 
