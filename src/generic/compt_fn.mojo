@@ -1,14 +1,35 @@
+"""Compile-time function composition and parallel execution."""
+
 from std.runtime._asyncrt import Task, TaskGroup
 from std.iter import downcast
 from std.builtin.variadics import _MLIR
 
 comptime FnToOut[Fn: FnTrait] = Fn.O
+"""Get the output type declared by an FnTrait.
+
+Parameters:
+    Fn: Function trait whose output type is returned.
+"""
 
 comptime FnInputMatch[In: AnyType, Fn: FnTrait] = In == Fn.I
+"""Check whether a type matches an FnTrait input type.
+
+Parameters:
+    In: Type to compare with the function input.
+    Fn: Function trait whose input type is checked.
+"""
 
 comptime FnsArePipeable[
     fns: TypeList[Trait=FnTrait, _], Prev: Bool, Elem: FnTrait, Idx: Int
 ] = Prev and (Elem.O == fns[Idx + 1].I)
+"""Check whether adjacent functions in a sequence can be composed.
+
+Parameters:
+    fns: Sequence of functions being checked.
+    Prev: Whether all earlier adjacent functions were pipeable.
+    Elem: Function at the current position.
+    Idx: Index of the current function.
+"""
 
 # Checks adjacent pairs only: reduces over fns[0 : length - 1], so that
 # `fns[Idx + 1]` is always in range. Empty/1-element lists yield True.
@@ -17,14 +38,31 @@ comptime _PickFn[fns: TypeList[Trait=FnTrait, _], Idx: Int]: FnTrait = fns[Idx]
 comptime AllPipeable[fns: TypeList[Trait=FnTrait, _]] = TypeList.tabulate[
     fns.length - 1, _PickFn[fns, _]
 ].reduce_idx[True, FnsArePipeable[fns, ...]]
+"""Check whether every adjacent pair in a function list is pipeable.
+
+Parameters:
+    fns: Functions to check in sequence.
+"""
 
 comptime AllSameInput[fns: TypeList[Trait=FnTrait, _]] = fns.all[
     FnInputMatch[fns[0].I, _]
 ]()
+"""Check whether every function in a list accepts the same input type.
+
+Parameters:
+    fns: Functions whose input types are compared.
+"""
 
 comptime concat[
     Tr: type_of(AnyType), //, v1: TypeList[Trait=Tr, _], v2: Tr
 ] = TypeList._concat[v1.values, TypeList.of[v2].values]
+"""Append one value to a TypeList's values.
+
+Parameters:
+    Tr: Trait of the values being concatenated.
+    v1: TypeList whose values form the first part of the result.
+    v2: Value appended to the TypeList.
+"""
 
 
 # __enum Mode(Equatable):
@@ -54,6 +92,11 @@ def par_exec[
     Parameters:
         fns: Functions to execute in parallel.
 
+    Args:
+        val: Input value passed to every function.
+
+    Returns:
+        Tuple containing each function's result, in function order.
     """
     var tg = TaskGroup()
 
@@ -76,6 +119,11 @@ def seq_exec[
     Parameters:
         fns: Functions to execute sequentially.
 
+    Args:
+        val: Input value passed to the first function.
+
+    Returns:
+        Result returned by the final function.
     """
     var _fr = fns[0].run(val)
     var res = (
@@ -127,66 +175,126 @@ def seq_exec[
 
 
 struct Pipe:
+    """Construct compile-time parallel or sequential function pipelines."""
+
     comptime parallel[
         I: AnyType, O: Movable & Deinitable, //, func: def(I) thin -> O
     ] = Parallel[Function[func]]
+    """Create a parallel pipeline containing one function.
+
+    Parameters:
+        I: Input type accepted by the function.
+        O: Output type returned by the function.
+        func: Function to execute.
+    """
+
     comptime sequence[
         I: AnyType, O: Movable & Deinitable, //, func: def(I) thin -> O
     ] = Sequence[Function[func]]
+    """Create a sequential pipeline containing one function.
+
+    Parameters:
+        I: Input type accepted by the function.
+        O: Output type returned by the function.
+        func: Function to execute.
+    """
 
 
 struct Parallel[*fns: FnTrait](FnTrait) where AllSameInput[fns]:
-    """Parallel execution of multiple functions."""
+    """Execute multiple functions concurrently.
+
+    Parameters:
+        fns: Functions to execute concurrently; each must accept the same input type.
+    """
 
     comptime I = Self.fns[0].I
     """Common input type."""
     comptime O = Tuple[*Self.fns.map[FnToOut]()]
     """Tuple output type."""
     comptime F = par_exec[*Self.fns]
+    """Function that executes all stages concurrently."""
 
     comptime add[
         I: AnyType, O: Movable & Deinitable, //, other: def(I) thin -> O
     ] where AllSameInput[concat[Self.fns, Function[other]]()] = Parallel[
         *concat[Self.fns, Function[other]]()
     ]
+    """Return a parallel pipeline with another function appended.
+
+    Parameters:
+        I: Input type accepted by the added function.
+        O: Output type returned by the added function.
+        other: Function to execute in parallel with the existing functions.
+    """
 
     comptime handover: def(Self.I) thin -> Self.O = par_exec[*Self.fns]
+    """Function pointer for handing this pipeline to another pipeline."""
 
     @staticmethod
     def run(val: Self.I) -> Self.O:
-        """Run the parallel group at runtime."""
+        """Run the parallel group at runtime.
+
+        Args:
+            val: Input value passed to every function.
+
+        Returns:
+            Tuple containing each function's result, in function order.
+        """
         return par_exec[*Self.fns](val)
 
 
 struct Sequence[*fns: FnTrait](FnTrait) where AllPipeable[fns]:
-    """Parallel execution of multiple functions."""
+    """Execute multiple functions sequentially.
+
+    Parameters:
+        fns: Functions to execute in order; each output must match the next input.
+    """
 
     comptime I = Self.fns[0].I
     """Common input type."""
     comptime O = Self.fns[Self.fns.length - 1].O
-    """Tuple output type."""
+    """Output type of the final function."""
     comptime F = seq_exec[*Self.fns]
+    """Function that executes all stages in sequence."""
 
     comptime add[
         I: AnyType, O: Movable & Deinitable, //, other: def(I) thin -> O
     ] where AllPipeable[concat[Self.fns, Function[other]]()] = Sequence[
         *concat[Self.fns, Function[other]]()
     ]
+    """Return a sequential pipeline with another function appended.
+
+    Parameters:
+        I: Input type accepted by the added function.
+        O: Output type returned by the added function.
+        other: Function to execute after the existing functions.
+    """
 
     comptime handover: def(Self.I) thin -> Self.O = seq_exec[*Self.fns]
+    """Function pointer for handing this pipeline to another pipeline."""
 
     @staticmethod
     def run(val: Self.I) -> Self.O:
-        """Run the parallel group at runtime."""
+        """Run the sequential pipeline at runtime.
+
+        Args:
+            val: Input value passed to the first function.
+
+        Returns:
+            Result returned by the final function.
+        """
         return seq_exec[*Self.fns](val)
 
 
 trait FnTrait:
+    """Trait describing a function using compile-time input and output types."""
+
     comptime I: AnyType
     """Input type."""
     comptime O: Movable & Deinitable
     """Output type."""
     comptime F: def(Self.I) thin -> Self.O
+    """Underlying function pointer."""
 
     @staticmethod
     def run(inp: Self.I) -> Self.O:
@@ -207,11 +315,20 @@ struct Function[
     //,
     Func: def(In) thin -> Out,
 ](FnTrait):
+    """Wrap a function with compile-time input and output type metadata.
+
+    Parameters:
+        In: Function input type.
+        Out: Function output type.
+        Func: Function to wrap.
+    """
+
     comptime I = Self.In
     """Input type."""
     comptime O = Self.Out
     """Output type."""
     comptime F = Self.Func
+    """Underlying function pointer."""
 
     @staticmethod
     def run(inp: Self.I) -> Self.O:
