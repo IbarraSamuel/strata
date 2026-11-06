@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from time import sleep, time_ns
 
-from strata.graph import Combinable, Graph, task
+from strata.graph import Combinable, task
 
 SLEEP_TIME = 0.1
 
@@ -27,25 +27,24 @@ class MyTask(Combinable):
 
 def test_task():
     motask = MyTask()
-    graph = Graph.build(motask)
 
     value = 1
-    result = graph(value)
-    result = graph(result)
+    result = motask(value)
+    result = motask(result)
     assert motask.value == value * 2
     assert result == 1 * 2
 
 
 def test_decorated_serial_tasks():
-    graph = Graph.build(increment >> double)
+    pipeline = increment | double
 
-    assert graph(3) == 8  # ruff: ignore[magic-value-comparison]
+    assert pipeline(3) == 8  # ruff: ignore[magic-value-comparison]
 
 
 def test_decorated_parallel_tasks():
-    graph = Graph.build(increment + double)
+    pipeline = increment & double
 
-    assert graph(3) == (4, 6)
+    assert pipeline(3) == (4, 6)
 
 
 @dataclass
@@ -99,16 +98,12 @@ class SumTuple(Combinable):
 def test_serial_task():
     my_task_1 = AddOneTask()
     my_task_2 = AddOneTask()
-    serial_task = my_task_1 >> my_task_2
+    serial_task = my_task_1 | my_task_2
 
-    Graph.build(serial_task)
-    Graph() << serial_task
-    serial_task >> Graph()
     print("[Serial Task]...")
 
-    graph = Graph() >> serial_task
     message = 5
-    out = graph(message)
+    out = serial_task(message)
 
     print("[End of Task]...")
 
@@ -121,12 +116,12 @@ def test_serial_task_combination():
     my_task_1 = AddOneTask()
     my_task_2 = AddOneTask()
     int_to_str = IntToStrTask()
-    serial_task = str_to_int >> my_task_1 >> my_task_2 >> int_to_str
+    serial_task = str_to_int | my_task_1 | my_task_2 | int_to_str
 
     print("[Serial Task]...")
 
     message = "5"
-    out = (serial_task >> Graph())(message)
+    out = serial_task(message)
 
     print("[End of Task]...")
 
@@ -138,12 +133,12 @@ def test_serial_task_combination():
 def test_parallel_task():
     my_task_1 = AddOneTask()
     my_task_2 = AddOneTask()
-    serial_task = my_task_1 + my_task_2
+    parallel_task = my_task_1 & my_task_2
 
-    print("[Serial Task]...")
+    print("[Parallel Task]...")
 
     message = 5
-    out = (serial_task >> Graph())(message)
+    out = parallel_task(message)
 
     print("[End of Task]...")
 
@@ -157,12 +152,12 @@ def test_parallel_task_combination():
     my_task_1 = AddOneTask()
     my_task_2 = AddOneTask()
     my_task_3 = AddOneTask()
-    serial_task = my_task_1 + my_task_2 + my_task_3
+    parallel_task = my_task_1 & my_task_2 & my_task_3
 
-    print("[Serial Task]...")
+    print("[Parallel Task]...")
 
     msg = 5
-    out = Graph.build(serial_task)(msg)
+    out = parallel_task(msg)
 
     print("[End of Task]...")
 
@@ -180,17 +175,16 @@ def test_mixed_task_combination():
     sum_tuple = SumTuple()
     int_to_str = IntToStrTask()
 
-    serial_task = (
+    pipeline = (
         str_to_int
-        >> my_task_1 + my_task_2 + my_task_3
-        >> sum_tuple
-        >> int_to_str
-        >> Graph()
+        | my_task_1 & my_task_2 & my_task_3
+        | sum_tuple
+        | int_to_str
     )
-    print("[Serial Task]...")
+    print("[Mixed Task]...")
 
     message = "5"
-    out = serial_task(message)
+    out = pipeline(message)
 
     print("[End of Task]...")
 

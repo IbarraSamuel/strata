@@ -183,10 +183,10 @@ struct Fn[
         return result
 
     @always_inline("builtin")
-    def __rshift__(
+    def __or__(
         self, other: Fn[i=Self.o, _]
     ) -> Fn[seq_fn[Self.F, other.F]]:
-        """Sequence two async functions.
+        """Pipe output of this async function into another.
 
         Args:
             other: Next async function.
@@ -197,7 +197,7 @@ struct Fn[
         return {}
 
     @always_inline("builtin")
-    def __add__(
+    def __and__(
         self, other: Fn[i=Self.i, _]
     ) -> Parallel[Self, type_of(other)]:
         """Combine two async functions in parallel.
@@ -211,7 +211,7 @@ struct Fn[
         return {}
 
     @always_inline("builtin")
-    def __add__[*other_fns: FnTrait](
+    def __and__[*other_fns: FnTrait](
         self, other: Parallel[*other_fns]
     ) -> Parallel[*TypeList._concat[TypeList.of[Trait=FnTrait, Self].values, other_fns.values]()]:
         """Combine this function with a parallel group.
@@ -257,7 +257,7 @@ struct Parallel[*fns: FnTrait](TrivialRegisterPassable):
         return par_fns[*Self.fns](val)
 
     @always_inline("builtin")
-    def __add__(
+    def __and__(
         self, other: Fn[i=Self.I, _]
     ) -> Parallel[*TypeList._concat[Self.fns.values, TypeList.of[Trait=FnTrait, type_of(other)].values]()]:
         """Add an async function to this parallel group.
@@ -271,7 +271,7 @@ struct Parallel[*fns: FnTrait](TrivialRegisterPassable):
         return {}
 
     @always_inline("builtin")
-    def __add__[*other_fns: FnTrait](
+    def __and__[*other_fns: FnTrait](
         self, other: Parallel[*other_fns]
     ) -> Parallel[*TypeList._concat[Self.fns.values, other_fns.values]()]:
         """Merge another parallel group into this one.

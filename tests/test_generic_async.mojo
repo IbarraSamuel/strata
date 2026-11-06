@@ -24,13 +24,13 @@ def test_async_fn() raises:
     var f3 = AFn[async_itof]()
 
     # Test parallel of 2
-    var p2 = f1 + f2
+    var p2 = f1 & f2
     var res2 = p2.run(5)
     assert_equal(res2[0], 5.0)
     assert_equal(res2[1], 5.0)
 
     # Test parallel of 3 (expanded into a flat 3-element tuple, not nested)
-    var p3 = f1 + f2 + f3
+    var p3 = f1 & f2 & f3
     var res3 = p3.run(5)
     assert_equal(res3[0], 5.0)
     assert_equal(res3[1], 5.0)
@@ -38,7 +38,7 @@ def test_async_fn() raises:
 
     # Test sequence
     var fti = AFn[async_ftoi]()
-    var s = f1 >> fti
+    var s = f1 | fti
     var res_seq = s.run(5)
     assert_equal(res_seq, 5)
 
@@ -55,9 +55,9 @@ def test_fn_add_parallel() raises:
     var f2 = AFn[async_itof]()
     var f3 = AFn[async_itof]()
 
-    # Test Fn + Parallel: f1 + (f2 + f3)
-    var p_sub = f2 + f3
-    var p_full = f1 + p_sub
+    # Test Fn & Parallel: f1 & (f2 & f3)
+    var p_sub = f2 & f3
+    var p_full = f1 & p_sub
     var res = p_full.run(7)
     assert_equal(res[0], 7.0)
     assert_equal(res[1], 7.0)
@@ -71,10 +71,10 @@ def test_parallel_add_parallel() raises:
     var f3 = AFn[async_itof]()
     var f4 = AFn[async_itof]()
 
-    # Test Parallel + Parallel: (f1 + f2) + (f3 + f4)
-    var p12 = f1 + f2
-    var p34 = f3 + f4
-    var p_all = p12 + p34
+    # Test Parallel & Parallel: (f1 & f2) & (f3 & f4)
+    var p12 = f1 & f2
+    var p34 = f3 & f4
+    var p_all = p12 & p34
     var res = p_all.run(9)
     assert_equal(res[0], 9.0)
     assert_equal(res[1], 9.0)

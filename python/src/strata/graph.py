@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from enum import IntEnum
-from typing import TYPE_CHECKING, Protocol, cast, overload, override
+from typing import TYPE_CHECKING, Protocol, cast, override
 
 from strata import mojo_strata
 
@@ -19,7 +19,7 @@ class Task[I, O](Protocol):
     """Protocol representing a single runnable unit of work.
 
     Classes implementing `Task` must provide a `__call__(self, msg: I, /) -> O` method.
-    Tasks can inherit from `Combinable` to support `>>` (serial) and `+` (parallel)
+    Tasks can inherit from `Combinable` to support `|` (stream/pipe) and `&` (parallel)
     composition operators.
     """
 
@@ -29,9 +29,8 @@ class Task[I, O](Protocol):
 class SerTaskGroup[I, O]:
     """A series composition of tasks.
 
-    Represents an unbuilt sequential pipeline where each stage passes its output
-    to the next stage. Serial groups cannot be called directly; finalize them into a
-    `BuildedGraph` using `>> Graph()` or `Graph.build(group)`.
+    Represents a sequential pipeline where each stage passes its output
+    to the next stage. Pipelines are directly callable.
     """
 
     inner: mojo_strata.TaskGroup[I, O]
@@ -39,27 +38,23 @@ class SerTaskGroup[I, O]:
     def __init__(self, task: mojo_strata.TaskGroup[I, O]) -> None:
         self.inner = task
 
-    @overload
-    def __rshift__(self, other: Graph) -> BuildedGraph[I, O]: ...
-    @overload
-    def __rshift__[T](
+    def __call__(self, msg: I, /) -> O:
+        return self.inner.call(msg)
+
+    def __or__[T](
         self,
-        other: Task[O, T] | ParTaskGroup[O, T] | mojo_strata.TaskGroup[O, T],
-    ) -> SerTaskGroup[I, T]: ...
-    def __rshift__[T](
-        self,
-        other: Task[O, T] | ParTaskGroup[O, T] | mojo_strata.TaskGroup[O, T] | Graph,
-    ) -> SerTaskGroup[I, T] | BuildedGraph[I, O]:
-        if isinstance(other, Graph):
-            return BuildedGraph(elements=self.inner)
-        target = other.inner if isinstance(other, ParTaskGroup) else other
+        other: Task[O, T] | ParTaskGroup[O, T] | SerTaskGroup[O, T] | TaskGroup[O, T] | mojo_strata.TaskGroup[O, T],
+    ) -> SerTaskGroup[I, T]:
+        target = other.inner if isinstance(other, (ParTaskGroup, SerTaskGroup, TaskGroup)) else other
         self.inner.add_task(target, GroupMode.SERIAL.value)
         return cast("SerTaskGroup[I, T]", self)
 
-    def __add__[*Os, T](
-        self: SerTaskGroup[I, tuple[*Os]], other: Task[I, T]
+    def __and__[*Os, T](
+        self: SerTaskGroup[I, tuple[*Os]],
+        other: Task[I, T] | SerTaskGroup[I, T] | ParTaskGroup[I, T] | TaskGroup[I, T] | mojo_strata.TaskGroup[I, T],
     ) -> ParTaskGroup[I, tuple[*Os, T]]:
-        self.inner.add_task(other, GroupMode.PARALLEL.value)
+        target = other.inner if isinstance(other, (SerTaskGroup, ParTaskGroup, TaskGroup)) else other
+        self.inner.add_task(target, GroupMode.PARALLEL.value)
         return ParTaskGroup[I, tuple[*Os, T]](
             cast("mojo_strata.TaskGroup[I, tuple[*Os, T]]", self.inner)
         )
@@ -68,9 +63,8 @@ class SerTaskGroup[I, O]:
 class ParTaskGroup[I, O]:
     """A parallel composition of tasks.
 
-    Represents an unbuilt parallel stage where tasks receive the same input and produce
-    a tuple of results. Parallel groups cannot be called directly; finalize them into a
-    `BuildedGraph` using `>> Graph()` or `Graph.build(group)`.
+    Represents a parallel stage where tasks receive the same input and produce
+    a tuple of results. Pipelines are directly callable.
     """
 
     inner: mojo_strata.TaskGroup[I, O]
@@ -78,27 +72,22 @@ class ParTaskGroup[I, O]:
     def __init__(self, task: mojo_strata.TaskGroup[I, O]) -> None:
         self.inner = task
 
-    @overload
-    def __rshift__(self, other: Graph) -> BuildedGraph[I, O]: ...
-    @overload
-    def __rshift__[T](
-        self, other: Task[O, T] | ParTaskGroup[O, T] | mojo_strata.TaskGroup[O, T]
-    ) -> SerTaskGroup[I, T]: ...
-    def __rshift__[T](
+    def __call__(self, msg: I, /) -> O:
+        return self.inner.call(msg)
+
+    def __or__[T](
         self,
-        other: Task[O, T] | ParTaskGroup[O, T] | mojo_strata.TaskGroup[O, T] | Graph,
-    ) -> SerTaskGroup[I, T] | BuildedGraph[I, O]:
-        if isinstance(other, Graph):
-            return BuildedGraph(elements=self.inner)
-        target = other.inner if isinstance(other, ParTaskGroup) else other
+        other: Task[O, T] | ParTaskGroup[O, T] | SerTaskGroup[O, T] | TaskGroup[O, T] | mojo_strata.TaskGroup[O, T],
+    ) -> SerTaskGroup[I, T]:
+        target = other.inner if isinstance(other, (ParTaskGroup, SerTaskGroup, TaskGroup)) else other
         self.inner.add_task(target, GroupMode.SERIAL.value)
         return SerTaskGroup[I, T](cast("mojo_strata.TaskGroup[I, T]", self.inner))
 
-    def __add__[*Os, T](
+    def __and__[*Os, T](
         self: ParTaskGroup[I, tuple[*Os]],
-        other: Task[I, T] | SerTaskGroup[I, T] | mojo_strata.TaskGroup[I, T],
+        other: Task[I, T] | SerTaskGroup[I, T] | ParTaskGroup[I, T] | TaskGroup[I, T] | mojo_strata.TaskGroup[I, T],
     ) -> ParTaskGroup[I, tuple[*Os, T]]:
-        target = other.inner if isinstance(other, SerTaskGroup) else other
+        target = other.inner if isinstance(other, (SerTaskGroup, ParTaskGroup, TaskGroup)) else other
         self.inner.add_task(target, GroupMode.PARALLEL.value)
         return ParTaskGroup[I, tuple[*Os, T]](
             cast("mojo_strata.TaskGroup[I, tuple[*Os, T]]", self.inner)
@@ -109,8 +98,7 @@ class TaskGroup[I, O]:
     """A single-task or intermediate group wrapper.
 
     Acts as the entrypoint for composition when lifting a single `Task` into a group.
-    Task groups cannot be called directly; build them with `>> Graph()`
-    or `Graph.build(...)`.
+    Pipelines are directly callable.
     """
 
     inner: mojo_strata.TaskGroup[I, O]
@@ -118,110 +106,44 @@ class TaskGroup[I, O]:
     def __init__(self, task: Task[I, O]) -> None:
         self.inner = mojo_strata.TaskGroup(task=task)
 
-    @overload
-    def __rshift__(self, other: Graph) -> BuildedGraph[I, O]: ...
-    @overload
-    def __rshift__[T](
-        self, other: Task[O, T] | ParTaskGroup[O, T] | mojo_strata.TaskGroup[O, T]
-    ) -> SerTaskGroup[I, T]: ...
-    def __rshift__[T](
+    def __call__(self, msg: I, /) -> O:
+        return self.inner.call(msg)
+
+    def __or__[T](
         self,
-        other: Task[O, T] | ParTaskGroup[O, T] | mojo_strata.TaskGroup[O, T] | Graph,
-    ) -> SerTaskGroup[I, T] | BuildedGraph[I, O]:
-        if isinstance(other, Graph):
-            return BuildedGraph(elements=self.inner)
-        target = other.inner if isinstance(other, ParTaskGroup) else other
+        other: Task[O, T] | ParTaskGroup[O, T] | SerTaskGroup[O, T] | TaskGroup[O, T] | mojo_strata.TaskGroup[O, T],
+    ) -> SerTaskGroup[I, T]:
+        target = other.inner if isinstance(other, (ParTaskGroup, SerTaskGroup, TaskGroup)) else other
         self.inner.add_task(target, GroupMode.SERIAL.value)
         return SerTaskGroup[I, T](cast("mojo_strata.TaskGroup[I, T]", self.inner))
 
-    def __add__[*Os, T](
+    def __and__[*Os, T](
         self: TaskGroup[I, tuple[*Os]],
-        other: Task[I, T] | SerTaskGroup[I, T] | mojo_strata.TaskGroup[I, T],
+        other: Task[I, T] | SerTaskGroup[I, T] | ParTaskGroup[I, T] | TaskGroup[I, T] | mojo_strata.TaskGroup[I, T],
     ) -> ParTaskGroup[I, tuple[*Os, T]]:
-        target = other.inner if isinstance(other, SerTaskGroup) else other
+        target = other.inner if isinstance(other, (SerTaskGroup, ParTaskGroup, TaskGroup)) else other
         self.inner.add_task(target, GroupMode.PARALLEL.value)
         return ParTaskGroup[I, tuple[*Os, T]](
             cast("mojo_strata.TaskGroup[I, tuple[*Os, T]]", self.inner)
         )
 
 
-class Graph:
-    """Builder and compiler for execution graphs.
-
-    Use `Graph.build(pipeline)` or `pipeline >> Graph()` or `Graph() << pipeline`
-    to compile an unbuilt task/group pipeline into a callable `BuildedGraph`.
-    """
-
-    @staticmethod
-    def __lshift__[In, Out](
-        other: SerTaskGroup[In, Out]
-        | ParTaskGroup[In, Out]
-        | TaskGroup[In, Out]
-        | Task[In, Out],
-    ) -> BuildedGraph[In, Out]:
-        # It's not a group
-        if not isinstance(other, (TaskGroup, SerTaskGroup, ParTaskGroup)):
-            other = TaskGroup(other)
-
-        return BuildedGraph(elements=other.inner)
-
-    @staticmethod
-    def __rshift__[In, Out](
-        other: SerTaskGroup[In, Out]
-        | ParTaskGroup[In, Out]
-        | TaskGroup[In, Out]
-        | Task[In, Out],
-    ) -> BuildedGraph[In, Out]:
-        # It's not a group
-        if not isinstance(other, (TaskGroup, SerTaskGroup, ParTaskGroup)):
-            other = TaskGroup(other)
-
-        return BuildedGraph(elements=other.inner)
-
-    @staticmethod
-    def build[In, Out](
-        other: SerTaskGroup[In, Out]
-        | ParTaskGroup[In, Out]
-        | TaskGroup[In, Out]
-        | Task[In, Out],
-    ) -> BuildedGraph[In, Out]:
-        # It's not a group
-        if not isinstance(other, (TaskGroup, SerTaskGroup, ParTaskGroup)):
-            other = TaskGroup(other)
-
-        return BuildedGraph(elements=other.inner)
-
-
-class BuildedGraph[I, O]:
-    """An executable, compiled task graph.
-
-    This is the sole execution target. Calling `builded_graph(msg)` runs the underlying
-    Mojo async runtime engine and returns the final computation result.
-    """
-
-    inner: mojo_strata.TaskGroup[I, O]
-
-    def __init__(self, elements: mojo_strata.TaskGroup[I, O]) -> None:
-        self.inner = elements
-
-    def __call__(self, msg: I) -> O:
-        return self.inner.call(msg)
-
-
 class Combinable(Protocol):
-    """Protocol / mixin providing pipeline operator overloads (`>>`, `+`) for tasks."""
+    """Protocol / mixin providing pipeline operator overloads (`|`, `&`) for tasks."""
 
-    def __rshift__[I, O, T](
-        self: Task[I, O], other: Task[O, T] | ParTaskGroup[O, T]
+    def __or__[I, O, T](
+        self: Task[I, O],
+        other: Task[O, T] | ParTaskGroup[O, T] | SerTaskGroup[O, T] | TaskGroup[O, T],
     ) -> SerTaskGroup[I, T]:
         group = TaskGroup(self)
-        return group >> other
+        return group | other
 
-    def __add__[I, O, T](
-        self: Task[I, O], other: Task[I, T]
+    def __and__[I, O, T](
+        self: Task[I, O],
+        other: Task[I, T] | ParTaskGroup[I, T] | SerTaskGroup[I, T] | TaskGroup[I, T],
     ) -> ParTaskGroup[I, tuple[O, T]]:
         group = cast("TaskGroup[I, tuple[O]]", TaskGroup(self))
-        return group + other
+        return group & other
 
 
 class FnTask[I, O](Combinable, Task[I, O]):

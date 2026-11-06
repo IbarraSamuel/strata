@@ -36,7 +36,7 @@ def test_generic_parallel() raises:
     var p2 = GP(start2, end2)
     var p3 = GP(start3, end3)
 
-    var graph = p1 + p2 + p3
+    var graph = p1 & p2 & p3
 
     var _ = graph(0)
 
@@ -67,7 +67,7 @@ def test_generic_two_parallels() raises:
     var itof = generic.Fn(int_to_float)
     var itoi = generic.Fn(int_to_int)
     var stp = generic.Fn(sum_tuple)
-    var graph = itof + itoi >> stp + stp
+    var graph = (itof & itoi) | (stp & stp)
 
     var r1, r2 = graph(1)
 
@@ -166,16 +166,16 @@ def test_generic_examples() raises:
     var sum_tp = Fn(sum_tuple_g)
     var ftos = Fn(float_to_string)
 
-    var final_graph = stoi >> mul2 + itof + mul3 >> sum_tp >> ftos
+    var final_graph = stoi | mul2 & itof & mul3 | sum_tp | ftos
 
     var result = final_graph("32")
     assert_equal(result, "192.0")
 
     var struct_graph = (
         StringToIntTask()
-        >> IntMulTask[2]() + IntToFloatTask() + IntMulTask[3]()
-        >> SumTuple()
-        >> FloatToStringTask()
+        | (IntMulTask[2]() & IntToFloatTask() & IntMulTask[3]())
+        | SumTuple()
+        | FloatToStringTask()
     )
 
     var result_2 = struct_graph("32")
@@ -183,13 +183,13 @@ def test_generic_examples() raises:
 
 
 def test_sequence_add() raises:
-    # Test Sequence.__add__: combining a Sequence in parallel with another Callable
+    # Test Sequence.__and__: combining a Sequence in parallel with another Callable
     var stoi = generic.Fn(string_to_int)
     var itof = generic.Fn(int_to_float_g)
-    var seq = stoi >> itof
+    var seq = stoi | itof
 
     var standalone_fn = generic.Fn(string_to_int)
-    var par_graph = seq + standalone_fn
+    var par_graph = seq & standalone_fn
 
     var r1, r2 = par_graph("10")
     assert_equal(r1, 10.0)

@@ -51,16 +51,16 @@ Parameters:
 
 
 trait Callable(Call):
-    """Trait enabling pipelining operators `>>` and `+`."""
+    """Trait enabling pipelining operators `|` and `&`."""
 
-    def __rshift__[
+    def __or__[
         so: ImmOrigin,
         oo: ImmOrigin,
         o: Call,
     ](ref[so] self, ref[oo] other: o) -> Sequence[
         O1=so, O2=oo, T1=Self, T2=o, Self, o
     ]:
-        """Sequence two callables together.
+        """Sequence two callables together via pipe.
 
         Parameters:
             so: Origin of self.
@@ -76,7 +76,7 @@ trait Callable(Call):
         comptime assert Self.O == o.I
         return {self, other}
 
-    def __add__[
+    def __and__[
         so: ImmOrigin, oo: ImmOrigin, o: Call
     ](ref[so] self, ref[oo] other: o) -> Parallel[
         origin=origin_of(so, oo), *TypeList.of[Trait=Call, Self, o]()
@@ -151,7 +151,7 @@ struct Sequence[
         """
         return self.t2[](rebind[Self.T2.I](self.t1[](arg)))
 
-    def __rshift__[
+    def __or__[
         so: ImmOrigin, oo: ImmOrigin, o: Call
     ](ref[so] self, ref[oo] other: o) -> Sequence[
         O1=so,
@@ -162,7 +162,7 @@ struct Sequence[
             Self.elements.values, TypeList.of[Trait=Call, o].values
         ](),
     ] where (Self.O == o.I):
-        """Chain another callable stage.
+        """Chain another callable stage via pipe.
 
         Parameters:
             so: Origin of self.
@@ -177,7 +177,7 @@ struct Sequence[
         """
         return {self, other}
 
-    def __add__[
+    def __and__[
         so: ImmOrigin,
         oo: ImmOrigin,
         o: Call,
@@ -287,7 +287,7 @@ struct Parallel[
         tg.wait()
         return _out_tp^
 
-    def __rshift__[
+    def __or__[
         so: ImmOrigin,
         oo: ImmOrigin,
         o: Call,
@@ -309,7 +309,7 @@ struct Parallel[
         """
         return {self, other}
 
-    def __add__[
+    def __and__[
         oo: ImmOrigin, o: Call
     ](
         deinit self,
@@ -374,12 +374,12 @@ struct Fn[In: AnyType, Out: Movable & Deinitable](Call, Movable):
         """
         return self.func(arg)
 
-    def __rshift__[
+    def __or__[
         so: ImmOrigin, oo: ImmOrigin, o: Call
     ](ref[so] self, ref[oo] other: o) -> Sequence[
         O1=so, O2=oo, T1=Self, T2=o, Self, o
     ] where (Self.O == o.I):
-        """Sequence this Fn with another callable.
+        """Pipe this Fn output into another callable.
 
         Parameters:
             so: Origin of self.
@@ -394,7 +394,7 @@ struct Fn[In: AnyType, Out: Movable & Deinitable](Call, Movable):
         """
         return {self, other}
 
-    def __add__[
+    def __and__[
         so: ImmOrigin, oo: ImmOrigin, o: Call
     ](ref[so] self, ref[oo] other: o) -> Parallel[
         origin=origin_of(so, oo), *TypeList.of[Trait=Call, Self, o]()

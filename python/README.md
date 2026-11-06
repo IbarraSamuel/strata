@@ -24,9 +24,11 @@ uv run --no-build-isolation --reinstall-package strata --group dev --group test 
 
 ## Quickstart
 
+Pipelines are directly callable—no graph compiler or wrapper needed:
+
 ```python
 from dataclasses import dataclass
-from strata.graph import Combinable, Graph
+from strata.graph import Combinable
 
 @dataclass
 class ParseInput(Combinable):
@@ -55,18 +57,17 @@ class Merge(Combinable):
 # Pipeline: Parse -> (Multiply || Add) -> Merge
 pipeline = (
     ParseInput()
-    >> (Multiply(2) + Add(10))
-    >> Merge()
-    >> Graph()
+    | (Multiply(2) & Add(10))
+    | Merge()
 )
 
+# Pipelines are directly callable!
 print(pipeline("5"))  # "Branch 1: 10, Branch 2: 15"
 ```
 
 ## Composition Operators
 
-- **`>>` (Serial)**: Pipes output from left task into input of right task.
-- **`+` (Parallel)**: Dispatches tasks concurrently across threads with the same input, collecting outputs into a tuple.
-- **`Graph.build(...)` / `... >> Graph()`**: Compiles unbuilt task groups into a callable `BuildedGraph`.
+- **`|` (Pipe / Stream)**: Pipes output from left task into input of right task.
+- **`&` (Parallel Fan-Out)**: Dispatches tasks concurrently across threads with the same input, collecting outputs into a tuple.
 
 See the root [README.md](../../README.md) for full project documentation and Mojo usage.

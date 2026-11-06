@@ -3,8 +3,12 @@
 **Strata** is a high-performance, composable task graph execution framework for **Mojo** and **Python**, powered by Mojo's native asynchronous runtime (`TaskGroup` / `_asyncrt`).
 
 Strata provides an intuitive, operator-driven API for constructing complex dependency and workflow graphs:
-- **`>>` (Serial / Sequential Pipeline)**: Pipes the output of one task directly as the input to the next.
-- **`+` (Parallel Fan-Out)**: Dispatches multiple tasks concurrently with the same input, collecting their outputs into a strongly-typed tuple.
+- **Dataflow Pipelines (`generic` / Python)**:
+  - **`|` (Stream / Pipe)**: Pipes the output of one task directly as the input to the next.
+  - **`&` (Parallel Fan-Out)**: Dispatches multiple tasks concurrently with the same input, collecting their outputs into a strongly-typed tuple.
+- **Orchestration Pipelines (`void`)**:
+  - **`>>` (Serial Execution)**: Runs void-returning tasks in sequence without data passing.
+  - **`+` (Parallel Execution)**: Runs void-returning tasks concurrently in a TaskGroup.
 
 ---
 
@@ -22,9 +26,9 @@ Strata provides an intuitive, operator-driven API for constructing complex depen
 - [Using Strata from Python](#using-strata-from-python)
   - [1. Building the Python Extension](#1-building-the-python-extension)
   - [2. Defining Tasks (`Combinable`)](#2-defining-tasks-combinable)
-  - [3. Sequential Pipelines (`>>`)](#3-sequential-pipelines-)
-  - [4. Parallel Pipelines (`+`)](#4-parallel-pipelines-)
-  - [5. Mixed Pipelines & Compilation (`Graph.build`)](#5-mixed-pipelines--compilation-graphbuild)
+  - [3. Sequential Pipelines (`|`)](#3-sequential-pipelines-)
+  - [4. Parallel Pipelines (`&`)](#4-parallel-pipelines-)
+  - [5. Mixed Pipelines](#5-mixed-pipelines)
 - [Development and Testing](#development-and-testing)
 - [License](#license)
 
@@ -158,8 +162,8 @@ def main() raises:
     var dbl = generic.Fn(double_val)
     var tos = generic.Fn(to_string)
 
-    # Chain sequentially with >>
-    var pipeline = stoi >> dbl >> tos
+    # Chain sequentially with |
+    var pipeline = stoi | dbl | tos
 
     var result = pipeline("21")
     print(result)  # "42"
@@ -193,7 +197,7 @@ struct AddOffsetTask(generic.Callable):
 
 ### 3. Combining Sequential and Parallel Stages
 
-Use `+` to run multiple tasks concurrently across threads. When tasks execute in parallel, they receive identical input and their results are bundled into a tuple:
+Use `&` to run multiple tasks concurrently across threads. When tasks execute in parallel, they receive identical input and their results are bundled into a tuple:
 
 ```mojo
 from strata import generic
@@ -212,8 +216,8 @@ def main() raises:
     var trip = generic.Fn(int_triple)
     var merge = generic.Fn(sum_results)
 
-    # Fan out in parallel (+), then fan in (>>)
-    var graph = (itof + trip) >> merge
+    # Fan out in parallel (&), then pipe (into |)
+    var graph = (itof & trip) | merge
 
     var out = graph(10)
     print(out)  # 10.0 + 30 = 40.0
@@ -223,9 +227,9 @@ Pipelines can be arbitrarily chained:
 ```mojo
 var complex_pipeline = (
     StringToIntTask()
-    >> (IntMulTask[2]() + IntToFloatTask() + IntMulTask[3]())
-    >> SumTuple()
-    >> FloatToStringTask()
+    | (IntMulTask[2]() & IntToFloatTask() & IntMulTask[3]())
+    | SumTuple()
+    | FloatToStringTask()
 )
 ```
 
@@ -277,7 +281,7 @@ the package build.
 
 ### 2. Defining Tasks (`Combinable`)
 
-Inherit from `Combinable` to give any callable task support for `>>` and `+`:
+Inherit from `Combinable` to give any callable task support for `|` and `&`:
 
 ```python
 from dataclasses import dataclass
@@ -298,32 +302,29 @@ class FormatMessage(Combinable):
         return f"{self.prefix}: {value}"
 ```
 
-### 3. Sequential Pipelines (`>>`)
+### 3. Sequential Pipelines (`|`)
 
-Pipes output from left to right:
+Pipes output from left to right. Pipelines are directly callable:
 
 ```python
-from strata.graph import Graph
-
 step1 = Multiply(3)
 step2 = FormatMessage("Calculated")
 
-# Build and execute sequentially
-graph = Graph.build(step1 >> step2)
-# Alternatively: (step1 >> step2 >> Graph())(10)
+# Combine sequentially
+pipeline = step1 | step2
 
-result = graph(10)
+result = pipeline(10)
 print(result)  # "Calculated: 30"
 ```
 
-### 4. Parallel Pipelines (`+`)
+### 4. Parallel Pipelines (`&`)
 
 Dispatches tasks concurrently via native Mojo threads. Results are packed into a tuple:
 
 ```python
 from time import sleep
 from dataclasses import dataclass
-from strata.graph import Combinable, Graph
+from strata.graph import Combinable
 
 @dataclass
 class FetchPrice(Combinable):
@@ -338,20 +339,19 @@ class FetchVolume(Combinable):
         return 10_000
 
 # Both tasks run concurrently in Mojo's async runtime
-parallel_stage = FetchPrice() + FetchVolume()
-graph = Graph.build(parallel_stage)
+pipeline = FetchPrice() & FetchVolume()
 
-price, volume = graph("AAPL")
+price, volume = pipeline("AAPL")
 print(f"Price: {price}, Volume: {volume}")
 ```
 
-### 5. Mixed Pipelines & Compilation (`Graph.build`)
+### 5. Mixed Pipelines
 
-Combine sequential and parallel stages seamlessly into a single compiled DAG:
+Combine sequential and parallel stages seamlessly into a single directly callable pipeline:
 
 ```python
 from dataclasses import dataclass
-from strata.graph import Combinable, Graph
+from strata.graph import Combinable
 
 @dataclass
 class ParseInput(Combinable):
@@ -374,15 +374,15 @@ class Aggregate(Combinable):
         a, b = values
         return f"Sum of branches: {a + b}"
 
-# Build the pipeline: Parse -> [BranchA || BranchB] -> Aggregate
+# Compose the pipeline: Parse -> [BranchA || BranchB] -> Aggregate
 pipeline = (
     ParseInput()
-    >> (ComputeBranchA() + ComputeBranchB())
-    >> Aggregate()
-    >> Graph()  # Compile into BuildedGraph
+    | (ComputeBranchA() & ComputeBranchB())
+    | Aggregate()
 )
 
 print(pipeline("5"))  # "Sum of branches: 20"
+```
 ```
 
 ---
