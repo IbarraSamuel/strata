@@ -1,9 +1,19 @@
 from dataclasses import dataclass
 from time import sleep, time_ns
 
-from strata.graph import Combinable, Graph
+from strata.graph import Combinable, Graph, task
 
 SLEEP_TIME = 0.1
+
+
+@task
+def increment(message: int) -> int:
+    return message + 1
+
+
+@task
+def double(message: int) -> int:
+    return message * 2
 
 
 @dataclass
@@ -24,6 +34,18 @@ def test_task():
     result = graph(result)
     assert motask.value == value * 2
     assert result == 1 * 2
+
+
+def test_decorated_serial_tasks():
+    graph = Graph.build(increment >> double)
+
+    assert graph(3) == 8  # ruff: ignore[magic-value-comparison]
+
+
+def test_decorated_parallel_tasks():
+    graph = Graph.build(increment + double)
+
+    assert graph(3) == (4, 6)
 
 
 @dataclass

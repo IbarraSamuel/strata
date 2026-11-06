@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 from enum import IntEnum
-from typing import Protocol, cast, overload
+from typing import TYPE_CHECKING, Protocol, cast, overload, override
 
 from strata import mojo_strata
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 class GroupMode(IntEnum):
@@ -219,3 +222,18 @@ class Combinable(Protocol):
     ) -> ParTaskGroup[I, tuple[O, T]]:
         group = cast("TaskGroup[I, tuple[O]]", TaskGroup(self))
         return group + other
+
+
+class FnTask[I, O](Combinable, Task[I, O]):
+    inner_fn: Callable[[I], O]
+
+    def __init__(self, f: Callable[[I], O]) -> None:
+        self.inner_fn = f
+
+    @override
+    def __call__(self, v: I, /) -> O:
+        return self.inner_fn(v)
+
+
+def task[I, O](f: Callable[[I], O]) -> FnTask[I, O]:
+    return FnTask(f)
