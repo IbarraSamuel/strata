@@ -43,17 +43,33 @@ class SerTaskGroup[I, O]:
 
     def __or__[T](
         self,
-        other: Task[O, T] | ParTaskGroup[O, T] | SerTaskGroup[O, T] | TaskGroup[O, T] | mojo_strata.TaskGroup[O, T],
+        other: Task[O, T]
+        | ParTaskGroup[O, T]
+        | SerTaskGroup[O, T]
+        | TaskGroup[O, T]
+        | mojo_strata.TaskGroup[O, T],
     ) -> SerTaskGroup[I, T]:
-        target = other.inner if isinstance(other, (ParTaskGroup, SerTaskGroup, TaskGroup)) else other
+        target = (
+            other.inner
+            if isinstance(other, (ParTaskGroup, SerTaskGroup, TaskGroup))
+            else other
+        )
         self.inner.add_task(target, GroupMode.SERIAL.value)
         return cast("SerTaskGroup[I, T]", self)
 
     def __and__[*Os, T](
         self: SerTaskGroup[I, tuple[*Os]],
-        other: Task[I, T] | SerTaskGroup[I, T] | ParTaskGroup[I, T] | TaskGroup[I, T] | mojo_strata.TaskGroup[I, T],
+        other: Task[I, T]
+        | SerTaskGroup[I, T]
+        | ParTaskGroup[I, T]
+        | TaskGroup[I, T]
+        | mojo_strata.TaskGroup[I, T],
     ) -> ParTaskGroup[I, tuple[*Os, T]]:
-        target = other.inner if isinstance(other, (SerTaskGroup, ParTaskGroup, TaskGroup)) else other
+        target = (
+            other.inner
+            if isinstance(other, (SerTaskGroup, ParTaskGroup, TaskGroup))
+            else other
+        )
         self.inner.add_task(target, GroupMode.PARALLEL.value)
         return ParTaskGroup[I, tuple[*Os, T]](
             cast("mojo_strata.TaskGroup[I, tuple[*Os, T]]", self.inner)
@@ -77,17 +93,33 @@ class ParTaskGroup[I, O]:
 
     def __or__[T](
         self,
-        other: Task[O, T] | ParTaskGroup[O, T] | SerTaskGroup[O, T] | TaskGroup[O, T] | mojo_strata.TaskGroup[O, T],
+        other: Task[O, T]
+        | ParTaskGroup[O, T]
+        | SerTaskGroup[O, T]
+        | TaskGroup[O, T]
+        | mojo_strata.TaskGroup[O, T],
     ) -> SerTaskGroup[I, T]:
-        target = other.inner if isinstance(other, (ParTaskGroup, SerTaskGroup, TaskGroup)) else other
+        target = (
+            other.inner
+            if isinstance(other, (ParTaskGroup, SerTaskGroup, TaskGroup))
+            else other
+        )
         self.inner.add_task(target, GroupMode.SERIAL.value)
         return SerTaskGroup[I, T](cast("mojo_strata.TaskGroup[I, T]", self.inner))
 
     def __and__[*Os, T](
         self: ParTaskGroup[I, tuple[*Os]],
-        other: Task[I, T] | SerTaskGroup[I, T] | ParTaskGroup[I, T] | TaskGroup[I, T] | mojo_strata.TaskGroup[I, T],
+        other: Task[I, T]
+        | SerTaskGroup[I, T]
+        | ParTaskGroup[I, T]
+        | TaskGroup[I, T]
+        | mojo_strata.TaskGroup[I, T],
     ) -> ParTaskGroup[I, tuple[*Os, T]]:
-        target = other.inner if isinstance(other, (SerTaskGroup, ParTaskGroup, TaskGroup)) else other
+        target = (
+            other.inner
+            if isinstance(other, (SerTaskGroup, ParTaskGroup, TaskGroup))
+            else other
+        )
         self.inner.add_task(target, GroupMode.PARALLEL.value)
         return ParTaskGroup[I, tuple[*Os, T]](
             cast("mojo_strata.TaskGroup[I, tuple[*Os, T]]", self.inner)
@@ -111,17 +143,33 @@ class TaskGroup[I, O]:
 
     def __or__[T](
         self,
-        other: Task[O, T] | ParTaskGroup[O, T] | SerTaskGroup[O, T] | TaskGroup[O, T] | mojo_strata.TaskGroup[O, T],
+        other: Task[O, T]
+        | ParTaskGroup[O, T]
+        | SerTaskGroup[O, T]
+        | TaskGroup[O, T]
+        | mojo_strata.TaskGroup[O, T],
     ) -> SerTaskGroup[I, T]:
-        target = other.inner if isinstance(other, (ParTaskGroup, SerTaskGroup, TaskGroup)) else other
+        target = (
+            other.inner
+            if isinstance(other, (ParTaskGroup, SerTaskGroup, TaskGroup))
+            else other
+        )
         self.inner.add_task(target, GroupMode.SERIAL.value)
         return SerTaskGroup[I, T](cast("mojo_strata.TaskGroup[I, T]", self.inner))
 
     def __and__[*Os, T](
         self: TaskGroup[I, tuple[*Os]],
-        other: Task[I, T] | SerTaskGroup[I, T] | ParTaskGroup[I, T] | TaskGroup[I, T] | mojo_strata.TaskGroup[I, T],
+        other: Task[I, T]
+        | SerTaskGroup[I, T]
+        | ParTaskGroup[I, T]
+        | TaskGroup[I, T]
+        | mojo_strata.TaskGroup[I, T],
     ) -> ParTaskGroup[I, tuple[*Os, T]]:
-        target = other.inner if isinstance(other, (SerTaskGroup, ParTaskGroup, TaskGroup)) else other
+        target = (
+            other.inner
+            if isinstance(other, (SerTaskGroup, ParTaskGroup, TaskGroup))
+            else other
+        )
         self.inner.add_task(target, GroupMode.PARALLEL.value)
         return ParTaskGroup[I, tuple[*Os, T]](
             cast("mojo_strata.TaskGroup[I, tuple[*Os, T]]", self.inner)
