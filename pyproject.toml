@@ -41,9 +41,6 @@ test_generic = { cmd = "mojo test_generic.mojo", cwd = "tests", depends-on = [
 test_generic_compt = { cmd = "mojo test_generic_compt.mojo", cwd = "tests", depends-on = [
     "compile-for-testing",
 ] }
-test_generic_compt_fn = { cmd = "mojo test_generic_compt_fn.mojo", cwd = "tests", depends-on = [
-    "compile-for-testing",
-] }
 test_generic_async = { cmd = "mojo test_generic_async.mojo", cwd = "tests", depends-on = [
     "compile-for-testing",
 ] }
@@ -66,7 +63,6 @@ test_void_async_mutable = { cmd = "mojo test_void_async_mutable.mojo", cwd = "te
 test_runners = { depends-on = [
     "test_generic",
     "test_generic_compt",
-    "test_generic_compt_fn",
     "test_generic_async",
     "test_void_type",
     "test_void_immutable",

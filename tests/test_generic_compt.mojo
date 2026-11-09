@@ -3,7 +3,7 @@
 from std.testing import TestSuite, assert_true, assert_equal
 from std.time import monotonic, sleep
 
-from strata.generic import compt
+from strata.generic.compt import F
 
 comptime TIME = 0.001
 
@@ -16,7 +16,7 @@ def test_generic_comptime_parallel() raises:
         return start, end
 
     comptime _graph = (
-        compt.F[comptime_parallel].par[comptime_parallel].par[comptime_parallel]
+        F[comptime_parallel] & F[comptime_parallel] & F[comptime_parallel]
     )
 
     var p1, p2, p3 = _graph.run(None)
@@ -45,9 +45,9 @@ def sum_tuple(v: Tuple[Float32, Int]) -> Int:
 
 
 def test_generic_comptime_two_parallels() raises:
-    comptime graph = compt.F[int_to_float].par[int_to_int].seq[
-        compt.F[sum_tuple].par[sum_tuple].F
-    ]
+    comptime graph = (
+        (F[int_to_float] & F[int_to_int]) | (F[sum_tuple] & F[sum_tuple])
+    )
 
     var r1, r2 = graph.run(1)
 
@@ -86,13 +86,11 @@ def sum_tuple3(value: Tuple[Int, Float32, Int]) -> Float32:
 
 
 def test_generic_comptime_examples() raises:
-    comptime Fn = compt.F
-
     comptime final_g = (
-        Fn[string_to_int]
-        .seq[Fn[int_mul[2]].par[int_to_float].par[int_mul[3]].F]
-        .seq[sum_tuple3]
-        .seq[FloatToString.call]
+        F[string_to_int]
+        | F[int_mul[2]] & F[int_to_float] & F[int_mul[3]]
+        | F[sum_tuple3]
+        | F[FloatToString.call]
     )
 
     var final_result_f = final_g.F("32")
@@ -118,9 +116,8 @@ def test_generic_comptime_explicit() raises:
     def ftos(v: Float32) -> String:
         return String(v)
 
-    comptime F = compt.F
     comptime explicit_graph = (
-        F[stoi].seq[F[int_m[2]].par[itof].par[int_m[3]].F].seq[sumtp].seq[ftos]
+        F[stoi] | F[int_m[2]] & F[itof] & F[int_m[3]] | F[sumtp] | F[ftos]
     )
 
     var s_runt_result = explicit_graph.run("32")
@@ -137,15 +134,15 @@ def triple_it(x: Int) -> Int:
 
 def test_comptime_run() raises:
     # Test F runtime and comptime_run
-    comptime single_f = compt.F[double_it]
+    comptime single_f = F[double_it]
     # Check at runtime
     assert_equal(single_f.run(5), 10)
     # Check comptime_run:
-    comptime compt_res = single_f.comptime_run[5]
+    comptime compt_res = single_f.run(5)
     assert_equal(compt_res, 10)
 
     # Test FG runtime and comptime_run
-    comptime par_fg = compt.F[double_it].par[triple_it]
+    comptime par_fg = F[double_it] & F[triple_it]
     var res_pair = par_fg.run(4)
     assert_equal(res_pair[0], 8)
     assert_equal(res_pair[1], 12)
@@ -153,6 +150,42 @@ def test_comptime_run() raises:
     # comptime par_compt_res = par_fg.comptime_run[4]
     # assert_equal(par_compt_res[0], 8)
     # assert_equal(par_compt_res[1], 12)
+
+@fieldwise_init
+struct Input:
+    var val: Int
+    var string: String
+
+    def __init__(out self, v: Int):
+        self.val = v
+        self.string = "*" * v
+
+def test_complex_workflow() raises:
+    def generate_input(seed: Int) -> Input:
+        return Input(seed)
+
+    def extract_numeric(v: Input) -> Int:
+        return v.val
+
+    def multiply_value[V: Int](v: Int) -> Int:
+        return v * V
+
+    def cast_to_float(v: Int) -> Float64:
+        return Float64(v)
+
+    def extract_test()
+
+    comptime complex = (
+        F[generate_input]
+        | (
+        (F[extract_numeric] | F[multiply_value[2]] | F[cast_to_float])
+        &
+        (F[extract_text] | F[check_length] | F[pow2])
+        )
+        | F[calculate_result]
+        
+        )
+    )
 
 
 def main() raises:
