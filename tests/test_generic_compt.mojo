@@ -151,6 +151,7 @@ def test_comptime_run() raises:
     # assert_equal(par_compt_res[0], 8)
     # assert_equal(par_compt_res[1], 12)
 
+
 @fieldwise_init
 struct Input:
     var val: Int
@@ -159,6 +160,7 @@ struct Input:
     def __init__(out self, v: Int):
         self.val = v
         self.string = "*" * v
+
 
 def test_complex_workflow() raises:
     def generate_input(seed: Int) -> Input:
@@ -173,19 +175,29 @@ def test_complex_workflow() raises:
     def cast_to_float(v: Int) -> Float64:
         return Float64(v)
 
-    def extract_test()
+    def extract_text(v: Input) -> String:
+        return v.string
+
+    def check_length(v: String) -> Int:
+        return v.byte_length()
+
+    def pow2(v: Int) -> Int:
+        return v**2
+
+    def calculate_result(v: Tuple[Float64, Int]) -> Float64:
+        return v[0] + Float64(v[1])
 
     comptime complex = (
         F[generate_input]
         | (
-        (F[extract_numeric] | F[multiply_value[2]] | F[cast_to_float])
-        &
-        (F[extract_text] | F[check_length] | F[pow2])
+            (F[extract_numeric] | F[multiply_value[2]] | F[cast_to_float])
+            & (F[extract_text] | F[check_length] | F[pow2])
         )
         | F[calculate_result]
-        
-        )
     )
+
+    var result = complex.run(3)
+    assert_equal(result, 15.0)
 
 
 def main() raises:

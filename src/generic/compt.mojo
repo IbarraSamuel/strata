@@ -176,6 +176,13 @@ def seq_exec[
 comptime F[
     In: AnyType, Out: Movable & Deinitable, //, Func: def(In) thin -> Out
 ] = Function[Func]()
+"""Shorthand alias to instantiate a `Function` stage.
+
+Parameters:
+    In: Function input type.
+    Out: Function output type.
+    Func: Function to wrap.
+"""
 
 
 @fieldwise_init
@@ -235,11 +242,33 @@ struct Function[
     def __and__[
         Other: FnTrait, //
     ](self, other: Other) -> Parallel[Self, Other] where Self.In == Other.I:
+        """Combine this function with another into a parallel pipeline.
+
+        Parameters:
+            Other: The FnTrait type of the stage to run in parallel.
+
+        Args:
+            other: Stage to execute concurrently.
+
+        Returns:
+            A Parallel pipeline combining self and other.
+        """
         return {}
 
     def __or__[
         Other: FnTrait, //
     ](self, other: Other) -> Sequence[Self, Other] where Self.Out == Other.I:
+        """Compose this function with another into a sequential pipeline.
+
+        Parameters:
+            Other: The FnTrait type of the next stage.
+
+        Args:
+            other: Stage to execute sequentially after this one.
+
+        Returns:
+            A Sequence pipeline combining self and other.
+        """
         return {}
 
 
@@ -279,11 +308,33 @@ struct Parallel[*fns: FnTrait](FnTrait) where AllSameInput[fns]:
     ](self, other: Other) -> Parallel[
         *concat[Self.fns, Other]()
     ] where AllSameInput[concat[Self.fns, Other]()]:
+        """Combine this parallel pipeline with another function or pipeline.
+
+        Parameters:
+            Other: The FnTrait type of the stage to append in parallel.
+
+        Args:
+            other: Stage to execute concurrently.
+
+        Returns:
+            A new Parallel pipeline with other appended.
+        """
         return {}
 
     def __or__[
         Other: FnTrait, //
     ](self, other: Other) -> Sequence[Self, Other] where Self.O == Other.I:
+        """Compose this parallel pipeline with another function or pipeline sequentially.
+
+        Parameters:
+            Other: The FnTrait type of the next stage.
+
+        Args:
+            other: Stage to execute sequentially after this one.
+
+        Returns:
+            A Sequence pipeline combining self and other.
+        """
         return {}
 
     @staticmethod
@@ -333,6 +384,17 @@ struct Sequence[*fns: FnTrait](FnTrait) where AllPipeable[fns]:
     def __and__[
         Other: FnTrait, //
     ](self, other: Other) -> Parallel[Self, Other] where Self.I == Other.I:
+        """Combine this sequential pipeline with another into a parallel pipeline.
+
+        Parameters:
+            Other: The FnTrait type of the stage to run in parallel.
+
+        Args:
+            other: Stage to execute concurrently.
+
+        Returns:
+            A Parallel pipeline combining self and other.
+        """
         return {}
 
     def __or__[
@@ -340,6 +402,17 @@ struct Sequence[*fns: FnTrait](FnTrait) where AllPipeable[fns]:
     ](self, other: Other) -> Sequence[
         *concat[Self.fns, Other]()
     ] where AllPipeable[concat[Self.fns, Other]()]:
+        """Compose this sequential pipeline with another function or pipeline.
+
+        Parameters:
+            Other: The FnTrait type of the next stage.
+
+        Args:
+            other: Stage to execute sequentially after this pipeline.
+
+        Returns:
+            A new Sequence pipeline with other appended.
+        """
         return {}
 
     @staticmethod
