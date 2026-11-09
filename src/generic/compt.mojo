@@ -204,6 +204,13 @@ struct Function[
     comptime F = Self.Func
     """Underlying function pointer."""
 
+    comptime comptime_run[value: Self.I]: Self.O = Self.F(value)
+    """Run the task at compile time.
+
+    Parameters:
+        value: Input value for the whole task.
+    """
+
     @staticmethod
     def run(inp: Self.I) -> Self.O:
         """Run the function at runtime.
@@ -287,6 +294,13 @@ struct Parallel[*fns: FnTrait](FnTrait) where AllSameInput[fns]:
     comptime F = par_exec[*Self.fns]
     """Function that executes all stages concurrently."""
 
+    comptime comptime_run[value: Self.I]: Self.O = Self.F(value)
+    """Run the task at compile time.
+
+    Parameters:
+        value: Input value for the whole task.
+    """
+
     comptime `and`[
         I: AnyType, O: Movable & Deinitable, //, other: def(I) thin -> O
     ] where AllSameInput[concat[Self.fns, Function[other]]()] = Parallel[
@@ -364,6 +378,13 @@ struct Sequence[*fns: FnTrait](FnTrait) where AllPipeable[fns]:
     """Output type of the final function."""
     comptime F = seq_exec[*Self.fns]
     """Function that executes all stages in sequence."""
+
+    comptime comptime_run[value: Self.I]: Self.O = Self.F(value)
+    """Run the task at compile time.
+
+    Parameters:
+        value: Input value for the whole task.
+    """
 
     comptime pipe[
         I: AnyType, O: Movable & Deinitable, //, other: def(I) thin -> O

@@ -138,12 +138,13 @@ def test_comptime_run() raises:
     # Check at runtime
     assert_equal(single_f.run(5), 10)
     # Check comptime_run:
-    comptime compt_res = single_f.run(5)
+    comptime compt_res = single_f.comptime_run[5]
     assert_equal(compt_res, 10)
 
     # Test FG runtime and comptime_run
     comptime par_fg = F[double_it] & F[triple_it]
-    var res_pair = par_fg.run(4)
+    # NOTE: change to comptime_run -> asyncrt cannot run at comptime:w
+    var res_pair = par_fg.F(4)
     assert_equal(res_pair[0], 8)
     assert_equal(res_pair[1], 12)
     # Check comptime_run (causes miscompilation at comptime due to TaskGroup asyncrt external call):
