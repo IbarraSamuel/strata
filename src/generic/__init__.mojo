@@ -10,8 +10,8 @@ Parameters:
     t: The Call type.
 """
 
-comptime TaskToPtr[o: Origin, t: Call] = downcast[
-    Pointer[t, origin=o], Movable & Deinitable
+comptime TaskToPtr[o: Origin, t: Call]: Movable & Deinitable = Pointer[
+    t, origin=o
 ]
 """Convert a Call type to a downcasted Pointer type with origin.
 
