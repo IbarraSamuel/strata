@@ -57,22 +57,22 @@ class SerTaskGroup[I, O]:
         self.inner.add_task(target, GroupMode.SERIAL.value)
         return cast("SerTaskGroup[I, T]", self)
 
-    def __and__[*Os, T](
-        self: SerTaskGroup[I, tuple[*Os]],
+    def __and__[T](
+        self,
         other: Task[I, T]
         | SerTaskGroup[I, T]
         | ParTaskGroup[I, T]
         | TaskGroup[I, T]
         | mojo_strata.TaskGroup[I, T],
-    ) -> ParTaskGroup[I, tuple[*Os, T]]:
+    ) -> ParTaskGroup[I, tuple[O, T]]:
         target = (
             other.inner
             if isinstance(other, (SerTaskGroup, ParTaskGroup, TaskGroup))
             else other
         )
         self.inner.add_task(target, GroupMode.PARALLEL.value)
-        return ParTaskGroup[I, tuple[*Os, T]](
-            cast("mojo_strata.TaskGroup[I, tuple[*Os, T]]", self.inner)
+        return ParTaskGroup[I, tuple[O, T]](
+            cast("mojo_strata.TaskGroup[I, tuple[O, T]]", self.inner)
         )
 
 
@@ -122,7 +122,10 @@ class ParTaskGroup[I, O]:
         )
         self.inner.add_task(target, GroupMode.PARALLEL.value)
         return ParTaskGroup[I, tuple[*Os, T]](
-            cast("mojo_strata.TaskGroup[I, tuple[*Os, T]]", self.inner)
+            cast(
+                "mojo_strata.TaskGroup[I, tuple[*Os, T]]",
+                cast("object", self.inner),
+            )
         )
 
 
@@ -157,22 +160,22 @@ class TaskGroup[I, O]:
         self.inner.add_task(target, GroupMode.SERIAL.value)
         return SerTaskGroup[I, T](cast("mojo_strata.TaskGroup[I, T]", self.inner))
 
-    def __and__[*Os, T](
-        self: TaskGroup[I, tuple[*Os]],
+    def __and__[T](
+        self,
         other: Task[I, T]
         | SerTaskGroup[I, T]
         | ParTaskGroup[I, T]
         | TaskGroup[I, T]
         | mojo_strata.TaskGroup[I, T],
-    ) -> ParTaskGroup[I, tuple[*Os, T]]:
+    ) -> ParTaskGroup[I, tuple[O, T]]:
         target = (
             other.inner
             if isinstance(other, (SerTaskGroup, ParTaskGroup, TaskGroup))
             else other
         )
         self.inner.add_task(target, GroupMode.PARALLEL.value)
-        return ParTaskGroup[I, tuple[*Os, T]](
-            cast("mojo_strata.TaskGroup[I, tuple[*Os, T]]", self.inner)
+        return ParTaskGroup[I, tuple[O, T]](
+            cast("mojo_strata.TaskGroup[I, tuple[O, T]]", self.inner)
         )
 
 
@@ -190,7 +193,7 @@ class Combinable(Protocol):
         self: Task[I, O],
         other: Task[I, T] | ParTaskGroup[I, T] | SerTaskGroup[I, T] | TaskGroup[I, T],
     ) -> ParTaskGroup[I, tuple[O, T]]:
-        group = cast("TaskGroup[I, tuple[O]]", TaskGroup(self))
+        group = TaskGroup(self)
         return group & other
 
 

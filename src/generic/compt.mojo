@@ -1,8 +1,6 @@
 """Compile-time function composition and parallel execution."""
 
 from std.runtime._asyncrt import Task, TaskGroup
-from std.iter import downcast
-from std.builtin.variadics import _MLIR
 
 comptime FnToOut[Fn: FnTrait] = Fn.O
 """Get the output type declared by an FnTrait.
@@ -111,6 +109,18 @@ def par_exec[
     return o^
 
 
+def _seq_exec_tail[
+    ci: Int,
+    *fns: FnTrait,
+](var inp: fns[ci - 1].O) -> fns[fns.length - 1].O where AllPipeable[fns]:
+    var out = fns[ci].run(rebind[fns[ci].I](inp))
+    deinit(inp^)
+    comptime if ci + 1 == fns.length:
+        return rebind_var[fns[fns.length - 1].O](out^)
+    else:
+        return _seq_exec_tail[ci + 1, *fns](out^)
+
+
 def seq_exec[
     *fns: FnTrait
 ](val: fns[0].I) -> fns[fns.length - 1].O where AllPipeable[fns]:
@@ -125,25 +135,11 @@ def seq_exec[
     Returns:
         Result returned by the final function.
     """
-    var _fr = fns[0].run(val)
-    var res = (
-        Pointer(to=_fr)
-        .unsafe_bitcast[NoneType]()
-        .unsafe_origin_cast[MutUntrackedOrigin]()
-    )
-
-    comptime for ci in range(1, fns.length):
-        var inp = res.unsafe_bitcast[
-            downcast[fns[ci].I, Deinitable & Movable]
-        ]().unsafe_take_pointee()
-        var r = fns[ci].run(inp)
-        deinit(inp^)
-        res = (
-            Pointer(to=r)
-            .unsafe_bitcast[NoneType]()
-            .unsafe_origin_cast[MutUntrackedOrigin]()
-        )
-    return res.unsafe_bitcast[fns[fns.length - 1].O]().unsafe_take_pointee()
+    var first = fns[0].run(val)
+    comptime if fns.length == 1:
+        return rebind_var[fns[fns.length - 1].O](first^)
+    else:
+        return _seq_exec_tail[1, *fns](first^)
 
 
 # struct Graph[]:

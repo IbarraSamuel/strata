@@ -8,8 +8,8 @@ class TaskGroup[I, O]:
     def __init__(self, task: Task[I, O]) -> None: ...
     # Parallel Overload
     @overload
-    def add_task[*Os, T](
-        self: TaskGroup[I, tuple[*Os]],
+    def add_task[T](
+        self,
         t: Task[I, T] | TaskGroup[I, T],
         _mode: Literal[1],
     ) -> None: ...

@@ -1,13 +1,16 @@
-from importlib.metadata import distribution
-from pathlib import Path
 import subprocess
 import sys
+from importlib.metadata import distribution
+from pathlib import Path
+from typing import override
 
+from hatchling.builders.config import BuilderConfig
 from hatchling.builders.hooks.plugin.interface import BuildHookInterface
 from packaging.tags import sys_tags
 
 
-class CustomBuildHook(BuildHookInterface):
+class CustomBuildHook(BuildHookInterface[BuilderConfig]):
+    @override
     def initialize(self, version: str, build_data: dict[str, object]) -> None:
         if self.target_name == "sdist":
             return
