@@ -5,6 +5,7 @@ name = "strata"
 platforms = ["linux-64", "osx-arm64"]
 version = "1.2.0"
 preview = ["pixi-build"]
+channel-priority = "disabled"
 
 [tool.pixi.package]
 name = "strata"
