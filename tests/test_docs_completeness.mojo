@@ -44,4 +44,4 @@ def test_docs_completeness() raises:
 def main() raises:
     from std.testing import TestSuite
 
-    TestSuite.discover_tests[(test_docs_completeness,)]().run()
+    TestSuite.discover_tests[__functions_in_module()]().run()
