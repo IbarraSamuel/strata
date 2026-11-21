@@ -1,6 +1,6 @@
 """Compile-time function composition and parallel execution."""
 
-from std.runtime._asyncrt import Task, TaskGroup
+from std.runtime._asyncrt import TaskGroup
 
 comptime FnToOut[Fn: FnTrait] = Fn.O
 """Get the output type declared by an FnTrait.
