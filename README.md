@@ -36,14 +36,31 @@
 
 ## Installation
 
+Strata requires only **`mojo-compiler`** (compiler + standard library + async runtime) by default. You can optionally add **`mojo`** (formatting, LSP, debugger) or **`max`** (GPU kernel execution via `max.gpu`) in both Mojo and Python.
+
+| Dependency Tier | What It Includes | Mojo (Pixi Environment) | Python (`pip` / `uv` Extra) |
+| :--- | :--- | :--- | :--- |
+| **`mojo-compiler`** *(default)* | Mojo compiler, `std` standard library, and multithreaded CPU/async runtime | `pixi install` (`default`) | `pip install strata` / `uv sync` |
+| **`mojo`** *(optional)* | Includes `mojo-compiler` plus `mojo format` (`mblack`), `mojo-lldb`, and `mojo-lsp-server` | `pixi install -e mojo` | `pip install "strata[mojo]"` / `uv sync --extra mojo` |
+| **`max`** *(optional)* | Includes `mojo-compiler` plus MAX GPU runtime (`max.gpu`, `DeviceContext`, `TileTensor`) | `pixi install -e max` | `pip install "strata[max]"` / `uv sync --extra max` |
+| **`mojo` + `max`** *(optional)* | Full Mojo tooling + MAX GPU acceleration | `pixi install -e all` | `pip install "strata[mojo,max]"` / `uv sync --extra mojo --extra max` |
+
 ### Mojo
 
-Clone the repository and install the Pixi environment:
+Clone the repository and install your preferred Pixi environment:
 
 ```bash
 git clone https://github.com/IbarraSamuel/strata.git
 cd strata
+
+# Minimal (mojo-compiler only):
 pixi install
+
+# Or with full Mojo tooling (mojo format, debugger, LSP):
+pixi install -e mojo
+
+# Or with MAX GPU support (max.gpu, DeviceContext):
+pixi install -e max
 ```
 
 To add Strata as a dependency in another Pixi project:
@@ -60,9 +77,19 @@ pixi install
 Install from the `python/` subdirectory with `pip` or `uv` (this automatically builds the native Mojo extension; Linux requires glibc 2.34+):
 
 ```bash
+# Minimal (only mojo-compiler):
 python -m pip install "git+https://github.com/IbarraSamuel/strata.git#subdirectory=python"
-# or in a uv project:
+
+# With full Mojo tooling (mojo):
+python -m pip install "strata[mojo] @ git+https://github.com/IbarraSamuel/strata.git#subdirectory=python"
+
+# With MAX GPU acceleration (max):
+python -m pip install "strata[max] @ git+https://github.com/IbarraSamuel/strata.git#subdirectory=python"
+
+# Or in a uv project:
 uv add "strata @ git+https://github.com/IbarraSamuel/strata.git#subdirectory=python"
+# With optional extras:
+uv add "strata[max] @ git+https://github.com/IbarraSamuel/strata.git#subdirectory=python"
 ```
 
 ---
@@ -739,8 +766,15 @@ print(tracer.format_report())
 ## Development & Testing
 
 ```bash
-# Run the full test suite (all Mojo suites, Python pytest, and docstring checks)
+# Run the test suite in the default environment (mojo-compiler only)
 pixi run tests
+
+# Run the test suite with MAX GPU acceleration (includes test_gpu and Python [max] extra)
+pixi run -e max tests
+pixi run -e max test_gpu
+
+# Format Mojo sources using the optional `mojo` environment
+pixi run -e mojo format
 
 # Run Mojo suites, Python tests, or docstring checks individually
 pixi run test_runners

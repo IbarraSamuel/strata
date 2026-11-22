@@ -69,17 +69,20 @@ strata/
 │   │   └── async_stage.mojo           # AsyncMutStage, AsyncSeries, flat AsyncParallel (1 TaskGroup)
 │   └── interop/
 │       ├── native_abi.mojo            # Public Mojo helpers for exporting strata.native_stage.v1 PyCapsules
-│       └── python_interop.mojo        # CPython extension (mojo_strata.so): TaskGroup, NativeStage, plan fusion
+│       └── python_interop.mojo        # Core CPython extension (mojo_strata.so): TaskGroup, NativeStage, plan fusion (std-only)
 ├── python/                            # Python package (`strata`)
-│   ├── hatch_build.py                 # Hatch build hook compiling python_interop.mojo -> mojo_strata.so
-│   └── src/strata/
-│       ├── graph.py                   # Combinable, Task, FnTask, GroupedTask, SerTaskGroup, ParTaskGroup
-│       ├── combinators.py             # identity, select, spread, zip_tasks, map_task, branch, retry, fallback, timeout
-│       ├── introspect.py              # GraphStats, to_mermaid, to_dot, SequentialExecutor, TracingExecutor
-│       ├── native.py                  # NativeTask, native_stage, native_* kernels, runtime_info, is_gil_enabled
-│       ├── async_support.py           # AsyncTask, async_task, native asyncio arun
-│       ├── streaming.py               # map_stage, stream_stage, astream_stage with sliding-window backpressure
-│       └── mojo_strata.pyi            # PEP 695/646 static type stubs for the native extension
+│   ├── hatch_build.py                 # Hatch build hook compiling python_interop.mojo (or python_gpu_interop.mojo when max is installed)
+│   └── src/
+│       ├── interop/
+│       │   └── python_gpu_interop.mojo # Optional MAX GPU entrypoint registering DeviceContext GPU kernels
+│       └── strata/
+│           ├── graph.py               # Combinable, Task, FnTask, GroupedTask, SerTaskGroup, ParTaskGroup
+│           ├── combinators.py         # identity, select, spread, zip_tasks, map_task, branch, retry, fallback, timeout
+│           ├── introspect.py          # GraphStats, to_mermaid, to_dot, SequentialExecutor, TracingExecutor
+│           ├── native.py              # NativeTask, native_stage, native_*/gpu_* kernels, ArrowArray, runtime_info
+│           ├── async_support.py       # AsyncTask, async_task, native asyncio arun
+│           ├── streaming.py           # map_stage, stream_stage, astream_stage with sliding-window backpressure
+│           └── mojo_strata.pyi        # PEP 695/646 static type stubs for the native extension
 ├── examples/                          # Runnable Mojo & hybrid Python benchmark scripts
 └── tests/                             # Mojo test suites & `mojo doc` completeness verification
 ```

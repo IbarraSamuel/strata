@@ -6,17 +6,21 @@ readme = "README.md"
 authors = [{ name = "Samuel Ibarra", email = "Samuel.E.Ibarra@dell.com" }]
 requires-python = ">=3.13.5"
 dependencies = [
+    "mojo-compiler>=1.2.0,<2.0.0",
+]
+
+[project.optional-dependencies]
+mojo = [
     "mojo>=1.2.0,<2.0.0",
-    "max-core>=26.0.0",
-    "max-mojo-libs>=26.0.0",
+]
+max = [
+    "max>=26.0.0",
 ]
 
 [build-system]
 requires = [
     "hatchling",
-    "mojo>=1.2.0,<2.0.0",
-    "max-core>=26.0.0",
-    "max-mojo-libs>=26.0.0",
+    "mojo-compiler>=1.2.0,<2.0.0",
 ]
 build-backend = "hatchling.build"
 
@@ -25,7 +29,9 @@ name = "modular-nightly"
 url = "https://whl.modular.com/nightly/simple/"
 
 [tool.uv.sources]
+mojo-compiler = { index = "modular-nightly" }
 mojo = { index = "modular-nightly" }
+max = { index = "modular-nightly" }
 max-core = { index = "modular-nightly" }
 max-mojo-libs = { index = "modular-nightly" }
 
@@ -36,6 +42,8 @@ path = "hatch_build.py"
 exclude = ["src/strata/mojo_strata.so"]
 
 [tool.hatch.build.targets.sdist.force-include]
+"../src/__init__.mojo" = "src/__init__.mojo"
+"../src/interop/__init__.mojo" = "src/interop/__init__.mojo"
 "../src/interop/python_interop.mojo" = "src/interop/python_interop.mojo"
 
 [dependency-groups]

@@ -3,7 +3,6 @@
 from std.atomic import Atomic
 from std.benchmark import keep
 from std.ffi import _Global, c_int, c_long
-from std.math import ceildiv
 from std.memory import OpaquePointer
 from std.memory.alloc import Layout, ThinAllocation, alloc, dealloc
 from std.os import abort
@@ -18,10 +17,7 @@ from std.python._cpython import (
 from std.python.bindings import PythonModuleBuilder
 from std.python.python_object import _unsafe_init
 from std.runtime._asyncrt import TaskGroup as TG
-from std.sys import has_accelerator
-from std.sys.info import CompilationTarget, num_logical_cores
-from max.gpu import global_idx
-from max.gpu.host import DeviceContext
+from std.sys.info import num_logical_cores
 
 
 comptime NATIVE_STAGE_CAPSULE_NAME = StaticString("strata.native_stage.v1")
@@ -78,6 +74,30 @@ comptime _STACK_PAR_LIMIT: Int = 16
 comptime _PyCallOneArgFn = def(PyObjectPtr, PyObjectPtr) thin abi("C") -> PyObjectPtr
 comptime _PySetRaisedExcFn = def(PyObjectPtr) thin abi("C") -> None
 
+comptime _GpuFloatChainFn = def(
+    Pointer[_NativeOp, ImmUntrackedOrigin],
+    Int,
+    Int,
+    Pointer[List[Float64], MutUntrackedOrigin],
+) thin abi("C") -> Int32
+"""Callback signature for optional MAX GPU fused float Arrow chain execution."""
+
+comptime _GpuIntLinearFn = def(
+    Int64,
+    Int64,
+    Pointer[List[Int64], MutUntrackedOrigin],
+) thin abi("C") -> Int32
+"""Callback signature for optional MAX GPU int64 Arrow linear execution."""
+
+comptime _GpuFloatLinearBufFn = def(
+    Pointer[Float64, ImmUntrackedOrigin],
+    Pointer[Float64, MutUntrackedOrigin],
+    Int,
+    Float64,
+    Float64,
+) thin abi("C") -> Int32
+"""Callback signature for optional MAX GPU pointer-to-pointer float64 linear execution."""
+
 
 def _dummy_call_one_arg(a: PyObjectPtr, b: PyObjectPtr) abi("C") -> PyObjectPtr:
     return PyObjectPtr()
@@ -87,12 +107,43 @@ def _dummy_set_raised_exc(exc: PyObjectPtr) abi("C"):
     pass
 
 
+def _dummy_gpu_float_chain(
+    ops_base: Pointer[_NativeOp, ImmUntrackedOrigin],
+    run_start: Int,
+    run_end: Int,
+    data_ptr: Pointer[List[Float64], MutUntrackedOrigin],
+) abi("C") -> Int32:
+    return -1
+
+
+def _dummy_gpu_int_linear(
+    scale: Int64,
+    bias: Int64,
+    data_ptr: Pointer[List[Int64], MutUntrackedOrigin],
+) abi("C") -> Int32:
+    return -1
+
+
+def _dummy_gpu_float_linear_buf(
+    in_ptr: Pointer[Float64, ImmUntrackedOrigin],
+    out_ptr: Pointer[Float64, MutUntrackedOrigin],
+    n: Int,
+    scale: Float64,
+    bias: Float64,
+) abi("C") -> Int32:
+    return -1
+
+
 struct _PyCapiCache(Movable):
     var has_call_one_arg: Bool
     var call_one_arg: _PyCallOneArgFn
     var has_set_raised_exc: Bool
     var set_raised_exc: _PySetRaisedExcFn
     var arrow_wrapper_fn: PyObjectPtr
+    var has_gpu_backend: Bool
+    var gpu_float_chain_fn: _GpuFloatChainFn
+    var gpu_int_linear_fn: _GpuIntLinearFn
+    var gpu_float_linear_buf_fn: _GpuFloatLinearBufFn
 
     def __init__(out self):
         ref cpython = Python().cpython()
@@ -115,6 +166,10 @@ struct _PyCapiCache(Movable):
             self.set_raised_exc = _dummy_set_raised_exc
 
         self.arrow_wrapper_fn = PyObjectPtr()
+        self.has_gpu_backend = False
+        self.gpu_float_chain_fn = _dummy_gpu_float_chain
+        self.gpu_int_linear_fn = _dummy_gpu_int_linear
+        self.gpu_float_linear_buf_fn = _dummy_gpu_float_linear_buf
 
 
 def _init_capi_cache() -> _PyCapiCache:
@@ -272,70 +327,6 @@ def _is_arrow_kind(kind: Int32) -> Bool:
     return (
         kind == NATIVE_KIND_ARROW_FLOAT64 or kind == NATIVE_KIND_ARROW_INT64
     )
-
-
-def _gpu_arrow_f32_linear_kernel(
-    inp: Pointer[Float32, ImmUntrackedOrigin],
-    output: Pointer[Float32, MutUntrackedOrigin],
-    scale: Float32,
-    bias: Float32,
-    n: Int64,
-):
-    var tid = global_idx.x
-    if tid < Int(n):
-        output[unsafe_offset=tid] = inp[unsafe_offset=tid] * scale + bias
-
-
-def _gpu_arrow_f32_poly_kernel(
-    inp: Pointer[Float32, ImmUntrackedOrigin],
-    output: Pointer[Float32, MutUntrackedOrigin],
-    c0: Float32,
-    c1: Float32,
-    c2: Float32,
-    n: Int64,
-):
-    var tid = global_idx.x
-    if tid < Int(n):
-        var x = inp[unsafe_offset=tid]
-        output[unsafe_offset=tid] = (c2 * x + c1) * x + c0
-
-
-def _gpu_arrow_f64_linear_kernel(
-    inp: Pointer[Float64, ImmUntrackedOrigin],
-    output: Pointer[Float64, MutUntrackedOrigin],
-    scale: Float64,
-    bias: Float64,
-    n: Int64,
-):
-    var tid = global_idx.x
-    if tid < Int(n):
-        output[unsafe_offset=tid] = inp[unsafe_offset=tid] * scale + bias
-
-
-def _gpu_arrow_f64_poly_kernel(
-    inp: Pointer[Float64, ImmUntrackedOrigin],
-    output: Pointer[Float64, MutUntrackedOrigin],
-    c0: Float64,
-    c1: Float64,
-    c2: Float64,
-    n: Int64,
-):
-    var tid = global_idx.x
-    if tid < Int(n):
-        var x = inp[unsafe_offset=tid]
-        output[unsafe_offset=tid] = (c2 * x + c1) * x + c0
-
-
-def _gpu_arrow_i64_linear_kernel(
-    inp: Pointer[Int64, ImmUntrackedOrigin],
-    output: Pointer[Int64, MutUntrackedOrigin],
-    scale: Int64,
-    bias: Int64,
-    n: Int64,
-):
-    var tid = global_idx.x
-    if tid < Int(n):
-        output[unsafe_offset=tid] = inp[unsafe_offset=tid] * scale + bias
 
 
 @fieldwise_init
@@ -1922,189 +1913,6 @@ def _box_from_arrow(var buf: ArrowBuffer) -> _CallResult:
         return _CallResult(error=_make_py_error("RuntimeError", String(e)))
 
 
-def _run_gpu_arrow_float_chain(
-    ops_base: Pointer[_NativeOp, ImmUntrackedOrigin],
-    run_start: Int,
-    run_end: Int,
-    mut data: List[Float64],
-) -> Int32:
-    """Execute one or more consecutive GPU float stages on a single `DeviceContext`."""
-    var n = len(data)
-    if n == 0:
-        return 0
-    try:
-        comptime if has_accelerator():
-            var ctx = DeviceContext()
-            var grid = ceildiv(n, _GPU_BLOCK_SIZE)
-            comptime if CompilationTarget.is_macos():
-                var d_a = ctx.enqueue_create_buffer[DType.float32](n)
-                var d_b = ctx.enqueue_create_buffer[DType.float32](n)
-                with d_a.map_to_host() as h_in:
-                    for i in range(n):
-                        h_in[i] = Float32(data[i])
-                var in_is_a = True
-                for step in range(run_start, run_end):
-                    var step_op = ops_base[unsafe_offset=step]
-                    if step_op.op_kind == _OP_ARROW_FLOAT_LINEAR:
-                        if in_is_a:
-                            ctx.enqueue_function[_gpu_arrow_f32_linear_kernel](
-                                d_a,
-                                d_b,
-                                Float32(step_op.f_p0),
-                                Float32(step_op.f_p1),
-                                Int64(n),
-                                grid_dim=grid,
-                                block_dim=_GPU_BLOCK_SIZE,
-                            )
-                        else:
-                            ctx.enqueue_function[_gpu_arrow_f32_linear_kernel](
-                                d_b,
-                                d_a,
-                                Float32(step_op.f_p0),
-                                Float32(step_op.f_p1),
-                                Int64(n),
-                                grid_dim=grid,
-                                block_dim=_GPU_BLOCK_SIZE,
-                            )
-                    else:
-                        if in_is_a:
-                            ctx.enqueue_function[_gpu_arrow_f32_poly_kernel](
-                                d_a,
-                                d_b,
-                                Float32(step_op.f_p0),
-                                Float32(step_op.f_p1),
-                                Float32(step_op.f_p2),
-                                Int64(n),
-                                grid_dim=grid,
-                                block_dim=_GPU_BLOCK_SIZE,
-                            )
-                        else:
-                            ctx.enqueue_function[_gpu_arrow_f32_poly_kernel](
-                                d_b,
-                                d_a,
-                                Float32(step_op.f_p0),
-                                Float32(step_op.f_p1),
-                                Float32(step_op.f_p2),
-                                Int64(n),
-                                grid_dim=grid,
-                                block_dim=_GPU_BLOCK_SIZE,
-                            )
-                    in_is_a = not in_is_a
-                if in_is_a:
-                    with d_a.map_to_host() as h_out:
-                        for i in range(n):
-                            data[i] = Float64(h_out[i])
-                else:
-                    with d_b.map_to_host() as h_out:
-                        for i in range(n):
-                            data[i] = Float64(h_out[i])
-            else:
-                var d_a = ctx.enqueue_create_buffer[DType.float64](n)
-                var d_b = ctx.enqueue_create_buffer[DType.float64](n)
-                with d_a.map_to_host() as h_in:
-                    for i in range(n):
-                        h_in[i] = data[i]
-                var in_is_a = True
-                for step in range(run_start, run_end):
-                    var step_op = ops_base[unsafe_offset=step]
-                    if step_op.op_kind == _OP_ARROW_FLOAT_LINEAR:
-                        if in_is_a:
-                            ctx.enqueue_function[_gpu_arrow_f64_linear_kernel](
-                                d_a,
-                                d_b,
-                                step_op.f_p0,
-                                step_op.f_p1,
-                                Int64(n),
-                                grid_dim=grid,
-                                block_dim=_GPU_BLOCK_SIZE,
-                            )
-                        else:
-                            ctx.enqueue_function[_gpu_arrow_f64_linear_kernel](
-                                d_b,
-                                d_a,
-                                step_op.f_p0,
-                                step_op.f_p1,
-                                Int64(n),
-                                grid_dim=grid,
-                                block_dim=_GPU_BLOCK_SIZE,
-                            )
-                    else:
-                        if in_is_a:
-                            ctx.enqueue_function[_gpu_arrow_f64_poly_kernel](
-                                d_a,
-                                d_b,
-                                step_op.f_p0,
-                                step_op.f_p1,
-                                step_op.f_p2,
-                                Int64(n),
-                                grid_dim=grid,
-                                block_dim=_GPU_BLOCK_SIZE,
-                            )
-                        else:
-                            ctx.enqueue_function[_gpu_arrow_f64_poly_kernel](
-                                d_b,
-                                d_a,
-                                step_op.f_p0,
-                                step_op.f_p1,
-                                step_op.f_p2,
-                                Int64(n),
-                                grid_dim=grid,
-                                block_dim=_GPU_BLOCK_SIZE,
-                            )
-                    in_is_a = not in_is_a
-                if in_is_a:
-                    with d_a.map_to_host() as h_out:
-                        for i in range(n):
-                            data[i] = h_out[i]
-                else:
-                    with d_b.map_to_host() as h_out:
-                        for i in range(n):
-                            data[i] = h_out[i]
-            return 0
-    except:
-        return 1
-    return 0
-
-
-def _run_gpu_arrow_int_linear(
-    scale: Int64, bias: Int64, mut data: List[Int64]
-) -> Int32:
-    """Execute an `Int64` linear stage on the GPU after checked overflow validation."""
-    var n = len(data)
-    for i in range(n):
-        var acc = Int128(scale) * Int128(data[i]) + Int128(bias)
-        if acc < Int128(Int64.MIN) or acc > Int128(Int64.MAX):
-            return _NATIVE_STATUS_OVERFLOW
-    if n == 0:
-        return 0
-    try:
-        comptime if has_accelerator():
-            var ctx = DeviceContext()
-            var d_in = ctx.enqueue_create_buffer[DType.int64](n)
-            var d_out = ctx.enqueue_create_buffer[DType.int64](n)
-            with d_in.map_to_host() as h_in:
-                for i in range(n):
-                    h_in[i] = data[i]
-            ctx.enqueue_function[_gpu_arrow_i64_linear_kernel](
-                d_in,
-                d_out,
-                scale,
-                bias,
-                Int64(n),
-                grid_dim=ceildiv(n, _GPU_BLOCK_SIZE),
-                block_dim=_GPU_BLOCK_SIZE,
-            )
-            with d_out.map_to_host() as h_out:
-                for i in range(n):
-                    data[i] = h_out[i]
-            return 0
-    except:
-        return 1
-    for i in range(n):
-        data[i] = Int64(Int128(scale) * Int128(data[i]) + Int128(bias))
-    return 0
-
-
 def _eval_arrow_ops(
     ops_base: Pointer[_NativeOp, ImmUntrackedOrigin],
     op_start: Int,
@@ -2115,6 +1923,17 @@ def _eval_arrow_ops(
     var valid_status = _validate_native_chain_kinds(ops_base, op_start, op_len)
     if valid_status != 0:
         return _ArrowEvalResult(ArrowBuffer(), valid_status)
+
+    var has_gpu_accel = False
+    var gpu_flt_fn: _GpuFloatChainFn = _dummy_gpu_float_chain
+    var gpu_int_fn: _GpuIntLinearFn = _dummy_gpu_int_linear
+    try:
+        var cache = _CAPI_CACHE.get_or_create_ptr()
+        has_gpu_accel = cache[].has_gpu_backend
+        gpu_flt_fn = cache[].gpu_float_chain_fn
+        gpu_int_fn = cache[].gpu_int_linear_fn
+    except:
+        pass
 
     var cur = input.copy()
     var end_idx = op_start + op_len
@@ -2134,8 +1953,8 @@ def _eval_arrow_ops(
             else:
                 return _ArrowEvalResult(ArrowBuffer(), -2)
 
-        # Check for a contiguous run of built-in GPU float stages
-        comptime if has_accelerator():
+        # Check for a contiguous run of built-in GPU stages when MAX GPU backend is active
+        if has_gpu_accel:
             if op.is_builtin_gpu_float() and len(cur.float_data) > 0:
                 var run_end = idx + 1
                 while (
@@ -2143,22 +1962,26 @@ def _eval_arrow_ops(
                     and ops_base[unsafe_offset=run_end].is_builtin_gpu_float()
                 ):
                     run_end += 1
-                var gpu_st = _run_gpu_arrow_float_chain(
-                    ops_base, idx, run_end, cur.float_data
-                )
-                if gpu_st != 0:
+                var flt_ptr = Pointer(to=cur.float_data).unsafe_origin_cast[
+                    MutUntrackedOrigin
+                ]()
+                var gpu_st = gpu_flt_fn(ops_base, idx, run_end, flt_ptr)
+                if gpu_st == 0:
+                    idx = run_end
+                    continue
+                elif gpu_st != -1:
                     return _ArrowEvalResult(ArrowBuffer(), gpu_st)
-                idx = run_end
-                continue
 
             if op.op_kind == _OP_ARROW_INT_LINEAR and op.uses_gpu():
-                var gpu_i_st = _run_gpu_arrow_int_linear(
-                    op.i_p0, op.i_p1, cur.int_data
-                )
-                if gpu_i_st != 0:
+                var int_ptr = Pointer(to=cur.int_data).unsafe_origin_cast[
+                    MutUntrackedOrigin
+                ]()
+                var gpu_i_st = gpu_int_fn(op.i_p0, op.i_p1, int_ptr)
+                if gpu_i_st == 0:
+                    idx += 1
+                    continue
+                elif gpu_i_st != -1:
                     return _ArrowEvalResult(ArrowBuffer(), gpu_i_st)
-                idx += 1
-                continue
 
         if op.op_kind == _OP_ARROW_INT_LINEAR:
             var n = len(cur.int_data)
@@ -3471,7 +3294,7 @@ def _set_arrow_wrapper(wrapper_fn: PythonObject) raises -> PythonObject:
 
 
 def has_gpu() raises -> PythonObject:
-    """Return `True` if a supported GPU accelerator is available to Mojo/MAX.
+    """Return `True` if a supported GPU accelerator and MAX GPU runtime are active.
 
     Returns:
         Python `bool` indicating GPU accelerator availability.
@@ -3479,7 +3302,13 @@ def has_gpu() raises -> PythonObject:
     Raises:
         Error if Python bool construction fails.
     """
-    return PythonObject(has_accelerator())
+    var avail = False
+    try:
+        var cache = _CAPI_CACHE.get_or_create_ptr()
+        avail = cache[].has_gpu_backend
+    except:
+        pass
+    return PythonObject(avail)
 
 
 def native_arrow_int_linear(
@@ -3629,49 +3458,20 @@ def _capsule_arrow_float_linear_fn(
         return 0
 
     if use_gpu:
-        comptime if has_accelerator():
-            try:
-                var dev_ctx = DeviceContext()
-                var grid = ceildiv(n, _GPU_BLOCK_SIZE)
-                comptime if CompilationTarget.is_macos():
-                    var d_in = dev_ctx.enqueue_create_buffer[DType.float32](n)
-                    var d_out = dev_ctx.enqueue_create_buffer[DType.float32](n)
-                    with d_in.map_to_host() as h_in:
-                        for i in range(n):
-                            h_in[i] = Float32(in_ptr[unsafe_offset=i])
-                    dev_ctx.enqueue_function[_gpu_arrow_f32_linear_kernel](
-                        d_in,
-                        d_out,
-                        Float32(scale),
-                        Float32(bias),
-                        Int64(n),
-                        grid_dim=grid,
-                        block_dim=_GPU_BLOCK_SIZE,
-                    )
-                    with d_out.map_to_host() as h_out:
-                        for i in range(n):
-                            out_ptr[unsafe_offset=i] = Float64(h_out[i])
-                else:
-                    var d_in = dev_ctx.enqueue_create_buffer[DType.float64](n)
-                    var d_out = dev_ctx.enqueue_create_buffer[DType.float64](n)
-                    with d_in.map_to_host() as h_in:
-                        for i in range(n):
-                            h_in[i] = in_ptr[unsafe_offset=i]
-                    dev_ctx.enqueue_function[_gpu_arrow_f64_linear_kernel](
-                        d_in,
-                        d_out,
-                        scale,
-                        bias,
-                        Int64(n),
-                        grid_dim=grid,
-                        block_dim=_GPU_BLOCK_SIZE,
-                    )
-                    with d_out.map_to_host() as h_out:
-                        for i in range(n):
-                            out_ptr[unsafe_offset=i] = h_out[i]
+        var has_gpu_accel = False
+        var gpu_buf_fn: _GpuFloatLinearBufFn = _dummy_gpu_float_linear_buf
+        try:
+            var cache = _CAPI_CACHE.get_or_create_ptr()
+            has_gpu_accel = cache[].has_gpu_backend
+            gpu_buf_fn = cache[].gpu_float_linear_buf_fn
+        except:
+            pass
+        if has_gpu_accel:
+            var gpu_st = gpu_buf_fn(in_ptr, out_ptr, n, scale, bias)
+            if gpu_st == 0:
                 return 0
-            except:
-                return 1
+            elif gpu_st != -1:
+                return gpu_st
 
     for i in range(n):
         out_ptr[unsafe_offset=i] = scale * in_ptr[unsafe_offset=i] + bias
@@ -3751,9 +3551,32 @@ def make_arrow_float_linear_capsule(
     return PythonObject(from_owned=cap_ptr)
 
 
-@export
-def PyInit_mojo_strata() abi("C") -> PythonObject:
-    """Initialize the CPython extension module for mojo_strata.
+def _register_gpu_backend(
+    has_accel: Bool,
+    float_chain_fn: _GpuFloatChainFn,
+    int_linear_fn: _GpuIntLinearFn,
+    float_linear_buf_fn: _GpuFloatLinearBufFn,
+):
+    """Register optional MAX GPU kernel dispatch callbacks during module initialization.
+
+    Args:
+        has_accel: Whether a GPU accelerator is available in the active MAX runtime.
+        float_chain_fn: Callback executing fused float64 Arrow chains on the GPU.
+        int_linear_fn: Callback executing int64 Arrow linear stages on the GPU.
+        float_linear_buf_fn: Callback executing pointer-to-pointer float64 linear stages on the GPU.
+    """
+    try:
+        var cache = _CAPI_CACHE.get_or_create_ptr()
+        cache[].has_gpu_backend = has_accel
+        cache[].gpu_float_chain_fn = float_chain_fn
+        cache[].gpu_int_linear_fn = int_linear_fn
+        cache[].gpu_float_linear_buf_fn = float_linear_buf_fn
+    except:
+        pass
+
+
+def _init_mojo_strata_module() -> PythonObject:
+    """Build and finalize the `mojo_strata` CPython extension module.
 
     Returns:
         The initialized Python module object.
@@ -3915,6 +3738,16 @@ def PyInit_mojo_strata() abi("C") -> PythonObject:
         return mod
     except e:
         abort(String("failed to create Python module: ", e))
+
+
+@export
+def PyInit_mojo_strata() abi("C") -> PythonObject:
+    """Initialize the CPython extension module for mojo_strata.
+
+    Returns:
+        The initialized Python module object.
+    """
+    return _init_mojo_strata_module()
 
 
 struct TaskGroup(Movable, Writable):

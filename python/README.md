@@ -8,19 +8,36 @@ Composable pipeline and parallel task-graph library for Python, backed by Mojo's
 
 ## Installation
 
+By default, Strata only depends on **`mojo-compiler`**. You can optionally install the **`[mojo]`** extra (full Mojo toolchain including `mojo format`, debugger, and LSP) or the **`[max]`** extra (MAX GPU runtime for GPU-accelerated stages):
+
 ```bash
+# Minimal (only mojo-compiler):
 python -m pip install .
-# or from Git:
+
+# With full Mojo tooling (includes mojo-compiler, formatter, debugger, LSP):
+python -m pip install ".[mojo]"
+
+# With MAX GPU acceleration (includes mojo-compiler + max.gpu runtime):
+python -m pip install ".[max]"
+
+# Or from Git with uv:
 uv add "strata @ git+https://github.com/IbarraSamuel/strata.git#subdirectory=python"
+uv add "strata[max] @ git+https://github.com/IbarraSamuel/strata.git#subdirectory=python"
 ```
 
-Installing compiles `mojo_strata.so` automatically using Mojo as a build dependency (Linux requires glibc 2.34+).
+Installing compiles `mojo_strata.so` automatically using `mojo-compiler` as a build dependency (and automatically enables MAX GPU kernel dispatch when `max` is installed in the environment; Linux requires glibc 2.34+).
 
 For local development:
 
 ```bash
+# Minimal (mojo-compiler only):
 uv sync --no-install-project --group dev --group test
 uv run --no-build-isolation --reinstall-package strata --group dev --group test pytest
+
+# Or with MAX GPU support enabled:
+uv sync --no-install-project --extra max --group dev --group test
+uv run --no-build-isolation --reinstall-package strata --extra max --group dev --group test pytest
+
 uv run --group dev ruff check src tests
 uv run --group dev ty check src tests
 ```
