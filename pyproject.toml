@@ -26,6 +26,7 @@ mojo-compiler = "<=2.0.0"
 
 [tool.pixi.dependencies]
 mojo = "<=2.0.0"
+max-core = "*"
 
 [tool.pixi.tasks]
 build_package = "mojo precompile src/ -o package/strata.mojoc"

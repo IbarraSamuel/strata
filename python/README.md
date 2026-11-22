@@ -91,12 +91,20 @@ safe = fallback(retry(timeout(inc, seconds=1.0), max_attempts=3, backoff=0.01), 
 assert safe(10) == 11
 ```
 
-### 3. GIL-Free Native Mojo Stages
+### 3. GIL-Free Native & GPU Stages (Scalars & Arrow Data)
 
-Mix Python tasks with GIL-free Mojo stages that scale across CPU cores and fuse automatically across `|`:
+Mix Python tasks with GIL-free Mojo scalar and Arrow columnar stages (including GPU-accelerated stages that accept and return Arrow-compatible `ArrowArray` objects implementing `__arrow_c_array__()`):
 
 ```python
-from strata import native_cpu_work, native_int_linear, spread, task
+from strata import (
+    ArrowArray,
+    gpu_arrow_float_linear,
+    gpu_arrow_float_poly,
+    native_cpu_work,
+    native_int_linear,
+    spread,
+    task,
+)
 
 scale = native_int_linear(scale=3, bias=1, name="scale")
 heavy = native_cpu_work(iterations=1_000_000, name="mix")
@@ -111,6 +119,11 @@ def format_row(scaled: int, label: str, digest: int) -> str:
 
 hybrid = (scale & tag & heavy) | format_row
 print(hybrid(7))
+
+# Arrow columnar data processed on GPU in Mojo and returned as ArrowArray:
+gpu_pipe = gpu_arrow_float_linear(2.0, 1.0) | gpu_arrow_float_poly(1.0, 2.0, 3.0)
+col_out = gpu_pipe(ArrowArray([1.0, 2.0, 3.0, 4.0]))
+print(col_out.to_list())  # [34.0, 86.0, 162.0, 262.0]
 ```
 
 ### 4. `async def` Tasks & Sliding-Window Streaming

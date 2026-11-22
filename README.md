@@ -19,13 +19,14 @@
   - [5. Error Handling & Resilience](#5-error-handling--resilience)
   - [6. Async & Stateful Mutable Pipelines](#6-async--stateful-mutable-pipelines)
   - [7. Executors, Tracing & Visualization](#7-executors-tracing--visualization)
+  - [8. GPU Pipelines (`max.gpu` & Device-Resident Stages)](#8-gpu-pipelines-maxgpu--device-resident-stages)
 - [Using Strata in Python](#using-strata-in-python)
   - [1. Defining Tasks & Composing Pipelines](#1-defining-tasks--composing-pipelines)
   - [2. Handling Errors in Pipelines](#2-handling-errors-in-pipelines)
   - [3. Dataflow & Resilience Combinators](#3-dataflow--resilience-combinators)
   - [4. Async Tasks (`@async_task` & `arun`)](#4-async-tasks-async_task--arun)
   - [5. Batch & Streaming Execution (`map`, `stream`, `astream`)](#5-batch--streaming-execution-map-stream-astream)
-  - [6. GIL-Free Native Mojo Stages](#6-gil-free-native-mojo-stages)
+  - [6. GIL-Free Native & GPU Stages (Scalars & Arrow Data)](#6-gil-free-native--gpu-stages-scalars--arrow-data)
   - [7. Introspection, Visualization & Tracing](#7-introspection-visualization--tracing)
 - [Documentation & Architecture](#documentation--architecture)
 - [Development & Testing](#development--testing)
@@ -354,6 +355,103 @@ def main():
     print(pipe.to_mermaid())
 ```
 
+### 8. GPU Pipelines (`max.gpu` & Device-Resident Stages)
+
+Mojo pipelines work directly with `max.gpu` (`DeviceContext`, `DeviceBuffer`, `TileTensor`). Because `DeviceBuffer[dtype]` conforms to `Movable & Deinitable`, stages in `strata.pipeline.fallible` (`ComposableFallibleStage`) can pass GPU buffers directly from kernel to kernel without copying back to host memory between stages:
+
+```mojo
+from std.sys import has_accelerator
+from layout import ImmTileTensor, MutTileTensor, TileTensor, row_major
+from max.gpu import global_idx
+from max.gpu.host import DeviceBuffer, DeviceContext
+from strata.pipeline.fallible import ComposableFallibleStage
+
+comptime N = 8
+comptime layout = row_major[N]()
+
+def scale_bias_kernel(
+    inp: ImmTileTensor[DType.float32, type_of(layout), ImmUntrackedOrigin],
+    output: MutTileTensor[DType.float32, type_of(layout), MutUntrackedOrigin],
+    scale: Float32,
+    bias: Float32,
+):
+    comptime assert inp.flat_rank == 1 and output.flat_rank == 1
+    var tid = global_idx.x
+    if tid < N:
+        output[tid] = inp[tid] * scale + bias
+
+struct ToDevice(ComposableFallibleStage):
+    comptime I = List[Float32]
+    comptime O = DeviceBuffer[DType.float32]
+    var ctx: DeviceContext[]
+
+    def __init__(out self, ctx: DeviceContext[]):
+        self.ctx = ctx
+
+    def __call__(self, arg: List[Float32]) raises -> DeviceBuffer[DType.float32]:
+        var buf = self.ctx.enqueue_create_buffer[DType.float32](N)
+        with buf.map_to_host() as host:
+            for i in range(N):
+                host[i] = arg[i]
+        return buf^
+
+struct GpuLinear(ComposableFallibleStage):
+    comptime I = DeviceBuffer[DType.float32]
+    comptime O = DeviceBuffer[DType.float32]
+    var ctx: DeviceContext[]
+    var scale: Float32
+    var bias: Float32
+
+    def __init__(out self, ctx: DeviceContext[], scale: Float32, bias: Float32):
+        self.ctx = ctx
+        self.scale = scale
+        self.bias = bias
+
+    def __call__(
+        self, arg: DeviceBuffer[DType.float32]
+    ) raises -> DeviceBuffer[DType.float32]:
+        var out_buf = self.ctx.enqueue_create_buffer[DType.float32](N)
+        var t_in = TileTensor(arg, layout)
+        var t_out = TileTensor(out_buf, layout)
+        self.ctx.enqueue_function[scale_bias_kernel](
+            t_in.as_imm(),
+            t_out,
+            self.scale,
+            self.bias,
+            grid_dim=1,
+            block_dim=N,
+        )
+        return out_buf^
+
+struct ToHost(ComposableFallibleStage):
+    comptime I = DeviceBuffer[DType.float32]
+    comptime O = List[Float32]
+
+    def __init__(out self):
+        pass
+
+    def __call__(self, arg: DeviceBuffer[DType.float32]) raises -> List[Float32]:
+        var res = List[Float32](length=N, fill=0.0)
+        with arg.map_to_host() as host:
+            for i in range(N):
+                res[i] = host[i]
+        return res^
+
+def main() raises:
+    comptime if has_accelerator():
+        var ctx = DeviceContext()
+        var upload = ToDevice(ctx)
+        var step1 = GpuLinear(ctx, 2.0, 1.0)
+        var step2 = GpuLinear(ctx, 3.0, -1.0)
+        var download = ToHost()
+
+        # Upload once -> run both GPU kernels on device memory -> download once:
+        var gpu_pipe = upload | step1 | step2 | download
+        var inp: List[Float32] = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]
+        var out = gpu_pipe(inp)
+        print(out[0], out[1], out[7])  # 8.0 14.0 50.0
+```
+
 ---
 
 ## Using Strata in Python
@@ -527,9 +625,11 @@ async def consume() -> list[str]:
 print(asyncio.run(consume()))
 ```
 
-### 6. GIL-Free Native Mojo Stages
+### 6. GIL-Free Native & GPU Stages (Scalars & Arrow Data)
 
-On standard GIL-enabled Python, CPU-bound Python functions contend on the GIL across threads. Strata includes built-in **GIL-free Mojo stages** (`native_int_linear`, `native_float_linear`, `native_float_poly`, `native_cpu_work`) that run across CPU cores in parallel and fuse automatically when chained with `|`:
+On standard GIL-enabled Python, CPU-bound Python functions contend on the GIL across threads. Strata includes built-in **GIL-free Mojo stages** for both **scalars** and **Arrow-compatible columnar data** (with GPU acceleration):
+
+#### Scalar GIL-Free Stages
 
 ```python
 from strata import (
@@ -541,7 +641,7 @@ from strata import (
     task,
 )
 
-print(runtime_info())  # inspects Python version, GIL state, and CPU count
+print(runtime_info())  # inspects Python version, GIL state, CPU count, and gpu_available
 
 mul3_add1 = native_int_linear(scale=3, bias=1, name="mul3_add1")     # int -> int
 to_float = native_float_linear(scale=0.5, bias=0.25, name="to_flt")  # int|float -> float
@@ -560,7 +660,47 @@ hybrid = ((mul3_add1 | to_float) & label & heavy_mix) | combine
 print(hybrid(5))
 ```
 
-Need your own custom GIL-free Mojo or C stage? Export a `"strata.native_stage.v1"` `PyCapsule` and wrap it with `native_stage(...)` — see the [Python Hybrid, Async & Streaming Guide](docs/python-hybrid-async-streaming.md).
+#### Arrow Columnar Data & GPU Execution (`ArrowArray`, `gpu_arrow_*`)
+
+Pass Arrow-like columnar data (`strata.ArrowArray`, `pyarrow.Array`, `polars.Series`, or any object implementing `__arrow_c_array__()`, as well as 1D numeric sequences) into GPU-accelerated or GIL-free CPU Mojo stages. Consecutive GPU stages chained with `|` fuse on device memory (uploading once and downloading once), and return a `strata.ArrowArray` implementing `__arrow_c_array__()`:
+
+```python
+from strata import (
+    ArrowArray,
+    gpu_arrow_float_linear,
+    gpu_arrow_float_poly,
+    gpu_arrow_int_linear,
+    has_gpu,
+    native_arrow_float_linear,
+    spread,
+)
+
+print("GPU available:", has_gpu())
+
+# Create an Arrow-compatible columnar array (or pass a pyarrow.Array / polars.Series directly)
+col = ArrowArray([1.0, 2.0, 3.0, 4.0])
+
+# GPU-accelerated stages (automatically fuse on device memory across `|`):
+scale_gpu = gpu_arrow_float_linear(scale=2.0, bias=1.0, name="scale_gpu")
+poly_gpu = gpu_arrow_float_poly(c0=1.0, c1=2.0, c2=3.0, name="poly_gpu")
+cpu_shift = native_arrow_float_linear(scale=0.5, bias=10.0, name="cpu_shift")
+
+@spread
+def merge_columns(gpu_out: ArrowArray[float], cpu_out: ArrowArray[float]) -> ArrowArray[float]:
+    return ArrowArray([g + c for g, c in zip(gpu_out, cpu_out, strict=True)])
+
+arrow_pipe = ((scale_gpu | poly_gpu) & cpu_shift) | merge_columns
+result = arrow_pipe(col)
+
+print(result)            # ArrowArray(dtype='float64', length=4, values=[44.5, 108.0, 207.5, 343.0])
+print(result.to_list())  # [44.5, 108.0, 207.5, 343.0]
+
+# Zero-copy export to PyArrow / Polars via the Apache Arrow C Data Interface (__arrow_c_array__):
+schema_capsule, array_capsule = result.__arrow_c_array__()
+# Or directly: pa_array = result.to_pyarrow()
+```
+
+Need a custom GIL-free Mojo CPU or GPU kernel for scalars or Arrow columns? Export a `"strata.native_stage.v1"` `PyCapsule` using `export_arrow_float_stage_capsule` / `export_arrow_int_stage_capsule` (or `export_float_stage_capsule` / `export_int_stage_capsule` / `export_value_stage_capsule`) and wrap it with `native_stage(...)` — see the [Python Hybrid, Async & Streaming Guide](docs/python-hybrid-async-streaming.md).
 
 ### 7. Introspection, Visualization & Tracing
 

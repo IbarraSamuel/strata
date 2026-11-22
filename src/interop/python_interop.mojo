@@ -3,6 +3,7 @@
 from std.atomic import Atomic
 from std.benchmark import keep
 from std.ffi import _Global, c_int, c_long
+from std.math import ceildiv
 from std.memory import OpaquePointer
 from std.memory.alloc import Layout, ThinAllocation, alloc, dealloc
 from std.os import abort
@@ -17,11 +18,20 @@ from std.python._cpython import (
 from std.python.bindings import PythonModuleBuilder
 from std.python.python_object import _unsafe_init
 from std.runtime._asyncrt import TaskGroup as TG
-from std.sys.info import num_logical_cores
+from std.sys import has_accelerator
+from std.sys.info import CompilationTarget, num_logical_cores
+from max.gpu import global_idx
+from max.gpu.host import DeviceContext
 
 
 comptime NATIVE_STAGE_CAPSULE_NAME = StaticString("strata.native_stage.v1")
 """PyCapsule name identifying a Strata C-ABI v1 native stage descriptor."""
+
+comptime ARROW_SCHEMA_CAPSULE_NAME = StaticString("arrow_schema")
+"""Standard Apache Arrow C Data Interface PyCapsule name for `ArrowSchema`."""
+
+comptime ARROW_ARRAY_CAPSULE_NAME = StaticString("arrow_array")
+"""Standard Apache Arrow C Data Interface PyCapsule name for `ArrowArray`."""
 
 comptime NATIVE_KIND_INT64: Int32 = 0
 """Native stage ABI kind accepting and returning `Int64`."""
@@ -29,6 +39,10 @@ comptime NATIVE_KIND_FLOAT64: Int32 = 1
 """Native stage ABI kind accepting and returning `Float64`."""
 comptime NATIVE_KIND_VALUE: Int32 = 2
 """Native stage ABI kind accepting and returning tagged `NativeValue`."""
+comptime NATIVE_KIND_ARROW_FLOAT64: Int32 = 3
+"""Native stage ABI kind accepting and returning contiguous Arrow `Float64` columns."""
+comptime NATIVE_KIND_ARROW_INT64: Int32 = 4
+"""Native stage ABI kind accepting and returning contiguous Arrow `Int64` columns."""
 
 comptime NATIVE_VAL_INT64: Int32 = 0
 """Tagged `NativeValue` discriminant for `Int64`."""
@@ -42,6 +56,11 @@ comptime _OP_INT_LINEAR: Int32 = 1
 comptime _OP_FLOAT_LINEAR: Int32 = 2
 comptime _OP_FLOAT_POLY: Int32 = 3
 comptime _OP_CPU_WORK: Int32 = 4
+comptime _OP_ARROW_INT_LINEAR: Int32 = 5
+comptime _OP_ARROW_FLOAT_LINEAR: Int32 = 6
+comptime _OP_ARROW_FLOAT_POLY: Int32 = 7
+
+comptime _GPU_BLOCK_SIZE: Int = 256
 
 comptime _NATIVE_STATUS_OVERFLOW: Int32 = -4
 comptime _PY_TP_CALL: c_int = 50
@@ -73,6 +92,7 @@ struct _PyCapiCache(Movable):
     var call_one_arg: _PyCallOneArgFn
     var has_set_raised_exc: Bool
     var set_raised_exc: _PySetRaisedExcFn
+    var arrow_wrapper_fn: PyObjectPtr
 
     def __init__(out self):
         ref cpython = Python().cpython()
@@ -93,6 +113,8 @@ struct _PyCapiCache(Movable):
         else:
             self.has_set_raised_exc = False
             self.set_raised_exc = _dummy_set_raised_exc
+
+        self.arrow_wrapper_fn = PyObjectPtr()
 
 
 def _init_capi_cache() -> _PyCapiCache:
@@ -122,10 +144,198 @@ comptime NativeValueFn = def(
 ) thin abi("C") -> Int32
 """C-ABI function signature for general `NativeValue -> NativeValue` native stages."""
 
+comptime NativeArrowFloatFn = def(
+    Pointer[Float64, ImmUntrackedOrigin],
+    Pointer[Float64, MutUntrackedOrigin],
+    Int64,
+    Optional[OpaquePointer[MutUntrackedOrigin]],
+) thin abi("C") -> Int32
+"""C-ABI function signature for `(in_ptr, out_ptr, length, ctx) -> status` Arrow `Float64` stages."""
+
+comptime NativeArrowIntFn = def(
+    Pointer[Int64, ImmUntrackedOrigin],
+    Pointer[Int64, MutUntrackedOrigin],
+    Int64,
+    Optional[OpaquePointer[MutUntrackedOrigin]],
+) thin abi("C") -> Int32
+"""C-ABI function signature for `(in_ptr, out_ptr, length, ctx) -> status` Arrow `Int64` stages."""
+
 comptime NativeCtxDeleter = def(
     OpaquePointer[MutUntrackedOrigin]
 ) thin abi("C") -> None
 """C-ABI callback signature invoked on PyCapsule destruction to free heap `ctx`."""
+
+comptime ArrowSchemaReleaseFn = def(
+    Pointer[ArrowCSchema, MutUntrackedOrigin]
+) thin abi("C") -> None
+"""C-ABI release callback signature for an Apache Arrow `ArrowSchema` struct."""
+
+comptime ArrowArrayReleaseFn = def(
+    Pointer[ArrowCArray, MutUntrackedOrigin]
+) thin abi("C") -> None
+"""C-ABI release callback signature for an Apache Arrow `ArrowArray` struct."""
+
+
+@fieldwise_init
+struct ArrowCSchema(Copyable, Defaultable, Movable):
+    """C-ABI layout matching the Apache Arrow C Data Interface `struct ArrowSchema`."""
+
+    var format: Optional[Pointer[UInt8, ImmUntrackedOrigin]]
+    """Null-terminated format string (`"g"` for float64, `"l"` for int64, `"f"` for float32, `"i"` for int32)."""
+    var name: Optional[Pointer[UInt8, ImmUntrackedOrigin]]
+    """Optional null-terminated field name string."""
+    var metadata: Optional[Pointer[UInt8, ImmUntrackedOrigin]]
+    """Optional binary metadata pointer."""
+    var flags: Int64
+    """Bitflags (e.g. `ARROW_FLAG_NULLABLE = 2`)."""
+    var n_children: Int64
+    """Number of child schemas (`0` for primitive flat arrays)."""
+    var children: Optional[OpaquePointer[MutUntrackedOrigin]]
+    """Optional pointer to child `ArrowCSchema*` array."""
+    var dictionary: Optional[OpaquePointer[MutUntrackedOrigin]]
+    """Optional pointer to dictionary `ArrowCSchema`."""
+    var release: Optional[ArrowSchemaReleaseFn]
+    """Release callback; set to `None` (`NULL`) once released."""
+    var private_data: Optional[OpaquePointer[MutUntrackedOrigin]]
+    """Producer-private opaque handle."""
+
+    def __init__(out self):
+        """Construct a zeroed `ArrowCSchema`."""
+        self.format = None
+        self.name = None
+        self.metadata = None
+        self.flags = 0
+        self.n_children = 0
+        self.children = None
+        self.dictionary = None
+        self.release = None
+        self.private_data = None
+
+
+@fieldwise_init
+struct ArrowCArray(Copyable, Defaultable, Movable):
+    """C-ABI layout matching the Apache Arrow C Data Interface `struct ArrowArray`."""
+
+    var length: Int64
+    """Logical number of elements in the array."""
+    var null_count: Int64
+    """Number of null elements (`0` for non-null primitive buffers)."""
+    var offset: Int64
+    """Logical starting element offset inside the data buffer."""
+    var n_buffers: Int64
+    """Number of buffers (`2` for primitive arrays: `[validity_bitmap, data_buffer]`)."""
+    var n_children: Int64
+    """Number of child arrays (`0` for primitive arrays)."""
+    var buffers: Optional[
+        Pointer[Optional[OpaquePointer[ImmUntrackedOrigin]], MutUntrackedOrigin]
+    ]
+    """Pointer to array of buffer pointers (`buffers[0]` validity, `buffers[1]` values)."""
+    var children: Optional[OpaquePointer[MutUntrackedOrigin]]
+    """Optional pointer to child `ArrowCArray*` array."""
+    var dictionary: Optional[OpaquePointer[MutUntrackedOrigin]]
+    """Optional pointer to dictionary `ArrowCArray`."""
+    var release: Optional[ArrowArrayReleaseFn]
+    """Release callback; set to `None` (`NULL`) once released."""
+    var private_data: Optional[OpaquePointer[MutUntrackedOrigin]]
+    """Producer-private opaque handle keeping backing memory alive."""
+
+    def __init__(out self):
+        """Construct a zeroed `ArrowCArray`."""
+        self.length = 0
+        self.null_count = 0
+        self.offset = 0
+        self.n_buffers = 0
+        self.n_children = 0
+        self.buffers = None
+        self.children = None
+        self.dictionary = None
+        self.release = None
+        self.private_data = None
+
+
+@fieldwise_init
+struct _ArrowExportPrivateData(Copyable, Defaultable, Movable):
+    """Private payload keeping an exported `ArrowBuffer` and its `buffers` array alive."""
+
+    var owner_py_obj: PyObjectPtr
+    var buffers_ptr: Optional[
+        Pointer[Optional[OpaquePointer[ImmUntrackedOrigin]], MutUntrackedOrigin]
+    ]
+
+    def __init__(out self):
+        self.owner_py_obj = PyObjectPtr()
+        self.buffers_ptr = None
+
+
+@always_inline
+def _is_arrow_kind(kind: Int32) -> Bool:
+    return (
+        kind == NATIVE_KIND_ARROW_FLOAT64 or kind == NATIVE_KIND_ARROW_INT64
+    )
+
+
+def _gpu_arrow_f32_linear_kernel(
+    inp: Pointer[Float32, ImmUntrackedOrigin],
+    output: Pointer[Float32, MutUntrackedOrigin],
+    scale: Float32,
+    bias: Float32,
+    n: Int64,
+):
+    var tid = global_idx.x
+    if tid < Int(n):
+        output[unsafe_offset=tid] = inp[unsafe_offset=tid] * scale + bias
+
+
+def _gpu_arrow_f32_poly_kernel(
+    inp: Pointer[Float32, ImmUntrackedOrigin],
+    output: Pointer[Float32, MutUntrackedOrigin],
+    c0: Float32,
+    c1: Float32,
+    c2: Float32,
+    n: Int64,
+):
+    var tid = global_idx.x
+    if tid < Int(n):
+        var x = inp[unsafe_offset=tid]
+        output[unsafe_offset=tid] = (c2 * x + c1) * x + c0
+
+
+def _gpu_arrow_f64_linear_kernel(
+    inp: Pointer[Float64, ImmUntrackedOrigin],
+    output: Pointer[Float64, MutUntrackedOrigin],
+    scale: Float64,
+    bias: Float64,
+    n: Int64,
+):
+    var tid = global_idx.x
+    if tid < Int(n):
+        output[unsafe_offset=tid] = inp[unsafe_offset=tid] * scale + bias
+
+
+def _gpu_arrow_f64_poly_kernel(
+    inp: Pointer[Float64, ImmUntrackedOrigin],
+    output: Pointer[Float64, MutUntrackedOrigin],
+    c0: Float64,
+    c1: Float64,
+    c2: Float64,
+    n: Int64,
+):
+    var tid = global_idx.x
+    if tid < Int(n):
+        var x = inp[unsafe_offset=tid]
+        output[unsafe_offset=tid] = (c2 * x + c1) * x + c0
+
+
+def _gpu_arrow_i64_linear_kernel(
+    inp: Pointer[Int64, ImmUntrackedOrigin],
+    output: Pointer[Int64, MutUntrackedOrigin],
+    scale: Int64,
+    bias: Int64,
+    n: Int64,
+):
+    var tid = global_idx.x
+    if tid < Int(n):
+        output[unsafe_offset=tid] = inp[unsafe_offset=tid] * scale + bias
 
 
 @fieldwise_init
@@ -312,7 +522,32 @@ struct _NativeOp(Copyable, Defaultable, Movable, TrivialRegisterPassable):
             return self.desc_kind
         if self.op_kind == _OP_INT_LINEAR or self.op_kind == _OP_CPU_WORK:
             return NATIVE_KIND_INT64
-        return NATIVE_KIND_FLOAT64
+        if (
+            self.op_kind == _OP_FLOAT_LINEAR
+            or self.op_kind == _OP_FLOAT_POLY
+        ):
+            return NATIVE_KIND_FLOAT64
+        if self.op_kind == _OP_ARROW_INT_LINEAR:
+            return NATIVE_KIND_ARROW_INT64
+        return NATIVE_KIND_ARROW_FLOAT64
+
+    @always_inline
+    def uses_gpu(self) -> Bool:
+        if self.op_kind == _OP_ARROW_INT_LINEAR:
+            return self.f_p0 != 0.0
+        if (
+            self.op_kind == _OP_ARROW_FLOAT_LINEAR
+            or self.op_kind == _OP_ARROW_FLOAT_POLY
+        ):
+            return self.i_p0 != 0
+        return False
+
+    @always_inline
+    def is_builtin_gpu_float(self) -> Bool:
+        return (
+            self.op_kind == _OP_ARROW_FLOAT_LINEAR
+            or self.op_kind == _OP_ARROW_FLOAT_POLY
+        ) and self.i_p0 != 0
 
     @always_inline
     def is_short_pure_arith(self) -> Bool:
@@ -426,10 +661,12 @@ def _eval_native_ops(
     op_len: Int,
     input: NativeValue,
 ) -> _NativeEvalResult:
-    """Evaluate a contiguous slice of `_NativeOp`s completely GIL-free."""
+    """Evaluate a contiguous slice of scalar `_NativeOp`s completely GIL-free."""
     var cur = input
     for offset in range(op_len):
         var op = ops_base[unsafe_offset=op_start + offset]
+        if _is_arrow_kind(op.input_kind()):
+            return _NativeEvalResult(NativeValue(), -2)
         if offset > 0:
             var coerced = _coerce_native_value(cur, op.input_kind())
             if coerced[1] != 0:
@@ -440,6 +677,650 @@ def _eval_native_ops(
             return res
         cur = res.value
     return _NativeEvalResult(cur, 0)
+
+
+def _validate_native_chain_kinds(
+    ops_base: Pointer[_NativeOp, ImmUntrackedOrigin],
+    op_start: Int,
+    op_len: Int,
+) -> Int32:
+    """Validate that a fused native chain does not mix scalar/Arrow or narrow float -> int."""
+    if op_len <= 1:
+        return 0
+    var cur_kind = ops_base[unsafe_offset=op_start].input_kind()
+    var first_is_arrow = _is_arrow_kind(cur_kind)
+    for offset in range(1, op_len):
+        var next_kind = ops_base[unsafe_offset=op_start + offset].input_kind()
+        if _is_arrow_kind(next_kind) != first_is_arrow:
+            return -2
+        if first_is_arrow:
+            if (
+                cur_kind == NATIVE_KIND_ARROW_FLOAT64
+                and next_kind == NATIVE_KIND_ARROW_INT64
+            ):
+                return -2
+            cur_kind = next_kind
+        else:
+            if (
+                cur_kind == NATIVE_KIND_FLOAT64
+                and next_kind == NATIVE_KIND_INT64
+            ):
+                return -2
+            if next_kind != NATIVE_KIND_VALUE:
+                cur_kind = next_kind
+    return 0
+
+
+# ===----------------------------------------------------------------------=== #
+# Columnar Arrow Buffer & Apache Arrow C Data Interface
+# ===----------------------------------------------------------------------=== #
+
+comptime _ARROW_FMT_FLOAT64 = StaticString("g\0")
+comptime _ARROW_FMT_INT64 = StaticString("l\0")
+comptime _ARROW_NAME_EMPTY = StaticString("\0")
+
+
+def _release_exported_arrow_schema(
+    schema_ptr: Pointer[ArrowCSchema, MutUntrackedOrigin]
+) abi("C"):
+    schema_ptr[].release = None
+    schema_ptr[].private_data = None
+
+
+def _release_exported_arrow_array(
+    arr_ptr: Pointer[ArrowCArray, MutUntrackedOrigin]
+) abi("C"):
+    if not arr_ptr[].release:
+        return
+    if case .Some(raw_priv) = arr_ptr[].private_data:
+        var priv_ptr = raw_priv.unsafe_bitcast[_ArrowExportPrivateData]()
+        if case .Some(bufs) = priv_ptr[].buffers_ptr:
+            dealloc(
+                ThinAllocation(unsafe_owned_ptr=bufs).unsafe_with_layout(
+                    Layout[
+                        Optional[OpaquePointer[ImmUntrackedOrigin]]
+                    ](length=2)
+                )
+            )
+        var owner_obj = priv_ptr[].owner_py_obj
+        dealloc(
+            ThinAllocation(unsafe_owned_ptr=priv_ptr).unsafe_with_layout(
+                Layout[_ArrowExportPrivateData].single()
+            )
+        )
+        if Bool(owner_obj):
+            with GILAcquired(Python()):
+                ref cpython = Python().cpython()
+                var saved_exc = cpython.PyErr_GetRaisedException()
+                cpython.Py_DecRef(owner_obj)
+                _restore_raised_exception(saved_exc)
+    arr_ptr[].buffers = None
+    arr_ptr[].private_data = None
+    arr_ptr[].release = None
+
+
+def _destroy_arrow_schema_capsule(capsule: PyObjectPtr) abi("C"):
+    ref cpython = Python().cpython()
+    var saved_exc = cpython.PyErr_GetRaisedException()
+    try:
+        var raw_ptr = cpython.PyCapsule_GetPointer(
+            capsule, String(ARROW_SCHEMA_CAPSULE_NAME)
+        )
+        var schema_ptr = raw_ptr.unsafe_bitcast[ArrowCSchema]()
+        if case .Some(rel_fn) = schema_ptr[].release:
+            rel_fn(schema_ptr)
+        dealloc(
+            ThinAllocation(unsafe_owned_ptr=schema_ptr).unsafe_with_layout(
+                Layout[ArrowCSchema].single()
+            )
+        )
+    except:
+        pass
+    _restore_raised_exception(saved_exc)
+
+
+def _destroy_arrow_array_capsule(capsule: PyObjectPtr) abi("C"):
+    ref cpython = Python().cpython()
+    var saved_exc = cpython.PyErr_GetRaisedException()
+    try:
+        var raw_ptr = cpython.PyCapsule_GetPointer(
+            capsule, String(ARROW_ARRAY_CAPSULE_NAME)
+        )
+        var arr_ptr = raw_ptr.unsafe_bitcast[ArrowCArray]()
+        if case .Some(rel_fn) = arr_ptr[].release:
+            rel_fn(arr_ptr)
+        dealloc(
+            ThinAllocation(unsafe_owned_ptr=arr_ptr).unsafe_with_layout(
+                Layout[ArrowCArray].single()
+            )
+        )
+    except:
+        pass
+    _restore_raised_exception(saved_exc)
+
+
+struct ArrowBuffer(Copyable, Defaultable, Movable, Writable):
+    """Contiguous native Mojo columnar buffer backing a `strata.ArrowArray`."""
+
+    var kind: Int32
+    """Column kind (`NATIVE_KIND_ARROW_FLOAT64` or `NATIVE_KIND_ARROW_INT64`)."""
+    var float_data: List[Float64]
+    """Contiguous `Float64` storage when `kind == NATIVE_KIND_ARROW_FLOAT64`."""
+    var int_data: List[Int64]
+    """Contiguous `Int64` storage when `kind == NATIVE_KIND_ARROW_INT64`."""
+
+    def __init__(out self):
+        """Construct an empty `float64` `ArrowBuffer`."""
+        self.kind = NATIVE_KIND_ARROW_FLOAT64
+        self.float_data = List[Float64]()
+        self.int_data = List[Int64]()
+
+    def __init__(out self, *, var floats: List[Float64]):
+        """Construct an `ArrowBuffer` owning `floats`.
+
+        Args:
+            floats: Contiguous `Float64` buffer.
+        """
+        self.kind = NATIVE_KIND_ARROW_FLOAT64
+        self.float_data = floats^
+        self.int_data = List[Int64]()
+
+    def __init__(out self, *, var ints: List[Int64]):
+        """Construct an `ArrowBuffer` owning `ints`.
+
+        Args:
+            ints: Contiguous `Int64` buffer.
+        """
+        self.kind = NATIVE_KIND_ARROW_INT64
+        self.float_data = List[Float64]()
+        self.int_data = ints^
+
+    def __init__(out self, *, copy: Self):
+        """Copy constructor.
+
+        Args:
+            copy: Existing `ArrowBuffer` to copy.
+        """
+        self.kind = copy.kind
+        self.float_data = copy.float_data.copy()
+        self.int_data = copy.int_data.copy()
+
+    @always_inline
+    def num_elements(self) -> Int:
+        """Return the number of elements in this buffer.
+
+        Returns:
+            Element count.
+        """
+        if self.kind == NATIVE_KIND_ARROW_INT64:
+            return len(self.int_data)
+        return len(self.float_data)
+
+    def widen_to_float64(mut self):
+        """Convert an `int64` `ArrowBuffer` in place to `float64`."""
+        if self.kind == NATIVE_KIND_ARROW_FLOAT64:
+            return
+        var n = len(self.int_data)
+        var flts = List[Float64](unsafe_uninit_length=n)
+        for i in range(n):
+            flts[i] = Float64(self.int_data[i])
+        self.float_data = flts^
+        self.int_data.clear()
+        self.kind = NATIVE_KIND_ARROW_FLOAT64
+
+    def write_to(self, mut writer: Some[Writer]):
+        """Format this `ArrowBuffer` for display.
+
+        Args:
+            writer: Output writer.
+        """
+        var dt = (
+            "int64" if self.kind == NATIVE_KIND_ARROW_INT64 else "float64"
+        )
+        writer.write(
+            "ArrowBuffer(dtype=", dt, ", length=", self.num_elements(), ")"
+        )
+
+    def write_repr_to(self, mut writer: Some[Writer]):
+        """Format debug representation.
+
+        Args:
+            writer: Output writer.
+        """
+        self.write_to(writer)
+
+    def __repr__(self) -> String:
+        """Return string representation.
+
+        Returns:
+            Human-readable summary string.
+        """
+        return String(self)
+
+    @staticmethod
+    def py_init(
+        out self: Self, args: PythonObject, kwargs: PythonObject
+    ) raises:
+        """Disallow direct unconfigured construction from Python.
+
+        Args:
+            args: Positional arguments.
+            kwargs: Keyword arguments.
+
+        Returns:
+            Never returns; always raises an error.
+
+        Raises:
+            Error instructing callers to use factory constructors.
+        """
+        raise "Use strata.ArrowArray(...) or mojo_strata.ArrowBuffer.from_py(...) to construct an ArrowBuffer."
+
+    @staticmethod
+    def from_py(
+        values: PythonObject, dtype_obj: PythonObject
+    ) raises -> PythonObject:
+        """Construct an `ArrowBuffer` from a Python sequence, `ArrowArray`, or `__arrow_c_array__` object.
+
+        Args:
+            values: Input sequence or Arrow-compatible object.
+            dtype_obj: Target dtype string (`"float64"`, `"int64"`, or `"auto"`).
+
+        Returns:
+            Allocated `mojo_strata.ArrowBuffer` Python object.
+
+        Raises:
+            Error if unboxing or dtype validation fails.
+        """
+        var dt_str = String(py=dtype_obj)
+        var target_kind: Int32
+        if dt_str == "int64" or dt_str == "int" or dt_str == "l":
+            target_kind = NATIVE_KIND_ARROW_INT64
+        elif dt_str == "float64" or dt_str == "float" or dt_str == "g":
+            target_kind = NATIVE_KIND_ARROW_FLOAT64
+        elif dt_str == "auto":
+            target_kind = -1
+        else:
+            return _restore_python_exception(
+                _make_py_error(
+                    "ValueError",
+                    String(
+                        "Unsupported ArrowArray dtype '",
+                        dt_str,
+                        "'; expected 'float64', 'int64', or 'auto'",
+                    ),
+                )
+            )
+
+        var unboxed = _unbox_for_arrow(values, target_kind)
+        if case .Some(exc) = unboxed[1]:
+            return _restore_python_exception(exc)
+        var buf = unboxed[0].copy()
+        return PythonObject(alloc=buf^)
+
+    @staticmethod
+    def length(
+        self_ptr: Pointer[Self, MutAnyOrigin]
+    ) raises -> PythonObject:
+        """Return the logical element count.
+
+        Args:
+            self_ptr: Pointer to self.
+
+        Returns:
+            Python integer element count.
+
+        Raises:
+            Error if Python int construction fails.
+        """
+        return PythonObject(self_ptr[].num_elements())
+
+    @staticmethod
+    def get_dtype(
+        self_ptr: Pointer[Self, MutAnyOrigin]
+    ) raises -> PythonObject:
+        """Return `"float64"` or `"int64"`.
+
+        Args:
+            self_ptr: Pointer to self.
+
+        Returns:
+            Python dtype string.
+
+        Raises:
+            Error if Python string construction fails.
+        """
+        if self_ptr[].kind == NATIVE_KIND_ARROW_INT64:
+            return PythonObject("int64")
+        return PythonObject("float64")
+
+    @staticmethod
+    def nbytes(
+        self_ptr: Pointer[Self, MutAnyOrigin]
+    ) raises -> PythonObject:
+        """Return total data buffer size in bytes (`length * 8`).
+
+        Args:
+            self_ptr: Pointer to self.
+
+        Returns:
+            Python integer byte count.
+
+        Raises:
+            Error if Python int construction fails.
+        """
+        return PythonObject(self_ptr[].num_elements() * 8)
+
+    @staticmethod
+    def data_ptr(
+        self_ptr: Pointer[Self, MutAnyOrigin]
+    ) raises -> PythonObject:
+        """Return the raw memory address of the contiguous data buffer (`0` if empty).
+
+        Args:
+            self_ptr: Pointer to self.
+
+        Returns:
+            Python integer memory address.
+
+        Raises:
+            Error if Python int construction fails.
+        """
+        var n = self_ptr[].num_elements()
+        if n == 0:
+            return PythonObject(0)
+        if self_ptr[].kind == NATIVE_KIND_ARROW_INT64:
+            return PythonObject(Int(self_ptr[].int_data.unsafe_ptr()))
+        return PythonObject(Int(self_ptr[].float_data.unsafe_ptr()))
+
+    @staticmethod
+    def get_item(
+        self_ptr: Pointer[Self, MutAnyOrigin], idx_obj: PythonObject
+    ) raises -> PythonObject:
+        """Return element at `idx_obj` (supporting negative indices).
+
+        Args:
+            self_ptr: Pointer to self.
+            idx_obj: Python integer index.
+
+        Returns:
+            Element scalar as a Python `int` or `float`.
+
+        Raises:
+            Error if `idx_obj` is not an integer or is out of range.
+        """
+        var idx_res = _extract_int64_arg(idx_obj, "index")
+        if case .Some(exc) = idx_res[1]:
+            return _restore_python_exception(exc)
+        var n = self_ptr[].num_elements()
+        var idx = Int(idx_res[0])
+        if idx < 0:
+            idx += n
+        if idx < 0 or idx >= n:
+            return _restore_python_exception(
+                _make_py_error("IndexError", "ArrowArray index out of range")
+            )
+        ref cpython = Python().cpython()
+        if self_ptr[].kind == NATIVE_KIND_ARROW_INT64:
+            var p = cpython.PyLong_FromSsize_t(
+                Py_ssize_t(self_ptr[].int_data[idx])
+            )
+            return PythonObject(from_owned=p)
+        var pf = cpython.PyFloat_FromDouble(self_ptr[].float_data[idx])
+        return PythonObject(from_owned=pf)
+
+    @staticmethod
+    def slice_buffer(
+        self_ptr: Pointer[Self, MutAnyOrigin],
+        start_obj: PythonObject,
+        stop_obj: PythonObject,
+        step_obj: PythonObject,
+    ) raises -> PythonObject:
+        """Return a new `ArrowBuffer` containing the slice `[start:stop:step]`.
+
+        Args:
+            self_ptr: Pointer to self.
+            start_obj: Start index.
+            stop_obj: Stop index.
+            step_obj: Step stride.
+
+        Returns:
+            Newly allocated `ArrowBuffer`.
+
+        Raises:
+            Error if slice indices are invalid.
+        """
+        var start = Int(py=start_obj)
+        var stop = Int(py=stop_obj)
+        var step = Int(py=step_obj)
+        if step == 0:
+            return _restore_python_exception(
+                _make_py_error("ValueError", "slice step cannot be zero")
+            )
+        if self_ptr[].kind == NATIVE_KIND_ARROW_INT64:
+            var out_i = List[Int64]()
+            var cur = start
+            if step > 0:
+                while cur < stop:
+                    out_i.append(self_ptr[].int_data[cur])
+                    cur += step
+            else:
+                while cur > stop:
+                    out_i.append(self_ptr[].int_data[cur])
+                    cur += step
+            var b_i = ArrowBuffer(ints=out_i^)
+            return PythonObject(alloc=b_i^)
+
+        var out_f = List[Float64]()
+        var cur = start
+        if step > 0:
+            while cur < stop:
+                out_f.append(self_ptr[].float_data[cur])
+                cur += step
+        else:
+            while cur > stop:
+                out_f.append(self_ptr[].float_data[cur])
+                cur += step
+        var b_f = ArrowBuffer(floats=out_f^)
+        return PythonObject(alloc=b_f^)
+
+    @staticmethod
+    def to_list(
+        self_ptr: Pointer[Self, MutAnyOrigin]
+    ) raises -> PythonObject:
+        """Convert this `ArrowBuffer` into a Python `list`.
+
+        Args:
+            self_ptr: Pointer to self.
+
+        Returns:
+            Python `list` containing all elements.
+
+        Raises:
+            Error if list construction fails.
+        """
+        ref cpython = Python().cpython()
+        var n = self_ptr[].num_elements()
+        var list_ptr = cpython.PyList_New(Py_ssize_t(n))
+        if not list_ptr:
+            return PythonObject(from_owned=PyObjectPtr())
+        if self_ptr[].kind == NATIVE_KIND_ARROW_INT64:
+            for i in range(n):
+                var item = cpython.PyLong_FromSsize_t(
+                    Py_ssize_t(self_ptr[].int_data[i])
+                )
+                if not item:
+                    _ = PythonObject(from_owned=list_ptr)
+                    return PythonObject(from_owned=PyObjectPtr())
+                _ = cpython.PyList_SetItem(list_ptr, Py_ssize_t(i), item)
+        else:
+            for i in range(n):
+                var item = cpython.PyFloat_FromDouble(self_ptr[].float_data[i])
+                if not item:
+                    _ = PythonObject(from_owned=list_ptr)
+                    return PythonObject(from_owned=PyObjectPtr())
+                _ = cpython.PyList_SetItem(list_ptr, Py_ssize_t(i), item)
+        return PythonObject(from_owned=list_ptr)
+
+    @staticmethod
+    def export_c_capsules(py_self: PythonObject) raises -> PythonObject:
+        """Export `("arrow_schema", "arrow_array")` PyCapsules conforming to the Apache Arrow C Data Interface.
+
+        Args:
+            py_self: Python object handle for `self`.
+
+        Returns:
+            2-tuple `(schema_capsule, array_capsule)`.
+
+        Raises:
+            Error if capsule allocation fails.
+        """
+        var self_ptr = py_self.downcast_value_ptr[Self]()
+        var n = self_ptr[].num_elements()
+        var is_int = self_ptr[].kind == NATIVE_KIND_ARROW_INT64
+        var fmt_ptr = (
+            _ARROW_FMT_INT64.unsafe_ptr().unsafe_origin_cast[
+                ImmUntrackedOrigin
+            ]() if is_int else _ARROW_FMT_FLOAT64.unsafe_ptr().unsafe_origin_cast[
+                ImmUntrackedOrigin
+            ]()
+        )
+        var name_ptr = _ARROW_NAME_EMPTY.unsafe_ptr().unsafe_origin_cast[
+            ImmUntrackedOrigin
+        ]()
+
+        # 1. Allocate ArrowCSchema
+        var schema_alloc = alloc(Layout[ArrowCSchema].single())
+        var schema_ptr = schema_alloc^.unsafe_leak()
+        schema_ptr.write(
+            ArrowCSchema(
+                fmt_ptr,
+                name_ptr,
+                None,
+                0,
+                0,
+                None,
+                None,
+                Optional[ArrowSchemaReleaseFn](_release_exported_arrow_schema),
+                None,
+            )
+        )
+
+        # 2. Allocate 2-element buffers pointer array + private_data + ArrowCArray
+        var bufs_alloc = alloc(
+            Layout[Optional[OpaquePointer[ImmUntrackedOrigin]]](length=2)
+        )
+        var bufs_ptr = bufs_alloc^.unsafe_leak()
+        bufs_ptr.unsafe_offset(0).write(None)
+        if n == 0:
+            bufs_ptr.unsafe_offset(1).write(None)
+        elif is_int:
+            bufs_ptr.unsafe_offset(1).write(
+                self_ptr[].int_data.unsafe_ptr()
+                .unsafe_bitcast[NoneType]()
+                .as_imm()
+                .unsafe_origin_cast[ImmUntrackedOrigin]()
+            )
+        else:
+            bufs_ptr.unsafe_offset(1).write(
+                self_ptr[].float_data.unsafe_ptr()
+                .unsafe_bitcast[NoneType]()
+                .as_imm()
+                .unsafe_origin_cast[ImmUntrackedOrigin]()
+            )
+
+        ref cpython = Python().cpython()
+        cpython.Py_IncRef(py_self._obj_ptr)
+        var priv_alloc = alloc(Layout[_ArrowExportPrivateData].single())
+        var priv_ptr = priv_alloc^.unsafe_leak()
+        priv_ptr.write(_ArrowExportPrivateData(py_self._obj_ptr, bufs_ptr))
+
+        var arr_alloc = alloc(Layout[ArrowCArray].single())
+        var arr_ptr = arr_alloc^.unsafe_leak()
+        arr_ptr.write(
+            ArrowCArray(
+                Int64(n),
+                0,
+                0,
+                2,
+                0,
+                bufs_ptr,
+                None,
+                None,
+                Optional[ArrowArrayReleaseFn](_release_exported_arrow_array),
+                priv_ptr.unsafe_bitcast[NoneType]().unsafe_origin_cast[
+                    MutUntrackedOrigin
+                ](),
+            )
+        )
+
+        var schema_cap_ptr = cpython.PyCapsule_New(
+            schema_ptr.unsafe_bitcast[NoneType]().unsafe_origin_cast[
+                MutUntrackedOrigin
+            ](),
+            ARROW_SCHEMA_CAPSULE_NAME,
+            _destroy_arrow_schema_capsule,
+        )
+        if not schema_cap_ptr:
+            _release_exported_arrow_schema(schema_ptr)
+            dealloc(
+                ThinAllocation(unsafe_owned_ptr=schema_ptr).unsafe_with_layout(
+                    Layout[ArrowCSchema].single()
+                )
+            )
+            _release_exported_arrow_array(arr_ptr)
+            dealloc(
+                ThinAllocation(unsafe_owned_ptr=arr_ptr).unsafe_with_layout(
+                    Layout[ArrowCArray].single()
+                )
+            )
+            var exc_ptr = cpython.PyErr_GetRaisedException()
+            return _restore_python_exception(PythonObject(from_owned=exc_ptr))
+
+        var schema_cap = PythonObject(from_owned=schema_cap_ptr)
+        var arr_cap_ptr = cpython.PyCapsule_New(
+            arr_ptr.unsafe_bitcast[NoneType]().unsafe_origin_cast[
+                MutUntrackedOrigin
+            ](),
+            ARROW_ARRAY_CAPSULE_NAME,
+            _destroy_arrow_array_capsule,
+        )
+        if not arr_cap_ptr:
+            _release_exported_arrow_array(arr_ptr)
+            dealloc(
+                ThinAllocation(unsafe_owned_ptr=arr_ptr).unsafe_with_layout(
+                    Layout[ArrowCArray].single()
+                )
+            )
+            var exc_ptr = cpython.PyErr_GetRaisedException()
+            return _restore_python_exception(PythonObject(from_owned=exc_ptr))
+
+        var arr_cap = PythonObject(from_owned=arr_cap_ptr)
+        var tp_ptr = cpython.PyTuple_New(2)
+        if not tp_ptr:
+            var exc_ptr = cpython.PyErr_GetRaisedException()
+            return _restore_python_exception(PythonObject(from_owned=exc_ptr))
+        _ = cpython.PyTuple_SetItem(tp_ptr, 0, schema_cap^.steal_data())
+        _ = cpython.PyTuple_SetItem(tp_ptr, 1, arr_cap^.steal_data())
+        return PythonObject(from_owned=tp_ptr)
+
+
+struct _ArrowEvalResult(Copyable, Defaultable, Movable):
+    """Result of evaluating an Arrow native stage or fused Arrow chain without the GIL."""
+
+    var buffer: ArrowBuffer
+    var status: Int32
+
+    def __init__(out self):
+        self.buffer = ArrowBuffer()
+        self.status = 0
+
+    def __init__(out self, var buffer: ArrowBuffer, status: Int32):
+        self.buffer = buffer^
+        self.status = status
+
+    def __init__(out self, *, copy: Self):
+        self.buffer = copy.buffer.copy()
+        self.status = copy.status
 
 
 def _restore_raised_exception(exc_ptr: PyObjectPtr):
@@ -468,6 +1349,8 @@ def _get_exc_global(exc_name: String) -> PyObjectPtr:
         return cpython.get_error_global("PyExc_ValueError")
     if exc_name == "OverflowError":
         return cpython.get_error_global("PyExc_OverflowError")
+    if exc_name == "IndexError":
+        return cpython.get_error_global("PyExc_IndexError")
     if exc_name == "RuntimeError":
         return cpython.get_error_global("PyExc_RuntimeError")
     return cpython.get_error_global("PyExc_Exception")
@@ -623,6 +1506,751 @@ def _box_from_native(val: NativeValue) -> _CallResult:
     return _CallResult(PythonObject(from_owned=obj_ptr))
 
 
+def _unbox_from_arrow_c_capsules(
+    schema_cap: PythonObject,
+    array_cap: PythonObject,
+    expected_kind: Int32,
+) -> Tuple[ArrowBuffer, Optional[PythonObject]]:
+    """Extract an `ArrowBuffer` from `("arrow_schema", "arrow_array")` PyCapsules."""
+    ref cpython = Python().cpython()
+    if not cpython.PyCapsule_IsValid(
+        schema_cap._obj_ptr, String(ARROW_SCHEMA_CAPSULE_NAME)
+    ):
+        return (
+            ArrowBuffer(),
+            _make_py_error(
+                "TypeError",
+                "Expected a PyCapsule named 'arrow_schema' from __arrow_c_array__()",
+            ),
+        )
+    if not cpython.PyCapsule_IsValid(
+        array_cap._obj_ptr, String(ARROW_ARRAY_CAPSULE_NAME)
+    ):
+        return (
+            ArrowBuffer(),
+            _make_py_error(
+                "TypeError",
+                "Expected a PyCapsule named 'arrow_array' from __arrow_c_array__()",
+            ),
+        )
+
+    var raw_schema: OpaquePointer[MutUntrackedOrigin]
+    var raw_array: OpaquePointer[MutUntrackedOrigin]
+    try:
+        raw_schema = cpython.PyCapsule_GetPointer(
+            schema_cap._obj_ptr, String(ARROW_SCHEMA_CAPSULE_NAME)
+        )
+        raw_array = cpython.PyCapsule_GetPointer(
+            array_cap._obj_ptr, String(ARROW_ARRAY_CAPSULE_NAME)
+        )
+    except:
+        var exc_ptr = cpython.PyErr_GetRaisedException()
+        return (ArrowBuffer(), PythonObject(from_owned=exc_ptr))
+
+    var schema_ptr = raw_schema.unsafe_bitcast[ArrowCSchema]()
+    var array_ptr = raw_array.unsafe_bitcast[ArrowCArray]()
+    if not schema_ptr[].release or not array_ptr[].release:
+        return (
+            ArrowBuffer(),
+            _make_py_error(
+                "ValueError",
+                "Arrow C Data Interface struct has already been released",
+            ),
+        )
+
+    var fmt_byte: UInt8 = 0
+    var fmt_second: UInt8 = 0
+    if case .Some(fmt_p) = schema_ptr[].format:
+        fmt_byte = fmt_p[unsafe_offset=0]
+        fmt_second = fmt_p[unsafe_offset=1]
+
+    if fmt_second != 0 or (
+        fmt_byte != UInt8(ord("g"))
+        and fmt_byte != UInt8(ord("f"))
+        and fmt_byte != UInt8(ord("l"))
+        and fmt_byte != UInt8(ord("i"))
+    ):
+        if case .Some(rel_a) = array_ptr[].release:
+            rel_a(array_ptr)
+        if case .Some(rel_s) = schema_ptr[].release:
+            rel_s(schema_ptr)
+        return (
+            ArrowBuffer(),
+            _make_py_error(
+                "TypeError",
+                "Unsupported Arrow C format string; expected 'g' (float64), 'f' (float32), 'l' (int64), or 'i' (int32)",
+            ),
+        )
+
+    if array_ptr[].null_count > 0:
+        if case .Some(rel_a) = array_ptr[].release:
+            rel_a(array_ptr)
+        if case .Some(rel_s) = schema_ptr[].release:
+            rel_s(schema_ptr)
+        return (
+            ArrowBuffer(),
+            _make_py_error(
+                "ValueError",
+                "Arrow arrays with null values (null_count > 0) are not supported by native stages",
+            ),
+        )
+
+    var is_src_int = fmt_byte == UInt8(ord("l")) or fmt_byte == UInt8(ord("i"))
+    if expected_kind == NATIVE_KIND_ARROW_INT64 and not is_src_int:
+        if case .Some(rel_a) = array_ptr[].release:
+            rel_a(array_ptr)
+        if case .Some(rel_s) = schema_ptr[].release:
+            rel_s(schema_ptr)
+        return (
+            ArrowBuffer(),
+            _make_py_error(
+                "TypeError",
+                "NativeStage (arrow_int64) expected an integer Arrow array or sequence",
+            ),
+        )
+
+    var out_is_int = (
+        expected_kind == NATIVE_KIND_ARROW_INT64
+        or (expected_kind < 0 and is_src_int)
+    )
+    var n = Int(array_ptr[].length)
+    var offset = Int(array_ptr[].offset)
+    if n < 0 or offset < 0:
+        if case .Some(rel_a) = array_ptr[].release:
+            rel_a(array_ptr)
+        if case .Some(rel_s) = schema_ptr[].release:
+            rel_s(schema_ptr)
+        return (
+            ArrowBuffer(),
+            _make_py_error("ValueError", "Invalid negative ArrowCArray length or offset"),
+        )
+
+    if n == 0:
+        if case .Some(rel_a) = array_ptr[].release:
+            rel_a(array_ptr)
+        if case .Some(rel_s) = schema_ptr[].release:
+            rel_s(schema_ptr)
+        if out_is_int:
+            return (ArrowBuffer(ints=List[Int64]()), None)
+        return (ArrowBuffer(floats=List[Float64]()), None)
+
+    var data_opaque: Optional[OpaquePointer[ImmUntrackedOrigin]] = None
+    if array_ptr[].n_buffers >= 2:
+        if case .Some(bufs) = array_ptr[].buffers:
+            data_opaque = bufs[unsafe_offset=1]
+
+    if not data_opaque:
+        if case .Some(rel_a) = array_ptr[].release:
+            rel_a(array_ptr)
+        if case .Some(rel_s) = schema_ptr[].release:
+            rel_s(schema_ptr)
+        return (
+            ArrowBuffer(),
+            _make_py_error("ValueError", "ArrowCArray data buffer pointer (buffers[1]) is NULL"),
+        )
+
+    var raw_data = data_opaque.value()
+    var result_buf: ArrowBuffer
+    if out_is_int:
+        var ints = List[Int64](unsafe_uninit_length=n)
+        if fmt_byte == UInt8(ord("l")):
+            var src_i64 = raw_data.unsafe_bitcast[Int64]().unsafe_offset(offset)
+            for i in range(n):
+                ints[i] = src_i64[unsafe_offset=i]
+        else:
+            var src_i32 = raw_data.unsafe_bitcast[Int32]().unsafe_offset(offset)
+            for i in range(n):
+                ints[i] = Int64(src_i32[unsafe_offset=i])
+        result_buf = ArrowBuffer(ints=ints^)
+    else:
+        var flts = List[Float64](unsafe_uninit_length=n)
+        if fmt_byte == UInt8(ord("g")):
+            var src_f64 = raw_data.unsafe_bitcast[Float64]().unsafe_offset(offset)
+            for i in range(n):
+                flts[i] = src_f64[unsafe_offset=i]
+        elif fmt_byte == UInt8(ord("f")):
+            var src_f32 = raw_data.unsafe_bitcast[Float32]().unsafe_offset(offset)
+            for i in range(n):
+                flts[i] = Float64(src_f32[unsafe_offset=i])
+        elif fmt_byte == UInt8(ord("l")):
+            var src_i64 = raw_data.unsafe_bitcast[Int64]().unsafe_offset(offset)
+            for i in range(n):
+                flts[i] = Float64(src_i64[unsafe_offset=i])
+        else:
+            var src_i32 = raw_data.unsafe_bitcast[Int32]().unsafe_offset(offset)
+            for i in range(n):
+                flts[i] = Float64(src_i32[unsafe_offset=i])
+        result_buf = ArrowBuffer(floats=flts^)
+
+    if case .Some(rel_a) = array_ptr[].release:
+        rel_a(array_ptr)
+    if case .Some(rel_s) = schema_ptr[].release:
+        rel_s(schema_ptr)
+    return (result_buf^, None)
+
+
+def _unbox_for_arrow(
+    py_val: PythonObject, expected_kind: Int32
+) -> Tuple[ArrowBuffer, Optional[PythonObject]]:
+    """Extract an `ArrowBuffer` from `ArrowArray`, `__arrow_c_array__`, or a sequence."""
+    # 1. Fast path: direct ArrowBuffer or wrapper with `_buffer`
+    try:
+        if case .Some(ab_ptr) = py_val._try_downcast_value[ArrowBuffer]():
+            if (
+                expected_kind == NATIVE_KIND_ARROW_INT64
+                and ab_ptr[].kind != NATIVE_KIND_ARROW_INT64
+            ):
+                return (
+                    ArrowBuffer(),
+                    _make_py_error(
+                        "TypeError",
+                        "NativeStage (arrow_int64) expected an integer Arrow array or sequence",
+                    ),
+                )
+            var copied = ab_ptr[].copy()
+            if (
+                expected_kind == NATIVE_KIND_ARROW_FLOAT64
+                and copied.kind == NATIVE_KIND_ARROW_INT64
+            ):
+                copied.widen_to_float64()
+            return (copied^, None)
+    except:
+        pass
+
+    ref cpython = Python().cpython()
+    if cpython.PyObject_HasAttrString(py_val._obj_ptr, "_buffer") != 0:
+        try:
+            var inner_obj = py_val._buffer
+            if case .Some(ab_ptr) = inner_obj._try_downcast_value[ArrowBuffer]():
+                if (
+                    expected_kind == NATIVE_KIND_ARROW_INT64
+                    and ab_ptr[].kind != NATIVE_KIND_ARROW_INT64
+                ):
+                    return (
+                        ArrowBuffer(),
+                        _make_py_error(
+                            "TypeError",
+                            "NativeStage (arrow_int64) expected an integer Arrow array or sequence",
+                        ),
+                    )
+                var copied = ab_ptr[].copy()
+                if (
+                    expected_kind == NATIVE_KIND_ARROW_FLOAT64
+                    and copied.kind == NATIVE_KIND_ARROW_INT64
+                ):
+                    copied.widen_to_float64()
+                return (copied^, None)
+        except:
+            cpython.PyErr_Clear()
+
+    # 2. Apache Arrow PyCapsule Interface (`__arrow_c_array__`)
+    if (
+        cpython.PyObject_HasAttrString(py_val._obj_ptr, "__arrow_c_array__")
+        != 0
+    ):
+        try:
+            var caps = py_val.__arrow_c_array__()
+            if len(caps) != 2:
+                return (
+                    ArrowBuffer(),
+                    _make_py_error(
+                        "TypeError",
+                        "__arrow_c_array__() must return a (schema_capsule, array_capsule) 2-tuple",
+                    ),
+                )
+            return _unbox_from_arrow_c_capsules(caps[0], caps[1], expected_kind)
+        except:
+            if cpython.PyErr_Occurred():
+                var exc_ptr = cpython.PyErr_GetRaisedException()
+                return (ArrowBuffer(), PythonObject(from_owned=exc_ptr))
+            return (
+                ArrowBuffer(),
+                _make_py_error("TypeError", "Failed to call __arrow_c_array__()"),
+            )
+
+    # 3. Reject str/bytes/dict or scalar non-iterables
+    if (
+        cpython.PyObject_HasAttrString(py_val._obj_ptr, "encode") != 0
+        or cpython.PyObject_HasAttrString(py_val._obj_ptr, "decode") != 0
+        or cpython.PyObject_HasAttrString(py_val._obj_ptr, "keys") != 0
+    ):
+        return (
+            ArrowBuffer(),
+            _make_py_error(
+                "TypeError",
+                "Expected an ArrowArray, __arrow_c_array__ provider, or 1D numeric sequence",
+            ),
+        )
+
+    var iter_ptr = cpython.PyObject_GetIter(py_val._obj_ptr)
+    if not iter_ptr:
+        cpython.PyErr_Clear()
+        return (
+            ArrowBuffer(),
+            _make_py_error(
+                "TypeError",
+                "Expected an ArrowArray, __arrow_c_array__ provider, or 1D numeric sequence",
+            ),
+        )
+    var iter_obj = PythonObject(from_owned=iter_ptr)
+    var cap_hint = Int(cpython.PyObject_Length(py_val._obj_ptr))
+    if cap_hint < 0:
+        cpython.PyErr_Clear()
+        cap_hint = 0
+
+    if expected_kind == NATIVE_KIND_ARROW_INT64:
+        var ints = List[Int64](capacity=cap_hint)
+        while True:
+            var item_ptr = cpython.PyIter_Next(iter_obj._obj_ptr)
+            if not item_ptr:
+                if cpython.PyErr_Occurred():
+                    var exc_ptr = cpython.PyErr_GetRaisedException()
+                    return (ArrowBuffer(), PythonObject(from_owned=exc_ptr))
+                break
+            var item_obj = PythonObject(from_owned=item_ptr)
+            if (
+                cpython.PyBool_Check(item_obj._obj_ptr) != 0
+                or cpython.PyLong_Check(item_obj._obj_ptr) == 0
+            ):
+                return (
+                    ArrowBuffer(),
+                    _make_py_error(
+                        "TypeError",
+                        "NativeStage (arrow_int64) expected int elements",
+                    ),
+                )
+            var v = cpython.PyLong_AsSsize_t(item_obj._obj_ptr)
+            if v == Py_ssize_t(-1) and cpython.PyErr_Occurred():
+                var exc_ptr = cpython.PyErr_GetRaisedException()
+                return (ArrowBuffer(), PythonObject(from_owned=exc_ptr))
+            ints.append(Int64(v))
+        return (ArrowBuffer(ints=ints^), None)
+
+    if expected_kind == NATIVE_KIND_ARROW_FLOAT64:
+        var flts = List[Float64](capacity=cap_hint)
+        while True:
+            var item_ptr = cpython.PyIter_Next(iter_obj._obj_ptr)
+            if not item_ptr:
+                if cpython.PyErr_Occurred():
+                    var exc_ptr = cpython.PyErr_GetRaisedException()
+                    return (ArrowBuffer(), PythonObject(from_owned=exc_ptr))
+                break
+            var item_obj = PythonObject(from_owned=item_ptr)
+            if cpython.PyBool_Check(item_obj._obj_ptr) != 0 or (
+                cpython.PyFloat_Check(item_obj._obj_ptr) == 0
+                and cpython.PyLong_Check(item_obj._obj_ptr) == 0
+            ):
+                return (
+                    ArrowBuffer(),
+                    _make_py_error(
+                        "TypeError",
+                        "NativeStage (arrow_float64) expected float or int elements",
+                    ),
+                )
+            var d = cpython.PyFloat_AsDouble(item_obj._obj_ptr)
+            if d == -1.0 and cpython.PyErr_Occurred():
+                var exc_ptr = cpython.PyErr_GetRaisedException()
+                return (ArrowBuffer(), PythonObject(from_owned=exc_ptr))
+            flts.append(Float64(d))
+        return (ArrowBuffer(floats=flts^), None)
+
+    # expected_kind < 0 ("auto" dtype inference: int64 if all elements are int, float64 if any float)
+    var ints_auto = List[Int64](capacity=cap_hint)
+    var flts_auto = List[Float64]()
+    var seen_float = False
+    while True:
+        var item_ptr = cpython.PyIter_Next(iter_obj._obj_ptr)
+        if not item_ptr:
+            if cpython.PyErr_Occurred():
+                var exc_ptr = cpython.PyErr_GetRaisedException()
+                return (ArrowBuffer(), PythonObject(from_owned=exc_ptr))
+            break
+        var item_obj = PythonObject(from_owned=item_ptr)
+        if cpython.PyBool_Check(item_obj._obj_ptr) != 0:
+            return (
+                ArrowBuffer(),
+                _make_py_error(
+                    "TypeError",
+                    "ArrowArray expected int or float elements, not bool",
+                ),
+            )
+        if not seen_float and cpython.PyLong_Check(item_obj._obj_ptr) != 0:
+            var v = cpython.PyLong_AsSsize_t(item_obj._obj_ptr)
+            if v == Py_ssize_t(-1) and cpython.PyErr_Occurred():
+                var exc_ptr = cpython.PyErr_GetRaisedException()
+                return (ArrowBuffer(), PythonObject(from_owned=exc_ptr))
+            ints_auto.append(Int64(v))
+        elif (
+            cpython.PyFloat_Check(item_obj._obj_ptr) != 0
+            or cpython.PyLong_Check(item_obj._obj_ptr) != 0
+        ):
+            if not seen_float:
+                seen_float = True
+                flts_auto = List[Float64](capacity= max(cap_hint, len(ints_auto) + 1))
+                for prev_i in ints_auto:
+                    flts_auto.append(Float64(prev_i))
+                ints_auto.clear()
+            var d = cpython.PyFloat_AsDouble(item_obj._obj_ptr)
+            if d == -1.0 and cpython.PyErr_Occurred():
+                var exc_ptr = cpython.PyErr_GetRaisedException()
+                return (ArrowBuffer(), PythonObject(from_owned=exc_ptr))
+            flts_auto.append(Float64(d))
+        else:
+            return (
+                ArrowBuffer(),
+                _make_py_error(
+                    "TypeError",
+                    "ArrowArray expected int or float elements",
+                ),
+            )
+
+    if seen_float or len(ints_auto) == 0:
+        return (ArrowBuffer(floats=flts_auto^), None)
+    return (ArrowBuffer(ints=ints_auto^), None)
+
+
+def _box_from_arrow(var buf: ArrowBuffer) -> _CallResult:
+    """Wrap an `ArrowBuffer` into `strata.ArrowArray` (or `mojo_strata.ArrowBuffer`) while holding the GIL."""
+    try:
+        var py_buf = PythonObject(alloc=buf^)
+        var cache = _CAPI_CACHE.get_or_create_ptr()
+        if Bool(cache[].arrow_wrapper_fn):
+            var wrapper = PythonObject(from_borrowed=cache[].arrow_wrapper_fn)
+            return _invoke_py_callable(wrapper, py_buf)
+        return _CallResult(py_buf^)
+    except e:
+        return _CallResult(error=_make_py_error("RuntimeError", String(e)))
+
+
+def _run_gpu_arrow_float_chain(
+    ops_base: Pointer[_NativeOp, ImmUntrackedOrigin],
+    run_start: Int,
+    run_end: Int,
+    mut data: List[Float64],
+) -> Int32:
+    """Execute one or more consecutive GPU float stages on a single `DeviceContext`."""
+    var n = len(data)
+    if n == 0:
+        return 0
+    try:
+        comptime if has_accelerator():
+            var ctx = DeviceContext()
+            var grid = ceildiv(n, _GPU_BLOCK_SIZE)
+            comptime if CompilationTarget.is_macos():
+                var d_a = ctx.enqueue_create_buffer[DType.float32](n)
+                var d_b = ctx.enqueue_create_buffer[DType.float32](n)
+                with d_a.map_to_host() as h_in:
+                    for i in range(n):
+                        h_in[i] = Float32(data[i])
+                var in_is_a = True
+                for step in range(run_start, run_end):
+                    var step_op = ops_base[unsafe_offset=step]
+                    if step_op.op_kind == _OP_ARROW_FLOAT_LINEAR:
+                        if in_is_a:
+                            ctx.enqueue_function[_gpu_arrow_f32_linear_kernel](
+                                d_a,
+                                d_b,
+                                Float32(step_op.f_p0),
+                                Float32(step_op.f_p1),
+                                Int64(n),
+                                grid_dim=grid,
+                                block_dim=_GPU_BLOCK_SIZE,
+                            )
+                        else:
+                            ctx.enqueue_function[_gpu_arrow_f32_linear_kernel](
+                                d_b,
+                                d_a,
+                                Float32(step_op.f_p0),
+                                Float32(step_op.f_p1),
+                                Int64(n),
+                                grid_dim=grid,
+                                block_dim=_GPU_BLOCK_SIZE,
+                            )
+                    else:
+                        if in_is_a:
+                            ctx.enqueue_function[_gpu_arrow_f32_poly_kernel](
+                                d_a,
+                                d_b,
+                                Float32(step_op.f_p0),
+                                Float32(step_op.f_p1),
+                                Float32(step_op.f_p2),
+                                Int64(n),
+                                grid_dim=grid,
+                                block_dim=_GPU_BLOCK_SIZE,
+                            )
+                        else:
+                            ctx.enqueue_function[_gpu_arrow_f32_poly_kernel](
+                                d_b,
+                                d_a,
+                                Float32(step_op.f_p0),
+                                Float32(step_op.f_p1),
+                                Float32(step_op.f_p2),
+                                Int64(n),
+                                grid_dim=grid,
+                                block_dim=_GPU_BLOCK_SIZE,
+                            )
+                    in_is_a = not in_is_a
+                if in_is_a:
+                    with d_a.map_to_host() as h_out:
+                        for i in range(n):
+                            data[i] = Float64(h_out[i])
+                else:
+                    with d_b.map_to_host() as h_out:
+                        for i in range(n):
+                            data[i] = Float64(h_out[i])
+            else:
+                var d_a = ctx.enqueue_create_buffer[DType.float64](n)
+                var d_b = ctx.enqueue_create_buffer[DType.float64](n)
+                with d_a.map_to_host() as h_in:
+                    for i in range(n):
+                        h_in[i] = data[i]
+                var in_is_a = True
+                for step in range(run_start, run_end):
+                    var step_op = ops_base[unsafe_offset=step]
+                    if step_op.op_kind == _OP_ARROW_FLOAT_LINEAR:
+                        if in_is_a:
+                            ctx.enqueue_function[_gpu_arrow_f64_linear_kernel](
+                                d_a,
+                                d_b,
+                                step_op.f_p0,
+                                step_op.f_p1,
+                                Int64(n),
+                                grid_dim=grid,
+                                block_dim=_GPU_BLOCK_SIZE,
+                            )
+                        else:
+                            ctx.enqueue_function[_gpu_arrow_f64_linear_kernel](
+                                d_b,
+                                d_a,
+                                step_op.f_p0,
+                                step_op.f_p1,
+                                Int64(n),
+                                grid_dim=grid,
+                                block_dim=_GPU_BLOCK_SIZE,
+                            )
+                    else:
+                        if in_is_a:
+                            ctx.enqueue_function[_gpu_arrow_f64_poly_kernel](
+                                d_a,
+                                d_b,
+                                step_op.f_p0,
+                                step_op.f_p1,
+                                step_op.f_p2,
+                                Int64(n),
+                                grid_dim=grid,
+                                block_dim=_GPU_BLOCK_SIZE,
+                            )
+                        else:
+                            ctx.enqueue_function[_gpu_arrow_f64_poly_kernel](
+                                d_b,
+                                d_a,
+                                step_op.f_p0,
+                                step_op.f_p1,
+                                step_op.f_p2,
+                                Int64(n),
+                                grid_dim=grid,
+                                block_dim=_GPU_BLOCK_SIZE,
+                            )
+                    in_is_a = not in_is_a
+                if in_is_a:
+                    with d_a.map_to_host() as h_out:
+                        for i in range(n):
+                            data[i] = h_out[i]
+                else:
+                    with d_b.map_to_host() as h_out:
+                        for i in range(n):
+                            data[i] = h_out[i]
+            return 0
+    except:
+        return 1
+    return 0
+
+
+def _run_gpu_arrow_int_linear(
+    scale: Int64, bias: Int64, mut data: List[Int64]
+) -> Int32:
+    """Execute an `Int64` linear stage on the GPU after checked overflow validation."""
+    var n = len(data)
+    for i in range(n):
+        var acc = Int128(scale) * Int128(data[i]) + Int128(bias)
+        if acc < Int128(Int64.MIN) or acc > Int128(Int64.MAX):
+            return _NATIVE_STATUS_OVERFLOW
+    if n == 0:
+        return 0
+    try:
+        comptime if has_accelerator():
+            var ctx = DeviceContext()
+            var d_in = ctx.enqueue_create_buffer[DType.int64](n)
+            var d_out = ctx.enqueue_create_buffer[DType.int64](n)
+            with d_in.map_to_host() as h_in:
+                for i in range(n):
+                    h_in[i] = data[i]
+            ctx.enqueue_function[_gpu_arrow_i64_linear_kernel](
+                d_in,
+                d_out,
+                scale,
+                bias,
+                Int64(n),
+                grid_dim=ceildiv(n, _GPU_BLOCK_SIZE),
+                block_dim=_GPU_BLOCK_SIZE,
+            )
+            with d_out.map_to_host() as h_out:
+                for i in range(n):
+                    data[i] = h_out[i]
+            return 0
+    except:
+        return 1
+    for i in range(n):
+        data[i] = Int64(Int128(scale) * Int128(data[i]) + Int128(bias))
+    return 0
+
+
+def _eval_arrow_ops(
+    ops_base: Pointer[_NativeOp, ImmUntrackedOrigin],
+    op_start: Int,
+    op_len: Int,
+    input: ArrowBuffer,
+) -> _ArrowEvalResult:
+    """Evaluate a single Arrow stage or fused chain of Arrow stages completely GIL-free."""
+    var valid_status = _validate_native_chain_kinds(ops_base, op_start, op_len)
+    if valid_status != 0:
+        return _ArrowEvalResult(ArrowBuffer(), valid_status)
+
+    var cur = input.copy()
+    var end_idx = op_start + op_len
+    var idx = op_start
+    while idx < end_idx:
+        var op = ops_base[unsafe_offset=idx]
+        var expected_k = op.input_kind()
+        if not _is_arrow_kind(expected_k):
+            return _ArrowEvalResult(ArrowBuffer(), -2)
+
+        if cur.kind != expected_k:
+            if (
+                cur.kind == NATIVE_KIND_ARROW_INT64
+                and expected_k == NATIVE_KIND_ARROW_FLOAT64
+            ):
+                cur.widen_to_float64()
+            else:
+                return _ArrowEvalResult(ArrowBuffer(), -2)
+
+        # Check for a contiguous run of built-in GPU float stages
+        comptime if has_accelerator():
+            if op.is_builtin_gpu_float() and len(cur.float_data) > 0:
+                var run_end = idx + 1
+                while (
+                    run_end < end_idx
+                    and ops_base[unsafe_offset=run_end].is_builtin_gpu_float()
+                ):
+                    run_end += 1
+                var gpu_st = _run_gpu_arrow_float_chain(
+                    ops_base, idx, run_end, cur.float_data
+                )
+                if gpu_st != 0:
+                    return _ArrowEvalResult(ArrowBuffer(), gpu_st)
+                idx = run_end
+                continue
+
+            if op.op_kind == _OP_ARROW_INT_LINEAR and op.uses_gpu():
+                var gpu_i_st = _run_gpu_arrow_int_linear(
+                    op.i_p0, op.i_p1, cur.int_data
+                )
+                if gpu_i_st != 0:
+                    return _ArrowEvalResult(ArrowBuffer(), gpu_i_st)
+                idx += 1
+                continue
+
+        if op.op_kind == _OP_ARROW_INT_LINEAR:
+            var n = len(cur.int_data)
+            var s = op.i_p0
+            var b = op.i_p1
+            for i in range(n):
+                var acc = Int128(s) * Int128(cur.int_data[i]) + Int128(b)
+                if acc < Int128(Int64.MIN) or acc > Int128(Int64.MAX):
+                    return _ArrowEvalResult(
+                        ArrowBuffer(), _NATIVE_STATUS_OVERFLOW
+                    )
+                cur.int_data[i] = Int64(acc)
+            idx += 1
+            continue
+
+        if op.op_kind == _OP_ARROW_FLOAT_LINEAR:
+            var n = len(cur.float_data)
+            var s = op.f_p0
+            var b = op.f_p1
+            for i in range(n):
+                cur.float_data[i] = s * cur.float_data[i] + b
+            idx += 1
+            continue
+
+        if op.op_kind == _OP_ARROW_FLOAT_POLY:
+            var n = len(cur.float_data)
+            var c0 = op.f_p0
+            var c1 = op.f_p1
+            var c2 = op.f_p2
+            for i in range(n):
+                var x = cur.float_data[i]
+                cur.float_data[i] = (c2 * x + c1) * x + c0
+            idx += 1
+            continue
+
+        # External C-ABI PyCapsule Arrow stage
+        if op.fn_addr == 0:
+            return _ArrowEvalResult(ArrowBuffer(), -1)
+        var raw_fn = OpaquePointer[MutUntrackedOrigin](
+            unsafe_from_address=op.fn_addr
+        )
+        var ctx_opt: Optional[OpaquePointer[MutUntrackedOrigin]] = None
+        if op.ctx_addr != 0:
+            ctx_opt = OpaquePointer[MutUntrackedOrigin](
+                unsafe_from_address=op.ctx_addr
+            )
+
+        if op.desc_kind == NATIVE_KIND_ARROW_FLOAT64:
+            var n = len(cur.float_data)
+            var out_flts = List[Float64](length=n, fill=0.0)
+            var in_p = cur.float_data.unsafe_ptr().as_imm().unsafe_origin_cast[
+                ImmUntrackedOrigin
+            ]()
+            var out_p = out_flts.unsafe_ptr().unsafe_origin_cast[
+                MutUntrackedOrigin
+            ]()
+            var arrow_flt_fn = Pointer(to=raw_fn).unsafe_bitcast[
+                NativeArrowFloatFn
+            ]()[]
+            var st = arrow_flt_fn(in_p, out_p, Int64(n), ctx_opt)
+            keep(cur)
+            if st != 0:
+                return _ArrowEvalResult(ArrowBuffer(), st)
+            cur = ArrowBuffer(floats=out_flts^)
+            idx += 1
+            continue
+
+        if op.desc_kind == NATIVE_KIND_ARROW_INT64:
+            var n = len(cur.int_data)
+            var out_ints = List[Int64](length=n, fill=0)
+            var in_p = cur.int_data.unsafe_ptr().as_imm().unsafe_origin_cast[
+                ImmUntrackedOrigin
+            ]()
+            var out_p = out_ints.unsafe_ptr().unsafe_origin_cast[
+                MutUntrackedOrigin
+            ]()
+            var arrow_int_fn = Pointer(to=raw_fn).unsafe_bitcast[
+                NativeArrowIntFn
+            ]()[]
+            var st = arrow_int_fn(in_p, out_p, Int64(n), ctx_opt)
+            keep(cur)
+            if st != 0:
+                return _ArrowEvalResult(ArrowBuffer(), st)
+            cur = ArrowBuffer(ints=out_ints^)
+            idx += 1
+            continue
+
+        return _ArrowEvalResult(ArrowBuffer(), -2)
+
+    return _ArrowEvalResult(cur^, 0)
+
+
 def _coerce_native_value(
     val: NativeValue, expected_kind: Int32
 ) -> Tuple[NativeValue, Int32]:
@@ -726,25 +2354,37 @@ struct NativeStage(Copyable, Movable, Writable):
         """Return the expected native input kind tag.
 
         Returns:
-            One of `NATIVE_KIND_INT64`, `NATIVE_KIND_FLOAT64`, or `NATIVE_KIND_VALUE`.
+            One of `NATIVE_KIND_INT64`, `NATIVE_KIND_FLOAT64`, `NATIVE_KIND_VALUE`,
+            `NATIVE_KIND_ARROW_FLOAT64`, or `NATIVE_KIND_ARROW_INT64`.
         """
         if self.op_kind == _OP_CAPSULE:
             return self.descriptor.kind
         if self.op_kind == _OP_INT_LINEAR or self.op_kind == _OP_CPU_WORK:
             return NATIVE_KIND_INT64
-        return NATIVE_KIND_FLOAT64
+        if (
+            self.op_kind == _OP_FLOAT_LINEAR
+            or self.op_kind == _OP_FLOAT_POLY
+        ):
+            return NATIVE_KIND_FLOAT64
+        if self.op_kind == _OP_ARROW_INT_LINEAR:
+            return NATIVE_KIND_ARROW_INT64
+        return NATIVE_KIND_ARROW_FLOAT64
 
     def kind_name(self) -> String:
         """Return a human-readable string for the stage's ABI kind.
 
         Returns:
-            `"int"`, `"float"`, or `"value"`.
+            `"int"`, `"float"`, `"value"`, `"arrow_float64"`, or `"arrow_int64"`.
         """
         var k = self.input_kind()
         if k == NATIVE_KIND_INT64:
             return "int"
         if k == NATIVE_KIND_FLOAT64:
             return "float"
+        if k == NATIVE_KIND_ARROW_FLOAT64:
+            return "arrow_float64"
+        if k == NATIVE_KIND_ARROW_INT64:
+            return "arrow_int64"
         return "value"
 
     def eval_native(self, input: NativeValue) -> _NativeEvalResult:
@@ -760,7 +2400,26 @@ struct NativeStage(Copyable, Movable, Writable):
 
     def _call_result(self, msg: PythonObject) -> _CallResult:
         var op = _NativeOp.from_stage(self)
-        var unboxed = _unbox_for_native(msg, op.input_kind())
+        var in_k = op.input_kind()
+        if _is_arrow_kind(in_k):
+            var unboxed_arr = _unbox_for_arrow(msg, in_k)
+            if case .Some(exc) = unboxed_arr[1]:
+                return _CallResult(error=exc)
+            var in_buf = unboxed_arr[0].copy()
+            var op_ptr = Pointer(to=op).as_imm().unsafe_origin_cast[
+                ImmUntrackedOrigin
+            ]()
+            var arr_res: _ArrowEvalResult
+            with GILReleased(Python()):
+                arr_res = _eval_arrow_ops(op_ptr, 0, 1, in_buf)
+            keep(op)
+            if arr_res.status != 0:
+                return _CallResult(
+                    error=_native_status_to_error(arr_res.status)
+                )
+            return _box_from_arrow(arr_res.buffer.copy())
+
+        var unboxed = _unbox_for_native(msg, in_k)
         if case .Some(exc) = unboxed[1]:
             return _CallResult(error=exc)
         var in_val = unboxed[0]
@@ -1209,6 +2868,17 @@ __async def _run_native_ops_task(
     out_ptr[] = _eval_native_ops(ops_base, op_start, op_len, input)
 
 
+__async def _run_arrow_ops_task(
+    ops_base: Pointer[_NativeOp, ImmUntrackedOrigin],
+    op_start: Int,
+    op_len: Int,
+    in_ptr: Pointer[ArrowBuffer, ImmUntrackedOrigin],
+    out_ptr: Pointer[_ArrowEvalResult, MutUntrackedOrigin],
+):
+    # Executes 100% GIL-free (CPU or GPU) on Mojo's asyncrt worker pool.
+    out_ptr[] = _eval_arrow_ops(ops_base, op_start, op_len, in_ptr[])
+
+
 __async def _run_native_map_worker(
     ops_base: Pointer[_NativeOp, ImmUntrackedOrigin],
     op_len: Int,
@@ -1226,6 +2896,152 @@ __async def _run_native_map_worker(
         )
 
 
+__async def _run_arrow_map_worker(
+    ops_base: Pointer[_NativeOp, ImmUntrackedOrigin],
+    op_len: Int,
+    in_base: Pointer[ArrowBuffer, ImmUntrackedOrigin],
+    out_base: Pointer[_ArrowEvalResult, MutUntrackedOrigin],
+    next_ptr: Pointer[Atomic[Int64], MutUntrackedOrigin],
+    n: Int,
+):
+    while True:
+        var idx = Int(next_ptr[].fetch_add(1))
+        if idx >= n:
+            break
+        out_base[unsafe_offset=idx] = _eval_arrow_ops(
+            ops_base, 0, op_len, in_base[unsafe_offset=idx]
+        )
+
+
+def _map_arrow_ops_py(
+    ops: List[_NativeOp],
+    items: PythonObject,
+    max_concurrency_obj: PythonObject,
+) -> PythonObject:
+    """Execute a pure-native Arrow `_NativeOp` chain across an iterable of Arrow columns GIL-free."""
+    ref cpython = Python().cpython()
+    var mc_ptr = max_concurrency_obj._obj_ptr
+    if cpython.PyBool_Check(mc_ptr) != 0 or cpython.PyLong_Check(mc_ptr) == 0:
+        return _restore_python_exception(
+            _make_py_error(
+                "TypeError",
+                "map_list() max_concurrency must be an int (>= 0)",
+            )
+        )
+    var mc_raw = cpython.PyLong_AsSsize_t(mc_ptr)
+    if mc_raw == Py_ssize_t(-1) and cpython.PyErr_Occurred():
+        var exc_ptr = cpython.PyErr_GetRaisedException()
+        return _restore_python_exception(PythonObject(from_owned=exc_ptr))
+    var max_conc = Int(mc_raw)
+    if max_conc < 0:
+        return _restore_python_exception(
+            _make_py_error(
+                "ValueError",
+                "map_list() max_concurrency must be >= 0",
+            )
+        )
+
+    var op_len = len(ops)
+    var ops_base = ops.unsafe_ptr().as_imm().unsafe_origin_cast[
+        ImmUntrackedOrigin
+    ]()
+    var valid_st = _validate_native_chain_kinds(ops_base, 0, op_len)
+    if valid_st != 0:
+        return _restore_python_exception(_native_status_to_error(valid_st))
+
+    var iter_ptr = cpython.PyObject_GetIter(items._obj_ptr)
+    if not iter_ptr:
+        return PythonObject(from_owned=PyObjectPtr())
+    var iter_obj = PythonObject(from_owned=iter_ptr)
+
+    var cap_hint = Int(cpython.PyObject_Length(items._obj_ptr))
+    if cap_hint < 0:
+        cpython.PyErr_Clear()
+        cap_hint = 0
+
+    var inputs = List[ArrowBuffer](capacity=cap_hint)
+    var expected_kind = ops[0].input_kind()
+    while True:
+        var next_item_ptr = cpython.PyIter_Next(iter_obj._obj_ptr)
+        if not next_item_ptr:
+            if cpython.PyErr_Occurred():
+                return PythonObject(from_owned=PyObjectPtr())
+            break
+        var item_obj = PythonObject(from_owned=next_item_ptr)
+        var unboxed = _unbox_for_arrow(item_obj, expected_kind)
+        if case .Some(exc) = unboxed[1]:
+            return _restore_python_exception(exc)
+        inputs.append(unboxed[0].copy())
+
+    var n = len(inputs)
+    if n == 0:
+        var empty_ptr = cpython.PyList_New(0)
+        if not empty_ptr:
+            return PythonObject(from_owned=PyObjectPtr())
+        return PythonObject(from_owned=empty_ptr)
+
+    var in_base = inputs.unsafe_ptr().as_imm().unsafe_origin_cast[
+        ImmUntrackedOrigin
+    ]()
+    var outputs = List[_ArrowEvalResult](length=n, fill=_ArrowEvalResult())
+    var out_base = outputs.unsafe_ptr().unsafe_origin_cast[MutUntrackedOrigin]()
+
+    var workers = min(max_conc, n) if max_conc > 0 else min(
+        max(num_logical_cores(), 1), n
+    )
+    if workers <= 1 or n == 1:
+        with GILReleased(Python()):
+            for i in range(n):
+                out_base[unsafe_offset=i] = _eval_arrow_ops(
+                    ops_base, 0, op_len, in_base[unsafe_offset=i]
+                )
+    else:
+        var next_idx = Atomic[Int64](0)
+        var next_ptr = Pointer(to=next_idx).unsafe_origin_cast[
+            MutUntrackedOrigin
+        ]()
+        with GILReleased(Python()):
+            var tg = TG()
+            for _ in range(workers - 1):
+                tg.create_task(
+                    _run_arrow_map_worker(
+                        ops_base, op_len, in_base, out_base, next_ptr, n
+                    )
+                )
+            while True:
+                var idx = Int(next_idx.fetch_add(1))
+                if idx >= n:
+                    break
+                out_base[unsafe_offset=idx] = _eval_arrow_ops(
+                    ops_base, 0, op_len, in_base[unsafe_offset=idx]
+                )
+            tg.wait()
+        keep(next_idx)
+    keep(ops)
+    keep(inputs)
+    keep(outputs)
+
+    var list_ptr = cpython.PyList_New(Py_ssize_t(n))
+    if not list_ptr:
+        return PythonObject(from_owned=PyObjectPtr())
+    for i in range(n):
+        var eval_res = outputs[i].copy()
+        if eval_res.status != 0:
+            _ = PythonObject(from_owned=list_ptr)
+            return _restore_python_exception(
+                _native_status_to_error(eval_res.status)
+            )
+        var boxed = _box_from_arrow(eval_res.buffer.copy())
+        if case .Some(exc) = boxed.error:
+            _ = PythonObject(from_owned=list_ptr)
+            return _restore_python_exception(exc)
+        var val_obj = boxed.value
+        _ = cpython.PyList_SetItem(
+            list_ptr, Py_ssize_t(i), val_obj^.steal_data()
+        )
+    return PythonObject(from_owned=list_ptr)
+
+
 def _map_native_ops_py(
     ops: List[_NativeOp],
     all_short_arith: Bool,
@@ -1233,6 +3049,14 @@ def _map_native_ops_py(
     max_concurrency_obj: PythonObject,
 ) -> PythonObject:
     """Execute a pure-native `_NativeOp` chain across a Python iterable GIL-free."""
+    if len(ops) > 0 and _is_arrow_kind(ops[0].input_kind()):
+        return _map_arrow_ops_py(ops, items, max_concurrency_obj)
+    var ops_base_chk = ops.unsafe_ptr().as_imm().unsafe_origin_cast[
+        ImmUntrackedOrigin
+    ]()
+    var valid_st = _validate_native_chain_kinds(ops_base_chk, 0, len(ops))
+    if valid_st != 0:
+        return _restore_python_exception(_native_status_to_error(valid_st))
     ref cpython = Python().cpython()
     var mc_ptr = max_concurrency_obj._obj_ptr
     if cpython.PyBool_Check(mc_ptr) != 0 or cpython.PyLong_Check(mc_ptr) == 0:
@@ -1635,6 +3459,298 @@ def make_int_linear_capsule(
     return PythonObject(from_owned=cap_ptr)
 
 
+def _set_arrow_wrapper(wrapper_fn: PythonObject) raises -> PythonObject:
+    """Register the Python `strata.ArrowArray._from_buffer` factory hook."""
+    ref cpython = Python().cpython()
+    var cache = _CAPI_CACHE.get_or_create_ptr()
+    if Bool(cache[].arrow_wrapper_fn):
+        cpython.Py_DecRef(cache[].arrow_wrapper_fn)
+    cpython.Py_IncRef(wrapper_fn._obj_ptr)
+    cache[].arrow_wrapper_fn = wrapper_fn._obj_ptr
+    return Python.none()
+
+
+def has_gpu() raises -> PythonObject:
+    """Return `True` if a supported GPU accelerator is available to Mojo/MAX.
+
+    Returns:
+        Python `bool` indicating GPU accelerator availability.
+
+    Raises:
+        Error if Python bool construction fails.
+    """
+    return PythonObject(has_accelerator())
+
+
+def native_arrow_int_linear(
+    scale: PythonObject,
+    bias: PythonObject,
+    use_gpu: PythonObject,
+    name: PythonObject,
+) raises -> PythonObject:
+    """Construct a GIL-free (CPU or GPU) Arrow `int64` linear stage (`scale * x + bias`).
+
+    Args:
+        scale: Integer multiplier.
+        bias: Integer offset.
+        use_gpu: Boolean flag enabling GPU execution when available.
+        name: Stage display name.
+
+    Returns:
+        A `mojo_strata.NativeStage` for Arrow `int64` columns.
+
+    Raises:
+        Error if argument conversion fails.
+    """
+    var s_res = _extract_int64_arg(scale, "scale")
+    if case .Some(exc) = s_res[1]:
+        return _restore_python_exception(exc)
+    var b_res = _extract_int64_arg(bias, "bias")
+    if case .Some(exc) = b_res[1]:
+        return _restore_python_exception(exc)
+    var gpu_flag = 1.0 if Bool(py=use_gpu) else 0.0
+    var stage_name = String(py=name)
+    var stage = NativeStage(
+        stage_name^,
+        _OP_ARROW_INT_LINEAR,
+        NativeStageDescriptor(),
+        None,
+        i_p0=s_res[0],
+        i_p1=b_res[0],
+        f_p0=gpu_flag,
+    )
+    return PythonObject(alloc=stage^)
+
+
+def native_arrow_float_linear(
+    scale: PythonObject,
+    bias: PythonObject,
+    use_gpu: PythonObject,
+    name: PythonObject,
+) raises -> PythonObject:
+    """Construct a GIL-free (CPU or GPU) Arrow `float64` linear stage (`scale * x + bias`).
+
+    Args:
+        scale: Float64 multiplier.
+        bias: Float64 offset.
+        use_gpu: Boolean flag enabling GPU execution when available.
+        name: Stage display name.
+
+    Returns:
+        A `mojo_strata.NativeStage` for Arrow `float64` columns.
+
+    Raises:
+        Error if argument conversion fails.
+    """
+    var s = Float64(py=scale)
+    var b = Float64(py=bias)
+    var gpu_flag: Int64 = 1 if Bool(py=use_gpu) else 0
+    var stage_name = String(py=name)
+    var stage = NativeStage(
+        stage_name^,
+        _OP_ARROW_FLOAT_LINEAR,
+        NativeStageDescriptor(),
+        None,
+        i_p0=gpu_flag,
+        f_p0=s,
+        f_p1=b,
+    )
+    return PythonObject(alloc=stage^)
+
+
+def native_arrow_float_poly(
+    c0: PythonObject,
+    c1: PythonObject,
+    c2: PythonObject,
+    use_gpu: PythonObject,
+    name: PythonObject,
+) raises -> PythonObject:
+    """Construct a GIL-free (CPU or GPU) Arrow `float64` quadratic stage (`c2*x^2 + c1*x + c0`).
+
+    Args:
+        c0: Constant coefficient.
+        c1: Linear coefficient.
+        c2: Quadratic coefficient.
+        use_gpu: Boolean flag enabling GPU execution when available.
+        name: Stage display name.
+
+    Returns:
+        A `mojo_strata.NativeStage` for Arrow `float64` columns.
+
+    Raises:
+        Error if argument conversion fails.
+    """
+    var p0 = Float64(py=c0)
+    var p1 = Float64(py=c1)
+    var p2 = Float64(py=c2)
+    var gpu_flag: Int64 = 1 if Bool(py=use_gpu) else 0
+    var stage_name = String(py=name)
+    var stage = NativeStage(
+        stage_name^,
+        _OP_ARROW_FLOAT_POLY,
+        NativeStageDescriptor(),
+        None,
+        i_p0=gpu_flag,
+        f_p0=p0,
+        f_p1=p1,
+        f_p2=p2,
+    )
+    return PythonObject(alloc=stage^)
+
+
+struct _ArrowFloatLinearCtx(Copyable, Movable):
+    var scale: Float64
+    var bias: Float64
+    var use_gpu: Bool
+
+    def __init__(out self, scale: Float64, bias: Float64, use_gpu: Bool):
+        self.scale = scale
+        self.bias = bias
+        self.use_gpu = use_gpu
+
+
+def _capsule_arrow_float_linear_fn(
+    in_ptr: Pointer[Float64, ImmUntrackedOrigin],
+    out_ptr: Pointer[Float64, MutUntrackedOrigin],
+    length: Int64,
+    ctx: Optional[OpaquePointer[MutUntrackedOrigin]],
+) abi("C") -> Int32:
+    var n = Int(length)
+    var scale: Float64 = 1.0
+    var bias: Float64 = 0.0
+    var use_gpu = False
+    if case .Some(raw_ctx) = ctx:
+        var p = raw_ctx.unsafe_bitcast[_ArrowFloatLinearCtx]()
+        scale = p[].scale
+        bias = p[].bias
+        use_gpu = p[].use_gpu
+
+    if n <= 0:
+        return 0
+
+    if use_gpu:
+        comptime if has_accelerator():
+            try:
+                var dev_ctx = DeviceContext()
+                var grid = ceildiv(n, _GPU_BLOCK_SIZE)
+                comptime if CompilationTarget.is_macos():
+                    var d_in = dev_ctx.enqueue_create_buffer[DType.float32](n)
+                    var d_out = dev_ctx.enqueue_create_buffer[DType.float32](n)
+                    with d_in.map_to_host() as h_in:
+                        for i in range(n):
+                            h_in[i] = Float32(in_ptr[unsafe_offset=i])
+                    dev_ctx.enqueue_function[_gpu_arrow_f32_linear_kernel](
+                        d_in,
+                        d_out,
+                        Float32(scale),
+                        Float32(bias),
+                        Int64(n),
+                        grid_dim=grid,
+                        block_dim=_GPU_BLOCK_SIZE,
+                    )
+                    with d_out.map_to_host() as h_out:
+                        for i in range(n):
+                            out_ptr[unsafe_offset=i] = Float64(h_out[i])
+                else:
+                    var d_in = dev_ctx.enqueue_create_buffer[DType.float64](n)
+                    var d_out = dev_ctx.enqueue_create_buffer[DType.float64](n)
+                    with d_in.map_to_host() as h_in:
+                        for i in range(n):
+                            h_in[i] = in_ptr[unsafe_offset=i]
+                    dev_ctx.enqueue_function[_gpu_arrow_f64_linear_kernel](
+                        d_in,
+                        d_out,
+                        scale,
+                        bias,
+                        Int64(n),
+                        grid_dim=grid,
+                        block_dim=_GPU_BLOCK_SIZE,
+                    )
+                    with d_out.map_to_host() as h_out:
+                        for i in range(n):
+                            out_ptr[unsafe_offset=i] = h_out[i]
+                return 0
+            except:
+                return 1
+
+    for i in range(n):
+        out_ptr[unsafe_offset=i] = scale * in_ptr[unsafe_offset=i] + bias
+    return 0
+
+
+def _delete_arrow_float_linear_ctx(
+    raw_ctx: OpaquePointer[MutUntrackedOrigin]
+) abi("C"):
+    dealloc(
+        ThinAllocation(
+            unsafe_owned_ptr=raw_ctx.unsafe_bitcast[_ArrowFloatLinearCtx]()
+        ).unsafe_with_layout(Layout[_ArrowFloatLinearCtx].single())
+    )
+
+
+def make_arrow_float_linear_capsule(
+    scale: PythonObject, bias: PythonObject, use_gpu: PythonObject
+) raises -> PythonObject:
+    """Create a `strata.native_stage.v1` PyCapsule of kind `NATIVE_KIND_ARROW_FLOAT64`.
+
+    Args:
+        scale: Float64 multiplier.
+        bias: Float64 offset.
+        use_gpu: Boolean flag enabling GPU execution when available.
+
+    Returns:
+        A CPython `PyCapsule` conforming to the `strata.native_stage.v1` Arrow ABI.
+
+    Raises:
+        Error if argument conversion or capsule allocation fails.
+    """
+    var s = Float64(py=scale)
+    var b = Float64(py=bias)
+    var g = Bool(py=use_gpu)
+    var ctx_alloc = alloc(Layout[_ArrowFloatLinearCtx].single())
+    var ctx_ptr = ctx_alloc^.unsafe_leak()
+    ctx_ptr.write(_ArrowFloatLinearCtx(s, b, g))
+    var desc_alloc = alloc(Layout[NativeStageDescriptor].single())
+    var desc_ptr = desc_alloc^.unsafe_leak()
+    var fn_val: NativeArrowFloatFn = _capsule_arrow_float_linear_fn
+    var fn_opaque = Pointer(to=fn_val).unsafe_bitcast[
+        OpaquePointer[MutUntrackedOrigin]
+    ]()[]
+    desc_ptr.write(
+        NativeStageDescriptor(
+            NATIVE_KIND_ARROW_FLOAT64,
+            0,
+            fn_opaque,
+            ctx_ptr.unsafe_bitcast[NoneType]().unsafe_origin_cast[
+                MutUntrackedOrigin
+            ](),
+            Optional[NativeCtxDeleter](_delete_arrow_float_linear_ctx),
+        )
+    )
+    ref cpython = Python().cpython()
+    var cap_ptr = cpython.PyCapsule_New(
+        desc_ptr.unsafe_bitcast[NoneType]().unsafe_origin_cast[
+            MutUntrackedOrigin
+        ](),
+        NATIVE_STAGE_CAPSULE_NAME,
+        _destroy_int_linear_capsule,
+    )
+    if not cap_ptr:
+        dealloc(
+            ThinAllocation(unsafe_owned_ptr=ctx_ptr).unsafe_with_layout(
+                Layout[_ArrowFloatLinearCtx].single()
+            )
+        )
+        dealloc(
+            ThinAllocation(unsafe_owned_ptr=desc_ptr).unsafe_with_layout(
+                Layout[NativeStageDescriptor].single()
+            )
+        )
+        var exc_ptr = cpython.PyErr_GetRaisedException()
+        return _restore_python_exception(PythonObject(from_owned=exc_ptr))
+    return PythonObject(from_owned=cap_ptr)
+
+
 @export
 def PyInit_mojo_strata() abi("C") -> PythonObject:
     """Initialize the CPython extension module for mojo_strata.
@@ -1702,6 +3818,48 @@ def PyInit_mojo_strata() abi("C") -> PythonObject:
         ]()[]
         ns_builder._insert_slot(PyType_Slot(_PY_TP_CALL, ns_call_opaque))
 
+        _ = (
+            strata.add_type[ArrowBuffer]("mojo_strata.ArrowBuffer")
+            .def_py_init[ArrowBuffer.py_init]()
+            .def_staticmethod[ArrowBuffer.from_py](
+                "from_py",
+                "Construct an ArrowBuffer from a Python sequence, ArrowArray, or __arrow_c_array__ object.",
+            )
+            .def_method[ArrowBuffer.length](
+                "length", "Return number of elements."
+            )
+            .def_method[ArrowBuffer.get_dtype](
+                "get_dtype", "Return dtype string ('float64' or 'int64')."
+            )
+            .def_method[ArrowBuffer.nbytes](
+                "nbytes", "Return data buffer size in bytes."
+            )
+            .def_method[ArrowBuffer.data_ptr](
+                "data_ptr", "Return raw memory address of contiguous buffer."
+            )
+            .def_method[ArrowBuffer.get_item](
+                "get_item", "Return element at index."
+            )
+            .def_method[ArrowBuffer.slice_buffer](
+                "slice_buffer", "Return a sliced ArrowBuffer."
+            )
+            .def_method[ArrowBuffer.to_list](
+                "to_list", "Convert ArrowBuffer to a Python list."
+            )
+            .def_method[ArrowBuffer.export_c_capsules](
+                "export_c_capsules",
+                "Export ('arrow_schema', 'arrow_array') PyCapsules.",
+            )
+        )
+
+        strata.def_function[_set_arrow_wrapper](
+            "_set_arrow_wrapper",
+            "Register the Python ArrowArray wrapper constructor.",
+        )
+        strata.def_function[has_gpu](
+            "has_gpu",
+            "Return True if a supported GPU accelerator is available.",
+        )
         strata.def_function[native_from_capsule](
             "native_from_capsule",
             "Wrap a strata.native_stage.v1 PyCapsule into a NativeStage.",
@@ -1722,9 +3880,25 @@ def PyInit_mojo_strata() abi("C") -> PythonObject:
             "native_cpu_work",
             "Create a deterministic GIL-free Mojo CPU compute NativeStage.",
         )
+        strata.def_function[native_arrow_int_linear](
+            "native_arrow_int_linear",
+            "Create a GIL-free (CPU or GPU) Arrow int64 linear NativeStage.",
+        )
+        strata.def_function[native_arrow_float_linear](
+            "native_arrow_float_linear",
+            "Create a GIL-free (CPU or GPU) Arrow float64 linear NativeStage.",
+        )
+        strata.def_function[native_arrow_float_poly](
+            "native_arrow_float_poly",
+            "Create a GIL-free (CPU or GPU) Arrow float64 polynomial NativeStage.",
+        )
         strata.def_function[make_int_linear_capsule](
             "make_int_linear_capsule",
             "Create a strata.native_stage.v1 PyCapsule implementing scale * x + bias.",
+        )
+        strata.def_function[make_arrow_float_linear_capsule](
+            "make_arrow_float_linear_capsule",
+            "Create a strata.native_stage.v1 Arrow float64 PyCapsule implementing scale * x + bias.",
         )
 
         var mod = strata.finalize()
@@ -1735,6 +3909,9 @@ def PyInit_mojo_strata() abi("C") -> PythonObject:
         var ns_type = mod.__getattr__("mojo_strata.NativeStage")
         mod.NativeStage = ns_type
         _ = builtins.delattr(mod, "mojo_strata.NativeStage")
+        var ab_type = mod.__getattr__("mojo_strata.ArrowBuffer")
+        mod.ArrowBuffer = ab_type
+        _ = builtins.delattr(mod, "mojo_strata.ArrowBuffer")
         return mod
     except e:
         abort(String("failed to create Python module: ", e))
@@ -2209,7 +4386,7 @@ struct TaskGroup(Movable, Writable):
         return _CallResult(PythonObject(from_owned=tp_ptr))
 
     def _call_parallel_general(self, msg: PythonObject) -> _CallResult:
-        """Parallel dispatch for `ALL_PYTHON`, `HYBRID`, or mixed-unbox-error groups."""
+        """Parallel dispatch for `ALL_PYTHON`, `HYBRID`, Arrow, or mixed-unbox-error groups."""
         var count = len(self._plan_entries)
         var values = List[PythonObject](length=count, fill=PythonObject())
         var errors = List[Optional[PythonObject]](length=count, fill=None)
@@ -2219,43 +4396,84 @@ struct TaskGroup(Movable, Writable):
         var native_results = List[_NativeEvalResult](
             length=count, fill=_NativeEvalResult()
         )
+        var arrow_inputs = List[ArrowBuffer](
+            length=count, fill=ArrowBuffer()
+        )
+        var arrow_results = List[_ArrowEvalResult](
+            length=count, fill=_ArrowEvalResult()
+        )
+        var is_arrow_branch = List[Bool](length=count, fill=False)
         var has_spawned = List[Bool](length=count, fill=False)
+        var ops_base = self._plan_ops.unsafe_ptr().as_imm().unsafe_origin_cast[
+            ImmUntrackedOrigin
+        ]()
 
         for idx in range(count):
             var entry = self._plan_entries[idx]
             if entry.kind == _ENTRY_NATIVE_CHAIN:
-                var unboxed = _unbox_for_native(msg, entry.input_kind)
-                if case .Some(exc) = unboxed[1]:
-                    errors[idx] = exc
+                var valid_st = _validate_native_chain_kinds(
+                    ops_base, Int(entry.op_start), Int(entry.op_len)
+                )
+                if valid_st != 0:
+                    errors[idx] = _native_status_to_error(valid_st)
+                    continue
+                if _is_arrow_kind(entry.input_kind):
+                    is_arrow_branch[idx] = True
+                    var unboxed_arr = _unbox_for_arrow(msg, entry.input_kind)
+                    if case .Some(exc) = unboxed_arr[1]:
+                        errors[idx] = exc
+                    else:
+                        arrow_inputs[idx] = unboxed_arr[0].copy()
+                        has_spawned[idx] = True
                 else:
-                    native_inputs[idx] = unboxed[0]
-                    has_spawned[idx] = True
+                    var unboxed = _unbox_for_native(msg, entry.input_kind)
+                    if case .Some(exc) = unboxed[1]:
+                        errors[idx] = exc
+                    else:
+                        native_inputs[idx] = unboxed[0]
+                        has_spawned[idx] = True
             else:
                 has_spawned[idx] = True
 
         var tg = TG()
         var msg_ptr = Pointer(to=msg).unsafe_origin_cast[ImmUntrackedOrigin]()
-        var ops_base = self._plan_ops.unsafe_ptr().as_imm().unsafe_origin_cast[
-            ImmUntrackedOrigin
-        ]()
 
         for idx in range(count):
             if not has_spawned[idx]:
                 continue
             var entry = self._plan_entries[idx]
             if entry.kind == _ENTRY_NATIVE_CHAIN:
-                var o_ptr = Pointer(to=native_results[idx]).unsafe_origin_cast[
-                    MutUntrackedOrigin
-                ]()
-                tg.create_task(
-                    _run_native_ops_task(
-                        ops_base,
-                        Int(entry.op_start),
-                        Int(entry.op_len),
-                        native_inputs[idx],
-                        o_ptr,
+                if is_arrow_branch[idx]:
+                    var in_arr_ptr = (
+                        Pointer(to=arrow_inputs[idx])
+                        .as_imm()
+                        .unsafe_origin_cast[ImmUntrackedOrigin]()
                     )
-                )
+                    var out_arr_ptr = Pointer(
+                        to=arrow_results[idx]
+                    ).unsafe_origin_cast[MutUntrackedOrigin]()
+                    tg.create_task(
+                        _run_arrow_ops_task(
+                            ops_base,
+                            Int(entry.op_start),
+                            Int(entry.op_len),
+                            in_arr_ptr,
+                            out_arr_ptr,
+                        )
+                    )
+                else:
+                    var o_ptr = Pointer(
+                        to=native_results[idx]
+                    ).unsafe_origin_cast[MutUntrackedOrigin]()
+                    tg.create_task(
+                        _run_native_ops_task(
+                            ops_base,
+                            Int(entry.op_start),
+                            Int(entry.op_len),
+                            native_inputs[idx],
+                            o_ptr,
+                        )
+                    )
             elif entry.kind == _ENTRY_NESTED_GROUP:
                 var t_ptr = Pointer(
                     to=self.objects[Int(entry.obj_idx)]
@@ -2289,6 +4507,8 @@ struct TaskGroup(Movable, Writable):
         # Keep buffers referenced by untracked pointers alive across tg.wait().
         keep(self)
         keep(native_inputs)
+        keep(arrow_inputs)
+        keep(arrow_results)
         keep(msg)
 
         # Box native outputs back to Python while holding the GIL
@@ -2297,16 +4517,30 @@ struct TaskGroup(Movable, Writable):
                 self._plan_entries[idx].kind == _ENTRY_NATIVE_CHAIN
                 and has_spawned[idx]
             ):
-                if native_results[idx].status != 0:
-                    errors[idx] = _native_status_to_error(
-                        native_results[idx].status
-                    )
-                else:
-                    var boxed = _box_from_native(native_results[idx].value)
-                    if case .Some(exc) = boxed.error:
-                        errors[idx] = exc
+                if is_arrow_branch[idx]:
+                    if arrow_results[idx].status != 0:
+                        errors[idx] = _native_status_to_error(
+                            arrow_results[idx].status
+                        )
                     else:
-                        values[idx] = boxed.value
+                        var boxed_arr = _box_from_arrow(
+                            arrow_results[idx].buffer.copy()
+                        )
+                        if case .Some(exc) = boxed_arr.error:
+                            errors[idx] = exc
+                        else:
+                            values[idx] = boxed_arr.value
+                else:
+                    if native_results[idx].status != 0:
+                        errors[idx] = _native_status_to_error(
+                            native_results[idx].status
+                        )
+                    else:
+                        var boxed = _box_from_native(native_results[idx].value)
+                        if case .Some(exc) = boxed.error:
+                            errors[idx] = exc
+                        else:
+                            values[idx] = boxed.value
 
         var failed = List[PythonObject]()
         for idx in range(count):
@@ -2328,6 +4562,64 @@ struct TaskGroup(Movable, Writable):
             )
         return _CallResult(PythonObject(from_owned=tp_ptr))
 
+    def _eval_native_chain_entry(
+        self, entry: _PlanEntry, msg: PythonObject
+    ) -> _CallResult:
+        """Evaluate a single `_ENTRY_NATIVE_CHAIN` (scalar or Arrow) in serial/undefined mode."""
+        var ops_base = self._plan_ops.unsafe_ptr().as_imm().unsafe_origin_cast[
+            ImmUntrackedOrigin
+        ]()
+        var valid_st = _validate_native_chain_kinds(
+            ops_base, Int(entry.op_start), Int(entry.op_len)
+        )
+        if valid_st != 0:
+            return _CallResult(error=_native_status_to_error(valid_st))
+
+        if _is_arrow_kind(entry.input_kind):
+            var unboxed_arr = _unbox_for_arrow(msg, entry.input_kind)
+            if case .Some(exc) = unboxed_arr[1]:
+                return _CallResult(error=exc)
+            var in_buf = unboxed_arr[0].copy()
+            var arr_res: _ArrowEvalResult
+            with GILReleased(Python()):
+                arr_res = _eval_arrow_ops(
+                    ops_base,
+                    Int(entry.op_start),
+                    Int(entry.op_len),
+                    in_buf,
+                )
+            keep(self)
+            keep(in_buf)
+            if arr_res.status != 0:
+                return _CallResult(
+                    error=_native_status_to_error(arr_res.status)
+                )
+            return _box_from_arrow(arr_res.buffer.copy())
+
+        var unboxed = _unbox_for_native(msg, entry.input_kind)
+        if case .Some(exc) = unboxed[1]:
+            return _CallResult(error=exc)
+        var eval_res: _NativeEvalResult
+        if entry.all_short_arith:
+            eval_res = _eval_native_ops(
+                ops_base,
+                Int(entry.op_start),
+                Int(entry.op_len),
+                unboxed[0],
+            )
+        else:
+            with GILReleased(Python()):
+                eval_res = _eval_native_ops(
+                    ops_base,
+                    Int(entry.op_start),
+                    Int(entry.op_len),
+                    unboxed[0],
+                )
+        keep(self)
+        if eval_res.status != 0:
+            return _CallResult(error=_native_status_to_error(eval_res.status))
+        return _box_from_native(eval_res.value)
+
     def _call_result(self, msg: PythonObject) -> _CallResult:
         var count = len(self.objects)
         if count == 0:
@@ -2340,34 +4632,7 @@ struct TaskGroup(Movable, Writable):
                 )
             var entry = self._plan_entries[0]
             if entry.kind == _ENTRY_NATIVE_CHAIN:
-                var unboxed = _unbox_for_native(msg, entry.input_kind)
-                if case .Some(exc) = unboxed[1]:
-                    return _CallResult(error=exc)
-                var ops_base = self._plan_ops.unsafe_ptr().as_imm().unsafe_origin_cast[
-                    ImmUntrackedOrigin
-                ]()
-                var eval_res: _NativeEvalResult
-                if entry.all_short_arith:
-                    eval_res = _eval_native_ops(
-                        ops_base,
-                        Int(entry.op_start),
-                        Int(entry.op_len),
-                        unboxed[0],
-                    )
-                else:
-                    with GILReleased(Python()):
-                        eval_res = _eval_native_ops(
-                            ops_base,
-                            Int(entry.op_start),
-                            Int(entry.op_len),
-                            unboxed[0],
-                        )
-                keep(self)
-                if eval_res.status != 0:
-                    return _CallResult(
-                        error=_native_status_to_error(eval_res.status)
-                    )
-                return _box_from_native(eval_res.value)
+                return self._eval_native_chain_entry(entry, msg)
             if entry.kind == _ENTRY_NESTED_GROUP:
                 return _invoke_nested_group(self.objects[0], msg)
             return _invoke_py_callable(self.objects[0], msg)
@@ -2375,40 +4640,13 @@ struct TaskGroup(Movable, Writable):
         if self.mode == Self.Serial.mode:
             var iv = msg
             var num_entries = len(self._plan_entries)
-            var ops_base = self._plan_ops.unsafe_ptr().as_imm().unsafe_origin_cast[
-                ImmUntrackedOrigin
-            ]()
             for e_idx in range(num_entries):
                 var entry = self._plan_entries[e_idx]
                 if entry.kind == _ENTRY_NATIVE_CHAIN:
-                    var unboxed = _unbox_for_native(iv, entry.input_kind)
-                    if case .Some(exc) = unboxed[1]:
+                    var res = self._eval_native_chain_entry(entry, iv)
+                    if case .Some(exc) = res.error:
                         return _CallResult(error=exc)
-                    var eval_res: _NativeEvalResult
-                    if entry.all_short_arith:
-                        eval_res = _eval_native_ops(
-                            ops_base,
-                            Int(entry.op_start),
-                            Int(entry.op_len),
-                            unboxed[0],
-                        )
-                    else:
-                        with GILReleased(Python()):
-                            eval_res = _eval_native_ops(
-                                ops_base,
-                                Int(entry.op_start),
-                                Int(entry.op_len),
-                                unboxed[0],
-                            )
-                    keep(self)
-                    if eval_res.status != 0:
-                        return _CallResult(
-                            error=_native_status_to_error(eval_res.status)
-                        )
-                    var boxed = _box_from_native(eval_res.value)
-                    if case .Some(exc) = boxed.error:
-                        return _CallResult(error=exc)
-                    iv = boxed.value
+                    iv = res.value
                 elif entry.kind == _ENTRY_NESTED_GROUP:
                     var res = _invoke_nested_group(
                         self.objects[Int(entry.obj_idx)], iv
@@ -2426,7 +4664,13 @@ struct TaskGroup(Movable, Writable):
             return _CallResult(iv^)
 
         if self._plan_kind == _PLAN_ALL_NATIVE:
-            return self._call_parallel_all_native(msg)
+            var has_arrow = False
+            for idx in range(len(self._plan_entries)):
+                if _is_arrow_kind(self._plan_entries[idx].input_kind):
+                    has_arrow = True
+                    break
+            if not has_arrow:
+                return self._call_parallel_all_native(msg)
         return self._call_parallel_general(msg)
 
     @staticmethod

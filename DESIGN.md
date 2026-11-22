@@ -214,9 +214,11 @@ External Mojo, C, C++, or Rust shared libraries can export GIL-free stages to Py
 // Capsule name: "strata.native_stage.v1"
 
 enum StrataNativeKind : int32_t {
-    STRATA_NATIVE_KIND_INT64   = 0,
-    STRATA_NATIVE_KIND_FLOAT64 = 1,
-    STRATA_NATIVE_KIND_VALUE   = 2,
+    STRATA_NATIVE_KIND_INT64         = 0,
+    STRATA_NATIVE_KIND_FLOAT64       = 1,
+    STRATA_NATIVE_KIND_VALUE         = 2,
+    STRATA_NATIVE_KIND_ARROW_FLOAT64 = 3,
+    STRATA_NATIVE_KIND_ARROW_INT64   = 4,
 };
 
 enum StrataNativeValTag : int32_t {
@@ -239,6 +241,18 @@ typedef int32_t (*StrataNativeValueFn)(
     StrataNativeValue* output,
     void* ctx
 );
+typedef int32_t (*StrataNativeArrowFloatFn)(
+    const double* in_ptr,
+    double* out_ptr,
+    int64_t length,
+    void* ctx
+);
+typedef int32_t (*StrataNativeArrowIntFn)(
+    const int64_t* in_ptr,
+    int64_t* out_ptr,
+    int64_t length,
+    void* ctx
+);
 typedef void (*StrataNativeCtxDeleter)(void* ctx);
 
 typedef struct StrataNativeStageDescriptor {
@@ -256,6 +270,10 @@ typedef struct StrataNativeStageDescriptor {
 - **Status Codes (`NativeValueFn`)**: Returning `0` signals success; returning `_NATIVE_STATUS_OVERFLOW` (`-4`) raises Python `OverflowError`; any other non-zero status raises Python `RuntimeError`.
 - **Strict Input Validation**: `bool` (`True`/`False`) is rejected with `TypeError` for `INT64` and `FLOAT64` stages (even though `bool` subclasses `int` in Python). Built-in integer linear kernels perform checked 64-bit arithmetic and raise `OverflowError` on signed 64-bit overflow.
 - **Exception-Safe Capsule Destruction**: `strata.interop.native_abi._destroy_descriptor_capsule` saves and restores any active CPython exception (`PyErr_GetRaisedException` / `PyErr_SetRaisedException`) around `ctx_deleter` and descriptor deallocation so garbage collection during stack unwinding never clobbers an in-flight exception.
+- **Apache Arrow C Data Interface (`__arrow_c_array__`) & GPU Device-Resident Chain Fusion**:
+  - `mojo_strata.ArrowBuffer` and `strata.ArrowArray` implement the official Apache Arrow PyCapsule protocol (`"arrow_schema"` and `"arrow_array"` pointing to C-ABI `ArrowCSchema` and `ArrowCArray`). Exported `ArrowCArray` descriptors hold a strong `Py_IncRef` on the owning `ArrowBuffer` in `private_data` and release it in the C-ABI `release` callback.
+  - On input, `_unbox_for_arrow` downcasts `strata.ArrowArray` / `mojo_strata.ArrowBuffer` in $O(1)$ without capsule allocation, or consumes any external `__arrow_c_array__()` provider (`pyarrow.Array`, `polars.Series`, `nanoarrow`, etc.) directly from `ArrowCArray.buffers[1]` (rejecting `null_count > 0` with `ValueError`).
+  - When consecutive GPU float stages (`gpu_arrow_float_linear`, `gpu_arrow_float_poly`) are chained via `|`, `_run_gpu_arrow_float_chain` fuses them onto a single `max.gpu.host.DeviceContext` using two ping-pong `DeviceBuffer`s (`d_a`, `d_b`), copying host $\to$ device once at the start of the run and device $\to$ host once at the end.
 
 ---
 

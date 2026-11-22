@@ -5,10 +5,19 @@ description = "Series/Parallel Runner on top of mojo asyncrt"
 readme = "README.md"
 authors = [{ name = "Samuel Ibarra", email = "Samuel.E.Ibarra@dell.com" }]
 requires-python = ">=3.13.5"
-dependencies = ["mojo>=1.2.0,<2.0.0"]
+dependencies = [
+    "mojo>=1.2.0,<2.0.0",
+    "max-core>=26.0.0",
+    "max-mojo-libs>=26.0.0",
+]
 
 [build-system]
-requires = ["hatchling", "mojo>=1.2.0,<2.0.0"]
+requires = [
+    "hatchling",
+    "mojo>=1.2.0,<2.0.0",
+    "max-core>=26.0.0",
+    "max-mojo-libs>=26.0.0",
+]
 build-backend = "hatchling.build"
 
 [[tool.uv.index]]
@@ -17,6 +26,8 @@ url = "https://whl.modular.com/nightly/simple/"
 
 [tool.uv.sources]
 mojo = { index = "modular-nightly" }
+max-core = { index = "modular-nightly" }
+max-mojo-libs = { index = "modular-nightly" }
 
 [tool.hatch.build.hooks.custom]
 path = "hatch_build.py"

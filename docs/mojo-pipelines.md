@@ -313,6 +313,17 @@ def main():
 
 ---
 
+## 6. GPU Pipelines (`max.gpu` & Device-Resident `DeviceBuffer` Stages)
+
+Because `max.gpu.host.DeviceBuffer[dtype]` conforms to `Movable & Deinitable` and `DeviceContext` operations are `raises`, GPU stages integrate directly with `strata.pipeline.fallible` (`ComposableFallibleStage`):
+
+- **Device-resident sequential chains (`|`)**: Upload host data to a `DeviceBuffer` in the first stage, pass `DeviceBuffer`s directly between intermediate GPU kernel stages on the same `DeviceContext[]` without host round-trips, and map back to host (`map_to_host()`) once at the end.
+- **Parallel GPU fan-outs (`&`)**: When running parallel GPU branches across `TaskGroup` threads, give each concurrent branch its own `DeviceContext()` stream (since a single `DeviceContext` represents a single execution stream).
+
+See Section 8 of [README.md](../README.md#8-gpu-pipelines-maxgpu--device-resident-stages) for a complete runnable example.
+
+---
+
 ## Behavioral Notes
 
 - **Associative flattening vs `group(...)`**: Chained `&` fan-outs (`((a & b) & c) & d`, `a & (b & (c & d))`, `(a & b) & (c & d)`) always produce the same flat `Tuple`. Wrap with `group(...)` (`owned_group(...)`, `raising_group(...)`) whenever nested tuples are wanted.

@@ -14,6 +14,8 @@ from typing import TYPE_CHECKING, Any, cast
 import pytest
 
 from strata import (
+    ArrowArray,
+    ArrowCArrayProvider,
     BranchTask,
     MapTask,
     RetryTask,
@@ -22,22 +24,32 @@ from strata import (
     TaskGroup,
     TracingExecutor,
     ZipTask,
+    arrow_array,
     arun,
     async_task,
     branch,
     fallback,
+    gpu_arrow_float_linear,
+    gpu_arrow_float_poly,
+    gpu_arrow_int_linear,
     graph_stats,
     group,
+    has_gpu,
     map_stage,
     map_task,
     mojo_strata,
+    native_arrow_float_linear,
+    native_arrow_float_poly,
+    native_arrow_int_linear,
     native_cpu_work,
     native_float_linear,
     native_float_poly,
     native_int_linear,
     native_stage,
     retry,
+    runtime_info,
     select,
+    spread,
     task,
     timeout,
     to_dot,
@@ -1336,3 +1348,186 @@ def test_wave2_from_tasks_is_pure_native_and_map_list() -> None:
         n_par.inner.map_list(xs, 4)
     with pytest.raises(TypeError):
         raw_ns.map_list(cast("Any", [1, "bad", 3]), 4)
+
+
+# ===----------------------------------------------------------------------=== #
+# 10. Arrow Columnar Data, __arrow_c_array__ C Data Interface & GPU Stages
+# ===----------------------------------------------------------------------=== #
+
+
+def test_arrow_array_c_data_interface_and_sequence_ops() -> None:
+    info = runtime_info()
+    assert isinstance(info.gpu_available, bool)
+    assert info.gpu_available == has_gpu()
+
+    # Auto dtype inference (int64 vs float64)
+    arr_i = ArrowArray([10, 20, 30, 40])
+    assert arr_i.dtype == "int64"
+    expected_len = 4
+    expected_nbytes = 32
+    assert len(arr_i) == expected_len
+    assert arr_i.nbytes == expected_nbytes
+    assert arr_i.data_ptr() != 0
+    assert arr_i[0] == 10  # ruff: ignore[magic-value-comparison]
+    assert arr_i[-1] == 40  # ruff: ignore[magic-value-comparison]
+    assert arr_i[1:3] == ArrowArray([20, 30])
+    assert arr_i[::-1] == [40, 30, 20, 10]
+    assert list(arr_i) == [10, 20, 30, 40]
+    assert arr_i == [10, 20, 30, 40]
+    assert arr_i == (10, 20, 30, 40)
+    assert "ArrowArray(dtype='int64'" in repr(arr_i)
+
+    arr_f = arrow_array([1, 2.5, 3])
+    assert arr_f.dtype == "float64"
+    assert arr_f.to_list() == [1.0, 2.5, 3.0]
+
+    # Empty array
+    empty_f = ArrowArray([], dtype="float64")
+    assert len(empty_f) == 0
+    assert empty_f.nbytes == 0
+    assert empty_f.data_ptr() == 0
+    assert empty_f.to_list() == []
+
+    # __arrow_c_array__ export and zero-copy import round-trip
+    assert isinstance(arr_i, ArrowCArrayProvider)
+    caps = arr_i.__arrow_c_array__()
+    assert len(caps) == 2  # ruff: ignore[magic-value-comparison]
+    roundtrip_i = ArrowArray.from_arrow(arr_i)
+    assert roundtrip_i == arr_i
+    roundtrip_f = ArrowArray.from_arrow(arr_i, dtype="float64")
+    assert roundtrip_f.dtype == "float64"
+    assert roundtrip_f.to_list() == [10.0, 20.0, 30.0, 40.0]
+
+    # External class implementing __arrow_c_array__ (like pyarrow.Array / polars.Series)
+    class _ExternalArrowColumn:
+        def __init__(self, vals: list[float]) -> None:
+            self._backing = ArrowArray(vals, dtype="float64")
+
+        def __arrow_c_array__(  # ruff: ignore[bad-dunder-method-name]
+            self, requested_schema: object = None
+        ) -> tuple[object, object]:
+            return self._backing.__arrow_c_array__(requested_schema)
+
+    ext_col = _ExternalArrowColumn([1.5, 2.5, 3.5])
+    imported_ext = ArrowArray.from_arrow(ext_col)
+    assert imported_ext == [1.5, 2.5, 3.5]
+
+    # Validation errors
+    flag = True
+    with pytest.raises(TypeError):
+        ArrowArray([1, flag, 3])
+    with pytest.raises(TypeError):
+        ArrowArray("not-an-arrow-array")
+    with pytest.raises(ValueError, match="Unsupported ArrowArray dtype"):
+        ArrowArray([1, 2], dtype=cast("Any", "bad_dtype"))
+    with pytest.raises(IndexError):
+        _ = arr_i[99]
+    with pytest.raises(TypeError, match="__arrow_c_array__"):
+        ArrowArray.from_arrow([1, 2, 3])
+
+
+def test_gpu_and_native_arrow_stages_and_fused_chains() -> None:
+    g_lin = gpu_arrow_float_linear(scale=2.0, bias=1.0, name="g_lin")
+    g_poly = gpu_arrow_float_poly(c0=1.0, c1=2.0, c2=3.0, name="g_poly")
+    assert g_lin.kind == "arrow_float64"
+    assert g_lin.is_gil_free is True
+
+    # Fused GPU chain: x -> 2*x + 1 -> 3*(2x+1)^2 + 2*(2x+1) + 1
+    gpu_chain = g_lin | g_poly
+    col = ArrowArray([1.0, 2.0, 3.0, 4.0])
+    out = gpu_chain(col)
+    assert isinstance(out, ArrowArray)
+    assert out.dtype == "float64"
+    expected_chain = [
+        3.0 * (2.0 * x + 1.0) ** 2 + 2.0 * (2.0 * x + 1.0) + 1.0
+        for x in [1.0, 2.0, 3.0, 4.0]
+    ]
+    assert out.to_list() == expected_chain
+    assert gpu_chain([1.0, 2.0, 3.0, 4.0]).to_list() == expected_chain
+    assert gpu_chain([]).to_list() == []
+
+    # Integer GPU & CPU Arrow stages + int64 -> float64 widening in fused chain
+    gi1 = gpu_arrow_int_linear(scale=3, bias=2, name="gi1")
+    ci2 = native_arrow_int_linear(scale=2, bias=-1, name="ci2")
+    assert (gi1 | ci2)([1, 2, 3, 4]).to_list() == [
+        (3 * x + 2) * 2 - 1 for x in [1, 2, 3, 4]
+    ]
+    widened = (gi1 | g_lin)([1, 2, 3])
+    assert widened.dtype == "float64"
+    assert widened.to_list() == [float((3 * x + 2) * 2 + 1) for x in [1, 2, 3]]
+
+    # Custom C-ABI Arrow capsule (`make_arrow_float_linear_capsule`)
+    use_gpu_true = True
+    use_gpu_false = False
+    cap_gpu = mojo_strata.make_arrow_float_linear_capsule(4.0, -2.0, use_gpu_true)
+    cap_cpu = mojo_strata.make_arrow_float_linear_capsule(0.5, 1.0, use_gpu_false)
+    s_cap = native_stage(cap_gpu, name="cap_gpu") | native_stage(
+        cap_cpu, name="cap_cpu"
+    )
+    assert s_cap(col).to_list() == [
+        0.5 * (4.0 * x - 2.0) + 1.0 for x in [1.0, 2.0, 3.0, 4.0]
+    ]
+
+    # Error guarantees (overflow, narrowing, scalar/Arrow mismatch)
+    with pytest.raises(OverflowError):
+        gi1([2**62, 1])
+    with pytest.raises(TypeError, match="Incompatible types"):
+        (g_lin | gi1)(col)
+    with pytest.raises(TypeError, match="Incompatible types"):
+        (native_int_linear(2, 1) | g_lin)(cast("Any", 5))
+    with pytest.raises(TypeError, match="arrow_int64"):
+        gi1([1.5, 2.5])
+
+
+def test_arrow_parallel_hybrid_batch_and_executors() -> None:
+    g_lin = gpu_arrow_float_linear(scale=2.0, bias=1.0, name="g_lin")
+    g_poly = gpu_arrow_float_poly(c0=1.0, c1=2.0, c2=3.0, name="g_poly")
+    c_lin = native_arrow_float_linear(scale=0.5, bias=4.0, use_gpu=False)
+    c_poly = native_arrow_float_poly(c0=2.0, c1=1.0, c2=1.0, use_gpu=False)
+    gpu_chain = g_lin | g_poly
+
+    @task
+    def _col_len(arr: ArrowArray[float]) -> int:
+        return len(arr)
+
+    @spread
+    def _combine(
+        a: ArrowArray[float],
+        b: ArrowArray[float],
+        n: int,
+    ) -> tuple[list[float], int]:
+        return ([x + y for x, y in zip(a, b, strict=True)], n)
+
+    col = ArrowArray([1.0, 2.0, 3.0, 4.0])
+    hybrid_arrow = (gpu_chain & (c_lin | c_poly) & _col_len) | _combine
+    merged_vals, count = hybrid_arrow(col)
+    expected_count = 4
+    assert count == expected_count
+    expected_chain = [
+        3.0 * (2.0 * x + 1.0) ** 2 + 2.0 * (2.0 * x + 1.0) + 1.0
+        for x in [1.0, 2.0, 3.0, 4.0]
+    ]
+    expected_c = [
+        (0.5 * x + 4.0) ** 2 + (0.5 * x + 4.0) + 2.0
+        for x in [1.0, 2.0, 3.0, 4.0]
+    ]
+    assert merged_vals == [
+        a + b for a, b in zip(expected_chain, expected_c, strict=True)
+    ]
+
+    batches = [
+        ArrowArray([1.0, 2.0]),
+        ArrowArray([3.0, 4.0]),
+    ]
+    mapped_batches = map_task(gpu_chain, max_concurrency=2)(batches)
+    assert len(mapped_batches) == 2  # ruff: ignore[magic-value-comparison]
+    assert mapped_batches[0].to_list() == expected_chain[:2]
+    assert mapped_batches[1].to_list() == expected_chain[2:]
+    assert gpu_chain.map(batches, max_in_flight=2) == mapped_batches
+    assert list(gpu_chain.stream(batches, max_in_flight=2)) == mapped_batches
+    assert asyncio.run(arun(hybrid_arrow, col)) == (merged_vals, count)
+    assert SequentialExecutor().run(hybrid_arrow, col) == (merged_vals, count)
+    assert TracingExecutor(sequential=False).run(hybrid_arrow, col) == (
+        merged_vals,
+        count,
+    )

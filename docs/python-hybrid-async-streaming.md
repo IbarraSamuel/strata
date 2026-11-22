@@ -171,106 +171,111 @@ print(pipe(1.0))  # (0.5, 0.5)
 - Use `export_int_stage_capsule` for `Int64 -> Int64` callbacks.
 - Use `export_float_stage_capsule` for `Float64 -> Float64` callbacks.
 - Use `export_value_stage_capsule` for tagged `NativeValue -> NativeValue` callbacks (`Int64`, `Float64`, `Bool`) that return `0` on success or a non-zero status code to raise an exception in Python.
+- Use `export_arrow_float_stage_capsule` and `export_arrow_int_stage_capsule` for columnar `(in_ptr, out_ptr, length, ctx) -> status` callbacks over Arrow-compatible data.
 - Python classes can also implement the `NativeCapsuleProvider` protocol (`def as_native_capsule(self) -> object`) so `native_stage(obj)` extracts the capsule automatically.
 
-### GPU-Backed Custom Stage Example (Advanced)
+### Arrow Columnar Data & GPU Execution (`ArrowArray`, `gpu_arrow_*`, `export_arrow_*`)
 
-`export_value_stage_capsule` can also drive accelerator APIs (`max.gpu`) and report device or type errors via a non-zero status code instead of returning a sentinel float.
+For high-throughput columnar and GPU workloads, Strata supports **Arrow-like data** via the Apache Arrow C Data Interface PyCapsule protocol (`__arrow_c_array__`):
 
-> **Note:** The v1 capsule ABI passes scalar `NativeValue`s (`Int64`, `Float64`, `Bool`), not tensors. The example below launches a 1-element GPU kernel purely to illustrate end-to-end `DeviceContext` + status-code integration; real GPU workloads should amortize launch/transfer overhead over batched buffers and store persistent device resources in the capsule's `ctx` pointer.
+- **Inputs accepted**: `strata.ArrowArray`, `pyarrow.Array`, `polars.Series`, `nanoarrow`, any object implementing `__arrow_c_array__()`, or 1D Python numeric sequences (`list`, `tuple`, `array.array`, `memoryview`).
+- **Outputs returned**: `strata.ArrowArray` (backed by a contiguous Mojo buffer), which implements `__arrow_c_array__()`, `.to_list()`, `.to_pyarrow()`, `.dtype` (`"float64"` or `"int64"`), `.nbytes`, `.data_ptr()`, indexing, and slicing.
+- **Built-in GPU & CPU Arrow stages**:
+  - `gpu_arrow_float_linear(scale, bias)` / `native_arrow_float_linear(scale, bias, use_gpu=False)`
+  - `gpu_arrow_float_poly(c0, c1, c2)` / `native_arrow_float_poly(c0, c1, c2, use_gpu=False)`
+  - `gpu_arrow_int_linear(scale, bias)` / `native_arrow_int_linear(scale, bias, use_gpu=False)`
+  - Consecutive GPU float stages chained with `|` (`gpu_arrow_float_linear(...) | gpu_arrow_float_poly(...)`) automatically fuse on a single `DeviceContext` using ping-pong `DeviceBuffer`s — uploading to the GPU once and downloading back to host once.
 
-Requires an environment with `max` GPU support, a supported GPU, and Strata's Mojo package on `-I`:
+```python
+from strata import (
+    ArrowArray,
+    gpu_arrow_float_linear,
+    gpu_arrow_float_poly,
+    has_gpu,
+)
+
+print("GPU accelerator available:", has_gpu())
+
+col = ArrowArray([1.0, 2.0, 3.0, 4.0])
+pipe = gpu_arrow_float_linear(scale=2.0, bias=1.0) | gpu_arrow_float_poly(
+    c0=1.0, c1=2.0, c2=3.0
+)
+out = pipe(col)
+assert out == [34.0, 86.0, 162.0, 262.0]
+
+# Export zero-copy Arrow C Data Interface PyCapsules ("arrow_schema", "arrow_array"):
+schema_cap, array_cap = out.__arrow_c_array__()
+```
+
+#### Exporting a Custom GPU Arrow Stage (`export_arrow_float_stage_capsule`)
+
+External Mojo extensions can process an entire Arrow column on the GPU in a single kernel launch using `export_arrow_float_stage_capsule`:
 
 ```mojo
+from std.math import ceildiv
 from std.memory import OpaquePointer
 from std.os import abort
 from std.python import PythonObject
 from std.python.bindings import PythonModuleBuilder
-
-from layout import ImmTileTensor, MutTileTensor, TileTensor, row_major
 from max.gpu import global_idx
 from max.gpu.host import DeviceContext
-from strata.interop.native_abi import (
-    NATIVE_VAL_FLOAT64,
-    NativeValue,
-    export_value_stage_capsule,
-)
+from strata.interop.native_abi import export_arrow_float_stage_capsule
 
-comptime count = 1
-comptime layout = row_major[count]()
+comptime BLOCK_SIZE = 256
 
-def double_one(
-    input: ImmTileTensor[DType.float32, type_of(layout), ImmUntrackedOrigin],
-    output: MutTileTensor[DType.float32, type_of(layout), MutUntrackedOrigin],
+def gpu_double_kernel(
+    inp: Pointer[Float32, ImmUntrackedOrigin],
+    output: Pointer[Float32, MutUntrackedOrigin],
+    n: Int64,
 ):
-    comptime assert input.flat_rank == 1 and output.flat_rank == 1
-    var idx = global_idx.x
-    if idx < count:
-        output[idx] = input[idx] * 2
+    var tid = global_idx.x
+    if tid < Int(n):
+        output[unsafe_offset=tid] = inp[unsafe_offset=tid] * 2.0
 
-def gpu_double(
-    input: Pointer[NativeValue, ImmUntrackedOrigin],
-    output: Pointer[NativeValue, MutUntrackedOrigin],
+def gpu_double_arrow(
+    in_ptr: Pointer[Float64, ImmUntrackedOrigin],
+    out_ptr: Pointer[Float64, MutUntrackedOrigin],
+    length: Int64,
     _ctx: Optional[OpaquePointer[MutUntrackedOrigin]],
 ) abi("C") -> Int32:
-    if input[].kind != NATIVE_VAL_FLOAT64:
-        return 2
-
+    var n = Int(length)
+    if n <= 0:
+        return 0
     try:
         var ctx = DeviceContext()
-        var host_input = ctx.enqueue_create_host_buffer[DType.float32](count)
-        var host_output = ctx.enqueue_create_host_buffer[DType.float32](count)
-        ctx.synchronize()
-        host_input[0] = Float32(input[].float_val)
-
-        var device_input = ctx.enqueue_create_buffer[DType.float32](count)
-        var device_output = ctx.enqueue_create_buffer[DType.float32](count)
-        ctx.enqueue_copy(dst_buf=device_input, src_buf=host_input)
-
-        var input_tensor = TileTensor(device_input, layout)
-        var output_tensor = TileTensor(device_output, layout)
-        ctx.enqueue_function[double_one](
-            input_tensor.as_imm(),
-            output_tensor,
-            grid_dim=1,
-            block_dim=1,
+        var d_in = ctx.enqueue_create_buffer[DType.float32](n)
+        var d_out = ctx.enqueue_create_buffer[DType.float32](n)
+        with d_in.map_to_host() as h_in:
+            for i in range(n):
+                h_in[i] = Float32(in_ptr[unsafe_offset=i])
+        ctx.enqueue_function[gpu_double_kernel](
+            d_in,
+            d_out,
+            length,
+            grid_dim=ceildiv(n, BLOCK_SIZE),
+            block_dim=BLOCK_SIZE,
         )
-        ctx.enqueue_copy(dst_buf=host_output, src_buf=device_output)
-        ctx.synchronize()
-
-        output[] = NativeValue.from_float(Float64(host_output[0]))
+        with d_out.map_to_host() as h_out:
+            for i in range(n):
+                out_ptr[unsafe_offset=i] = Float64(h_out[i])
         return 0
     except:
         return 1
 
-def make_gpu_double_stage() raises -> PythonObject:
-    return export_value_stage_capsule(gpu_double)
+def make_gpu_double_arrow_stage() raises -> PythonObject:
+    return export_arrow_float_stage_capsule(gpu_double_arrow)
 
 @export
-def PyInit_gpu_stage() abi("C") -> PythonObject:
+def PyInit_gpu_arrow_stage() abi("C") -> PythonObject:
     try:
-        var module = PythonModuleBuilder("gpu_stage")
-        module.def_function[make_gpu_double_stage](
-            "make_gpu_double_stage",
-            "Create a GPU-backed float-doubling stage.",
+        var module = PythonModuleBuilder("gpu_arrow_stage")
+        module.def_function[make_gpu_double_arrow_stage](
+            "make_gpu_double_arrow_stage",
+            "Create a GPU-backed Arrow float64 doubling stage.",
         )
         return module.finalize()
     except e:
-        abort(String("error creating gpu_stage module:", e))
-```
-
-Build and call from Python:
-
-```bash
-mojo build -I /path/to/strata/package gpu_stage.mojo --emit shared-lib -o gpu_stage.so
-```
-
-```python
-from gpu_stage import make_gpu_double_stage
-from strata import native_stage
-
-double_on_gpu = native_stage(make_gpu_double_stage(), name="gpu_double")
-assert double_on_gpu(3.5) == 7.0
+        abort(String("error creating gpu_arrow_stage module:", e))
 ```
 
 ---
