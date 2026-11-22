@@ -227,6 +227,7 @@ async def _astream_unordered[I, O](
     max_in_flight: int,
 ) -> AsyncIterator[O]:
     pending: set[asyncio.Task[object]] = set()
+    done: set[asyncio.Task[object]] = set()
     exhausted = False
     try:
         while len(pending) < max_in_flight:
@@ -241,7 +242,8 @@ async def _astream_unordered[I, O](
             done, pending = await asyncio.wait(
                 pending, return_when=asyncio.FIRST_COMPLETED
             )
-            for task_obj in done:
+            while done:
+                task_obj = done.pop()
                 result = cast("O", await task_obj)
                 if not exhausted:
                     try:
@@ -252,7 +254,7 @@ async def _astream_unordered[I, O](
                         pending.add(asyncio.create_task(arun(stage, nxt)))
                 yield result
     finally:
-        await _cancel_tasks(pending)
+        await _cancel_tasks(pending | done)
 
 
 async def astream_stage[I, O](

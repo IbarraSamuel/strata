@@ -432,6 +432,9 @@ class TracingExecutor:
             inner_wrapped = self._instrument(obj.inner_stage)
             return GroupedTask(inner_wrapped)
 
+        if isinstance(obj, ZipTask):
+            return ZipTask(*(self._instrument(c) for c in obj.stages))
+
         label = _stage_label(obj)
         spans = self.spans
 

@@ -202,6 +202,10 @@ async def _arun_node(obj: object, msg: object) -> object:
     if isinstance(obj, mojo_strata.NativeStage):
         return await asyncio.to_thread(obj.call, msg)
 
+    if type(obj).__name__ == "PyCapsule":
+        native = mojo_strata.native_from_capsule(obj, "native_capsule")
+        return await asyncio.to_thread(native.call, msg)
+
     return await asyncio.to_thread(cast("Any", obj), msg)
 
 

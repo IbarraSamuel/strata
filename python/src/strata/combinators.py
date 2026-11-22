@@ -472,15 +472,18 @@ class TimeoutTask[I, O](Combinable, Task[I, O]):
     def __call__(self, msg: I, /) -> O:
         pool = ThreadPoolExecutor(max_workers=1)
         future = pool.submit(_call_stage, self.stage, msg)
+        timed_out = False
         try:
             return cast("O", future.result(timeout=self.seconds))
         except FuturesTimeoutError as err:
+            timed_out = True
             future.cancel()
             pool.shutdown(wait=False, cancel_futures=True)
             timeout_msg = f"Stage timed out after {self.seconds}s"
             raise TimeoutError(timeout_msg) from err
-        else:
-            pool.shutdown(wait=True)
+        finally:
+            if not timed_out:
+                pool.shutdown(wait=True)
 
 
 def timeout[I, O](stage: _Stage[I, O], seconds: float) -> TimeoutTask[I, O]:
