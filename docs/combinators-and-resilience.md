@@ -180,7 +180,7 @@ assert zipped((6, "go")) == (36, "go!")
 
 ### Dynamic Parallel Map (`map_stage` / `map_task`)
 
-Lifts a stage `I -> O` into a composable `List[I] -> List[O]` (`Sequence[I] -> list[O]`) stage. In Mojo, `Map` uses a single `TaskGroup` with zero-copy `unsafe_write` storage and atomic work-stealing across `max_concurrency` workers (`0` = unbounded). In Python, `map_task` automatically dispatches pure-native Mojo stages (`NativeTask`, `NativeStage`, pure-native `TaskGroup`) to GIL-free Mojo work-stealing `map_list`, and uses O(N) `TaskGroup.from_tasks` waves for general Python stages.
+Lifts a stage `I -> O` into a composable `List[I] -> List[O]` (`Sequence[I] -> list[O]`) stage with optional `max_concurrency` (`0` = unbounded).
 
 **Mojo:**
 ```mojo
@@ -420,24 +420,14 @@ def main():
 
 ---
 
-## Edge Cases & Behavioral Guarantees
+## Behavioral Notes
 
-- **`Map` / `MapTask` & `stream_map` boundaries**:
-  - Empty inputs (`n = 0`) return an empty list / invoke zero sink callbacks; single-element inputs (`n = 1`) bypass `TaskGroup` creation.
-  - `max_concurrency = 1` (or `max_in_flight <= 1` in `stream_map`) uses a fast sequential path.
-  - `max_concurrency > len(items)` executes in a single parallel wave; non-divisible wave sizes handle the partial final wave while preserving exact input order.
-- **`ZipTask` (Python)**: Rejects 0 stages with `ValueError`; supports 1 stage (`(x,) -> (f(x),)`), 2, 3, and 4+ stages. Input length is strictly validated (`len(seq) == len(stages)` -> `ValueError` on mismatch) before dispatching or creating coroutines, preventing silent truncation and unawaited coroutine warnings.
-- **`Retry` / `RetryTask`**:
-  - `max_attempts <= 0` clamps to `1` (a single attempt with no retries); `max_attempts = 1` never retries.
-  - Succeeding on the exact final attempt returns that result cleanly.
-  - Both Mojo and Python cap exponential retry delay at `86_400.0` seconds (24 hours) to prevent `sleep(+inf)` overflow. Python rejects non-finite (`NaN` / `±inf`) `backoff` or `backoff_multiplier` with `ValueError`.
-  - In Python, exceptions not matching `retry_on` are re-raised immediately without retrying.
-- **`Fallback` / `FallbackTask`**:
-  - When `primary` succeeds, `secondary` is guaranteed **not** to be called.
-  - When both `primary` and `secondary` fail, `secondary`'s error propagates.
-  - In Python, exceptions not matching `catch` bypass `secondary` and propagate immediately.
-- **`Timeout` / `TimeoutTask`**:
-  - In Mojo, `timeout_secs <= 0`, `-inf`, and `NaN` clamp `timeout_ns` to `0` (raising on any non-zero elapsed execution time), while values `>= 9_223_372_036.0` (including `+inf`) clamp safely to `Int.MAX` (no `fptosi` UB).
-  - In Python, non-finite (`NaN` / `±inf`) or `<= 0` `seconds` raises `ValueError` at construction time. Non-timeout exceptions raised by the inner stage propagate cleanly.
-- **`Recover` (Mojo)**: Passes `(input, error_message)` to `handler` only when the wrapped `FallibleStage` raises; bypasses `handler` completely on success.
+- **`map_stage` / `map_task` & `stream_map`**: Empty inputs return `[]` (or invoke zero sink callbacks); `max_concurrency = 1` / `max_in_flight <= 1` runs sequentially; all modes preserve input order.
+- **`zip_tasks` (Python)**: Requires at least 1 stage and validates `len(input) == len(stages)` up front, raising `ValueError` on mismatch.
+- **`retry`**: `max_attempts <= 0` clamps to `1` (no retries); exponential backoff caps at 24 hours (`86_400.0`s). Python rejects non-finite `backoff` / `backoff_multiplier` with `ValueError` and immediately re-raises exceptions not matching `retry_on`.
+- **`fallback`**: `secondary` is called only if `primary` raises (and matches `catch` in Python).
+- **`timeout`**: Mojo performs a cooperative post-execution deadline check (`timeout_secs <= 0` clamps to `0`); Python enforces preemptive deadlines via an isolated daemon thread pool in sync mode or `asyncio.wait_for` in `arun` (raising `ValueError` if `seconds <= 0` or non-finite).
+- **`recover` (Mojo)**: Invokes `handler(input, error_message)` only when the wrapped `FallibleStage` raises.
+
+For internal work-stealing, executor pool isolation, and numeric clamping details, see [DESIGN.md](../DESIGN.md).
 

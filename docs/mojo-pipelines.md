@@ -108,14 +108,23 @@ def main():
 Borrowed graphs tie their lifetime to local stage variables. When you want to build and **return** a pipeline from a factory function, wrap stages with `owned(...)` (and `owned_group(...)` for nested tuples) to transfer ownership by value:
 
 ```mojo
-from strata.pipeline import Fn, owned, owned_group
+from strata.pipeline import (
+    Fn,
+    OwnedParallel,
+    OwnedSequence,
+    owned,
+    owned_group,
+)
 
 def add_one(x: Int) -> Int: return x + 1
 def mul_two(x: Int) -> Int: return x * 2
 def mul_three(x: Int) -> Int: return x * 3
 def sum_pair(v: Tuple[Int, Int]) -> Int: return v[0] + v[1]
 
-def make_pipeline():
+def make_pipeline() -> OwnedSequence[
+    OwnedSequence[Fn[Int, Int], OwnedParallel[Fn[Int, Int], Fn[Int, Int]]],
+    Fn[Tuple[Int, Int], Int],
+]:
     var branches = owned(Fn(mul_two)) & Fn(mul_three)
     return owned(Fn(add_one)) | branches^ | Fn(sum_pair)
 
@@ -191,9 +200,7 @@ def main():
 
 `strata.pipeline.async_fn` composes Mojo `__async def` coroutines (`AF[async_fn]`) alongside synchronous reducers (`Sync[sync_fn]`) using `|`, `&`, and `group(...)`.
 
-- `AsyncParallel` conforms to `AsyncFnTrait` and supports `|` so fan-out diamonds like `(AF[a] & AF[b]) | Sync[merge]` compose cleanly.
-- `AsyncFnTrait` executes branches natively via `__async def exec_async` (`__await` directly inside `TaskGroup` tasks without blocking worker threads in nested `run_coro` calls).
-- `Sync` accepts any `I: AnyType` (including tuples, `String`, and custom structs).
+- **`AsyncParallel` + `Sync` composition**: Fan-out diamonds like `(AF[a] & AF[b]) | Sync[merge]` compose directly, and `Sync` accepts any input type (including tuples, `String`, and custom structs).
 
 ```mojo
 from strata.pipeline.async_fn import AF, Sync, group, par_fn, par_fns
@@ -306,15 +313,13 @@ def main():
 
 ---
 
-## Edge Cases & Behavioral Guarantees
+## Behavioral Notes
 
-- **Deep mixed nesting & associative flattening**: `a & (b & (c & d))`, `(a & b) & (c & d)`, and deep mixed diamonds such as `((a & b) | c) & ((d & e) | f)` flatten every adjacent `&` into one flat `TaskGroup`. Explicit `group(a & b) & c`, `a & group(b & c)`, and double-wrapped `group(group(a & b))` preserve nested tuple structure symmetrically.
-- **Reusability & shared sub-pipelines**: Borrowed graphs (`Sequence`, `Parallel`, `Group`) hold immutable references and never consume stages, so a sub-pipeline can be called repeatedly on different inputs and shared across multiple parent pipelines.
-- **Factory-returnable owned pipelines**: `owned(...)` / `owned_group(...)` move stages by value with no borrowed origins, flatten associatively under `&`, can be safely returned from helper functions, and support `run_with(...)`.
-- **Compile-time parity (`strata.pipeline.compt`)**: `comptime_run[value]` evaluates nested diamonds, `Parallel`, `group(...)`, `group(group(...))`, `Id[T]`, and `Spread2`–`Spread4` via `run_sequential` (no async runtime calls) and produces results identical to runtime `.run(value)`.
-- **Non-trivial `Movable` outputs & leak-free unwinding**: All Mojo parallel constructs (`Parallel`, `OwnedParallel`, `Zip2`/`Zip3`, `Map`, `stream_map`, `compt.Parallel`, `AsyncParallel`, and `RaisingParallel`) initialize tuple/list slots via `unsafe_write` and safely support heap-owning `Movable` types with custom `__deinit__` (such as `List` and `String`).
-- **Fallible short-circuiting & parallel error aggregation**:
-  - Sequential `|` in `strata.pipeline.fallible` stops immediately on error; downstream stages are guaranteed not to run.
-  - Parallel `&` executes all branches in one `TaskGroup` (running the final branch inline on the caller thread and catching its error before `tg.wait()`): if exactly one branch fails, its exact error message propagates; if `N > 1` branches fail, Strata raises `Error("Parallel stage failures (N): <msg1>; <msg2>; ...")`, and every branch that succeeded has its output cleanly destroyed so no resources leak.
-- **Stateful barrier ordering (`strata.stateful` & `strata.stateful.async_stage`)**: In `a | (b & c) | d`, `a` completes before `b` and `c` start, `b` and `c` execute concurrently, and both complete before `d` begins; repeated invocations accumulate deterministic mutation counts.
+- **Associative flattening vs `group(...)`**: Chained `&` fan-outs (`((a & b) & c) & d`, `a & (b & (c & d))`, `(a & b) & (c & d)`) always produce the same flat `Tuple`. Wrap with `group(...)` (`owned_group(...)`, `raising_group(...)`) whenever nested tuples are wanted.
+- **Reusability & ownership**: Borrowed pipelines hold immutable references so stages and sub-pipelines can be reused across multiple graphs; `owned(...)` moves stages by value so pipelines can be returned from helper functions.
+- **Compile-time parity (`strata.pipeline.compt`)**: `comptime_run[value]` evaluates parallel diamonds, `group(...)`, `Id[T]`, and `Spread2`–`Spread4` at compile time with results identical to runtime `.run(value)`.
+- **Heap-owning `Movable` outputs**: All pipeline engines safely handle non-trivial `Movable` types such as `String` and `List`.
+- **Fallible error semantics**: Sequential `|` stops on the first raised error without running downstream stages; parallel `&` runs all branches, propagating the exact error when one branch fails or a combined `Error("Parallel stage failures (N): ...")` when multiple branches fail.
+
+For internal `TaskGroup` scheduling, placement initialization, and unwinding details, see [DESIGN.md](../DESIGN.md).
 

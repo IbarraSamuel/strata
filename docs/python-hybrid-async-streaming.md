@@ -1,6 +1,6 @@
 # Python Guide: Hybrid GIL-Free Mojo Stages, `async def`, and Streaming
 
-Strata's Python package (`strata`) runs task graphs on Mojo's native `TaskGroup` (`mojo_strata.so`) with strict PEP 695/646 static typing, immutable composition, exact exception propagation, GIL-free native Mojo kernels, native `asyncio` support, and bounded-backpressure streaming.
+Strata's Python package (`strata`) lets you compose synchronous functions, `async def` coroutines, and GIL-free native Mojo stages using `|`, `&`, and `group(...)`, with static typing (PEP 695/646), immutable graphs, PEP 654 exception groups, and bounded-backpressure streaming.
 
 ---
 
@@ -40,9 +40,9 @@ nested = group(double & add_ten) & group(double & add_ten)
 assert nested(5) == ((10, 15), (10, 15))
 ```
 
-### Copy-on-Write Immutability
+### Immutability & Sub-Pipeline Reuse
 
-Composing with `|` or `&` never mutates existing task groups, so base pipelines can safely branch into multiple derived graphs:
+Composing with `|` or `&` never mutates existing stages or pipelines, so a base pipeline can safely branch into multiple derived graphs:
 
 ```python
 base = parse_int | double
@@ -59,7 +59,7 @@ assert branch_b("5") == (10, 15)
 - **Sequential (`|`)**: Short-circuits on the first failure and re-raises the original exception type, message, and traceback.
 - **Parallel (`&`)**:
   - If **one** branch fails, that exact exception is re-raised directly.
-  - If **multiple** branches fail, Strata raises a PEP 654 `ExceptionGroup` (or `BaseExceptionGroup` if any branch raised a `BaseException` subclass), catchable with `except*`:
+  - If **multiple** branches fail, Strata raises a PEP 654 `ExceptionGroup` (or `BaseExceptionGroup` if any branch raised a non-`Exception` `BaseException`), catchable with `except*`:
 
 ```python
 try:
@@ -74,10 +74,7 @@ except* KeyError as eg:
 
 ## 2. Hybrid GIL-Free Mojo + Python Pipelines
 
-On standard GIL-enabled CPython, pure Python CPU-bound callables contend on the GIL when run across threads. Strata solves this with **`NativeTask`** and the **`strata.native_stage.v1` `PyCapsule` C-ABI**:
-
-1. **Zero-GIL Parallel Execution & Precomputed Plans**: `mojo_strata.TaskGroup` eagerly precomputes its execution plan (`ALL_NATIVE` / `ALL_PYTHON` / `HYBRID`) at composition time (`|` / `&` / `TaskGroup.from_tasks`). Parallel `NativeTask` branches (and pure-native serial chains like `(n1 | n2) & py_stage & n3`) unbox input once on the main thread, run **100% GIL-free** across CPU cores on Mojo's `asyncrt` thread pool, and re-box outputs after `tg.wait()`.
-2. **Automatic Serial Chain Fusion & GIL-Free Batching**: Consecutive native stages (`n1 | n2 | n3`) fuse into a single native pass passing unboxed `NativeValue`s directly in registers (with automatic `int -> float` widening), and pure-native pipelines (`is_pure_native() == True`) accelerate `pipeline.map(...)` and `map_task(...)` via GIL-free work-stealing `map_list(...)`.
+On standard GIL-enabled CPython, pure Python CPU-bound functions contend on the GIL when run across threads. Strata provides **`NativeTask`** stages that execute **completely without the GIL** across CPU cores, fuse consecutive native stages across `|` into a single native pass, and accelerate batch `.map(...)` / `map_task(...)` calls automatically. (See [DESIGN.md](../DESIGN.md) for plan fusion and C-ABI internals.)
 
 ### Built-In GIL-Free Mojo Stages
 
@@ -91,18 +88,18 @@ from strata import (
     task,
 )
 
-# Built-in GIL-free Mojo kernels
+# Each constructor returns a ready-to-compose native Mojo stage:
 scale = native_int_linear(scale=3, bias=1, name="mul3_add1")      # int -> int
 shift = native_int_linear(scale=2, bias=-4, name="mul2_sub4")     # int -> int
 to_f  = native_float_linear(scale=0.5, bias=1.25, name="to_flt")  # float|int -> float
 poly  = native_float_poly(c0=1.0, c1=2.0, c2=3.0, name="quad")    # c2*x^2 + c1*x + c0
 heavy = native_cpu_work(iterations=2_000_000, name="hash_mix")    # deterministic CPU mix
 
-# Fused GIL-free serial chain (single GILReleased block, int -> int -> float)
+# "|" chains consecutive native stages in a single GIL-free pass (5 -> 16 -> 28 -> 15.25):
 fused = scale | shift | to_f
 assert fused(5) == 15.25
 
-# Hybrid parallel diamond mixing native chains, Python tasks, and single native stages
+# "&" runs native chains and ordinary Python tasks in the same graph:
 @task
 def py_tag(x: int) -> str:
     return f"id:{x}"
@@ -115,13 +112,17 @@ hybrid = ((scale | shift) & py_tag & heavy) | join
 print(hybrid(5))
 ```
 
-### Exporting Custom GIL-Free Mojo Stages via `strata.native_stage.v1` PyCapsules
+Here `fused(5)` computes `3*5 + 1 = 16`, `2*16 - 4 = 28`, and `0.5*28 + 1.25 = 15.25` with automatic `int -> float` widening, while `hybrid` mixes a fused native chain, a Python `@task`, and `native_cpu_work` in parallel before unpacking all three outputs into `join`.
 
-External Mojo extensions (or C/Rust shared libraries) can export their own GIL-free stages using `strata.interop.native_abi`:
+### Writing Custom GIL-Free Mojo Stages (`strata.native_stage.v1`)
 
-**In your Mojo extension module:**
+When you need custom native logic beyond the built-in stages, a Mojo extension module can export a `"strata.native_stage.v1"` `PyCapsule` using `strata.interop.native_abi`. Because callbacks run without the GIL across worker threads, they must be thread-safe and must not touch Python objects.
+
+Create `my_mojo_ext.mojo`:
+
 ```mojo
 from std.memory import OpaquePointer
+from std.os import abort
 from std.python import PythonObject
 from std.python.bindings import PythonModuleBuilder
 from strata.interop.native_abi import export_float_stage_capsule
@@ -132,34 +133,153 @@ def fast_sigmoid_approx(
     return x / (1.0 + abs(x))
 
 def make_my_stage() raises -> PythonObject:
-    # Optional `ctx` and `ctx_deleter` free heap-allocated context on capsule GC
+    # Optional `ctx` and `ctx_deleter` manage custom heap state across the capsule's lifetime
     return export_float_stage_capsule(
         fast_sigmoid_approx, ctx=None, ctx_deleter=None
     )
+
+@export
+def PyInit_my_mojo_ext() abi("C") -> PythonObject:
+    try:
+        var module = PythonModuleBuilder("my_mojo_ext")
+        module.def_function[make_my_stage](
+            "make_my_stage",
+            "Create a GIL-free fast sigmoid approximation stage.",
+        )
+        return module.finalize()
+    except e:
+        abort(String("error creating my_mojo_ext:", e))
 ```
 
-> Capsule destructors automatically save and restore any active CPython exception (`PyErr_GetRaisedException` / `PyErr_SetRaisedException`), so garbage collection during stack unwinding never clobbers an in-flight exception or leaks descriptor/context allocations.
+Build the shared library (including Strata's precompiled `package/` directory on `-I` if building outside a Pixi workspace where `strata` is installed):
 
-**In Python:**
+```bash
+mojo build -I /path/to/strata/package my_mojo_ext.mojo --emit shared-lib -o my_mojo_ext.so
+```
+
+Then wrap the capsule in Python with `native_stage`:
+
 ```python
+import my_mojo_ext
 from strata import native_stage
 
-# Wrap any "strata.native_stage.v1" PyCapsule (or an object with `as_native_capsule()`)
 my_stage = native_stage(my_mojo_ext.make_my_stage(), name="fast_sigmoid")
-
-# Composes directly with | and & and runs 100% GIL-free
-pipe = (my_stage & my_stage)
+pipe = my_stage & my_stage
+print(pipe(1.0))  # (0.5, 0.5)
 ```
 
-You can also implement the `NativeCapsuleProvider` protocol (`def as_native_capsule(self) -> object`) on any Python class so `native_stage(obj)` extracts its capsule automatically.
+- Use `export_int_stage_capsule` for `Int64 -> Int64` callbacks.
+- Use `export_float_stage_capsule` for `Float64 -> Float64` callbacks.
+- Use `export_value_stage_capsule` for tagged `NativeValue -> NativeValue` callbacks (`Int64`, `Float64`, `Bool`) that return `0` on success or a non-zero status code to raise an exception in Python.
+- Python classes can also implement the `NativeCapsuleProvider` protocol (`def as_native_capsule(self) -> object`) so `native_stage(obj)` extracts the capsule automatically.
+
+### GPU-Backed Custom Stage Example (Advanced)
+
+`export_value_stage_capsule` can also drive accelerator APIs (`max.gpu`) and report device or type errors via a non-zero status code instead of returning a sentinel float.
+
+> **Note:** The v1 capsule ABI passes scalar `NativeValue`s (`Int64`, `Float64`, `Bool`), not tensors. The example below launches a 1-element GPU kernel purely to illustrate end-to-end `DeviceContext` + status-code integration; real GPU workloads should amortize launch/transfer overhead over batched buffers and store persistent device resources in the capsule's `ctx` pointer.
+
+Requires an environment with `max` GPU support, a supported GPU, and Strata's Mojo package on `-I`:
+
+```mojo
+from std.memory import OpaquePointer
+from std.os import abort
+from std.python import PythonObject
+from std.python.bindings import PythonModuleBuilder
+
+from layout import ImmTileTensor, MutTileTensor, TileTensor, row_major
+from max.gpu import global_idx
+from max.gpu.host import DeviceContext
+from strata.interop.native_abi import (
+    NATIVE_VAL_FLOAT64,
+    NativeValue,
+    export_value_stage_capsule,
+)
+
+comptime count = 1
+comptime layout = row_major[count]()
+
+def double_one(
+    input: ImmTileTensor[DType.float32, type_of(layout), ImmUntrackedOrigin],
+    output: MutTileTensor[DType.float32, type_of(layout), MutUntrackedOrigin],
+):
+    comptime assert input.flat_rank == 1 and output.flat_rank == 1
+    var idx = global_idx.x
+    if idx < count:
+        output[idx] = input[idx] * 2
+
+def gpu_double(
+    input: Pointer[NativeValue, ImmUntrackedOrigin],
+    output: Pointer[NativeValue, MutUntrackedOrigin],
+    _ctx: Optional[OpaquePointer[MutUntrackedOrigin]],
+) abi("C") -> Int32:
+    if input[].kind != NATIVE_VAL_FLOAT64:
+        return 2
+
+    try:
+        var ctx = DeviceContext()
+        var host_input = ctx.enqueue_create_host_buffer[DType.float32](count)
+        var host_output = ctx.enqueue_create_host_buffer[DType.float32](count)
+        ctx.synchronize()
+        host_input[0] = Float32(input[].float_val)
+
+        var device_input = ctx.enqueue_create_buffer[DType.float32](count)
+        var device_output = ctx.enqueue_create_buffer[DType.float32](count)
+        ctx.enqueue_copy(dst_buf=device_input, src_buf=host_input)
+
+        var input_tensor = TileTensor(device_input, layout)
+        var output_tensor = TileTensor(device_output, layout)
+        ctx.enqueue_function[double_one](
+            input_tensor.as_imm(),
+            output_tensor,
+            grid_dim=1,
+            block_dim=1,
+        )
+        ctx.enqueue_copy(dst_buf=host_output, src_buf=device_output)
+        ctx.synchronize()
+
+        output[] = NativeValue.from_float(Float64(host_output[0]))
+        return 0
+    except:
+        return 1
+
+def make_gpu_double_stage() raises -> PythonObject:
+    return export_value_stage_capsule(gpu_double)
+
+@export
+def PyInit_gpu_stage() abi("C") -> PythonObject:
+    try:
+        var module = PythonModuleBuilder("gpu_stage")
+        module.def_function[make_gpu_double_stage](
+            "make_gpu_double_stage",
+            "Create a GPU-backed float-doubling stage.",
+        )
+        return module.finalize()
+    except e:
+        abort(String("error creating gpu_stage module:", e))
+```
+
+Build and call from Python:
+
+```bash
+mojo build -I /path/to/strata/package gpu_stage.mojo --emit shared-lib -o gpu_stage.so
+```
+
+```python
+from gpu_stage import make_gpu_double_stage
+from strata import native_stage
+
+double_on_gpu = native_stage(make_gpu_double_stage(), name="gpu_double")
+assert double_on_gpu(3.5) == 7.0
+```
 
 ---
 
-## 3. Python `async def` Tasks & Free-Threaded Python Support
+## 3. Python `async def` Tasks & Free-Threaded Python
 
 ### `@async_task` and `await pipeline.arun(x)`
 
-Wrap `async def` functions with `@async_task` to compose them seamlessly alongside sync `@task` and GIL-free `NativeTask` stages:
+Wrap `async def` functions with `@async_task` to compose them alongside sync `@task` and `NativeTask` stages:
 
 ```python
 import asyncio
@@ -182,7 +302,7 @@ def combine(pair: tuple[int, int]) -> int:
 double_native = native_int_linear(scale=2, bias=0, name="double")
 pipeline = (fetch_a & fetch_b) | combine | double_native
 
-# Option A: Call synchronously (runs each branch concurrently via Mojo TaskGroup)
+# Option A: Call synchronously (works even if an event loop is already running)
 print(pipeline(5))  # 112
 
 # Option B: Await natively on an active asyncio event loop
@@ -193,30 +313,26 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-How `arun` executes each stage type:
-- `AsyncTask`: awaited directly on the caller's event loop (cooperative concurrency, zero thread overhead).
-- Sync `@task` and `NativeTask`: offloaded via `asyncio.to_thread(...)` so blocking or compute-heavy work never stalls the event loop. Pure-sync/native `TaskGroup` subtrees (containing no nested `AsyncTask`s) are automatically batched into a **single** `asyncio.to_thread(tg.call, msg)` call, preserving Mojo native chain fusion and AsyncRT parallelism.
-- Combinators (`group`, `zip_tasks`, `map_task`, `branch`, `retry`, `fallback`, `timeout`): handled natively with `asyncio.Semaphore`, `asyncio.sleep`, and `asyncio.wait_for`.
+Inside `arun(...)`, `@async_task` stages are awaited directly on your event loop while synchronous and native stages are automatically offloaded to worker threads so they never block the loop.
 
-### Free-Threaded Python (`3.13t` / `3.14t` / `3.15t`) & Runtime Info
+### Free-Threaded Python (`3.13t+`) & Runtime Diagnostics
 
 Inspect active interpreter and native capabilities with `is_gil_enabled()` and `runtime_info()`:
 
 ```python
 from strata import is_gil_enabled, runtime_info
 
-info = runtime_info()
-print(info)
+print(runtime_info())
 # RuntimeInfo(python_version='3.15.2', gil_enabled=True, native_gil_free=True, cpu_count=8)
 ```
 
-On free-threaded CPython builds (`gil_enabled=False`), even pure-Python `&` branches scale across cores via Mojo's `TaskGroup`; on GIL-enabled builds (`gil_enabled=True`), `NativeTask` stages still achieve full multi-core parallelism. Run `cd python && uv run python ../examples/benchmark_hybrid.py` to measure speedup on your machine.
+On free-threaded CPython builds (`gil_enabled=False`), even pure-Python `&` branches run across cores simultaneously; on GIL-enabled builds (`gil_enabled=True`), `NativeTask` stages still achieve full multi-core parallelism.
 
 ---
 
-## 4. Streaming & Software-Pipelined Batch Execution
+## 4. Batch & Sliding-Window Streaming
 
-Every single stage (`Combinable`) and composed pipeline (`_BaseTaskGroup`) exposes three batch/streaming methods (also available as standalone functions `map_stage`, `stream_stage`, `astream_stage`):
+Every stage (`Combinable`) and composed pipeline exposes `.map(...)`, `.stream(...)`, and `.astream(...)` (also available as standalone `map_stage`, `stream_stage`, `astream_stage`):
 
 ### Eager Concurrent Batch (`pipeline.map`)
 
@@ -224,28 +340,25 @@ Every single stage (`Combinable`) and composed pipeline (`_BaseTaskGroup`) expos
 results = pipeline.map(range(100), max_in_flight=8)
 ```
 
-- Preserves input order.
-- `max_in_flight=0` (default) picks a CPU-scaled default (`min(32, cpu_count + 4)`); negative values raise `ValueError`.
-- Pure-native Mojo stages (`NativeTask` / pure-native `TaskGroup`) automatically take the GIL-free Mojo work-stealing `map_list` fast path.
+- Always returns results in input order.
+- `max_in_flight=0` (default) picks a CPU-scaled concurrency limit (`min(32, cpu_count + 4)`); negative values raise `ValueError`.
 
 ### Lazy Sliding-Window Streaming (`pipeline.stream`)
 
 ```python
-# Ordered streaming with strict O(max_in_flight) backpressure (safe for infinite generators!)
+# Ordered streaming with O(max_in_flight) backpressure (safe on infinite generators)
 for result in pipeline.stream(infinite_generator(), max_in_flight=4, ordered=True):
     process(result)
     if done():
-        break  # Pending futures are cancelled cleanly on generator close
+        break  # cancels pending work and closes upstream generator cleanly
 
 # Unordered completion-order streaming for lower tail latency
 for result in pipeline.stream(items, max_in_flight=8, ordered=False):
     process(result)
 ```
 
-Unlike wave-barrier batching, `stream` maintains a true **sliding window** of at most `max_in_flight` active items:
-- Upstream iterators are never pulled more than `max_in_flight` items ahead of active/buffered work.
-- With `ordered=False`, fast items yield immediately without waiting behind slow items.
-- With `max_in_flight=1`, executes via a fast zero-thread sequential path.
+- Requires `max_in_flight >= 1` (`max_in_flight=1` runs sequentially without spawning threads).
+- Pulls at most `max_in_flight` items ahead of active/buffered work and yields ready outputs before pulling the next upstream item.
 
 ### Asynchronous Streaming (`pipeline.astream`)
 
@@ -264,30 +377,12 @@ async def main() -> None:
 
 ---
 
-## Edge Cases & Behavioral Guarantees
+## Input Validation & Error Guarantees
 
-### Composition, Immutability & Exceptions
-- **Strict `mojo_strata.TaskGroup` validation**: `TaskGroup` accepts only `(task,)` or `(task=...)` (raising `TypeError` on missing/extra/bad arguments), and `with_task` / `from_tasks` validate `mode in (0, 1)` (rejecting `bool` with `TypeError` and out-of-range ints with `ValueError`). All `mojo_strata` extension methods use positional-only arguments (`METH_FASTCALL`).
-- **Single-stage `TaskGroup`**: `TaskGroup(stage)(x)` delegates directly to `stage(x)` without wrapping in a tuple.
-- **Exact traceback & short-circuiting**: A middle-stage exception in a serial `|` chain short-circuits downstream stages immediately and preserves the exact exception type and original traceback frames.
-- **`ExceptionGroup` vs `BaseExceptionGroup` (PEP 654)**:
-  - Single parallel branch failure (including `BaseException` subclasses like `KeyboardInterrupt` or custom `BaseException`s) re-raises that exact exception with its original traceback.
-  - Multi-branch parallel failures raise `ExceptionGroup` when all failures subclass `Exception`, and `BaseExceptionGroup` (not an `ExceptionGroup`) when any branch raises a non-`Exception` `BaseException`.
-
-### Hybrid GIL-Free `NativeStage` & `PyCapsule`
-- **Strict `bool` rejection & checked `Int64` overflow**: `bool` (`True`/`False`) is rejected with `TypeError` by int and float native stages (as well as `native_int_linear`/`make_int_linear_capsule` constructors). `native_int_linear` and capsule int-linear stages compute with checked overflow detection and raise `OverflowError` on `Int64` overflow instead of silently wrapping; out-of-range Python `int` inputs also raise `OverflowError`.
-- **Float inputs & IEEE-754 special values (`native_float_linear`, `native_float_poly`)**: Accept both Python `int` and `float` inputs (rejecting `bool` and non-numeric types with `TypeError`) and preserve `NaN`, `+inf`, and `-inf`.
-- **Fused native chain coercion**: Contiguous native stages automatically widen `int -> float` (`native_int_linear | native_float_linear`), while incompatible narrowing (`native_float_linear | native_int_linear`) raises `TypeError("Incompatible types between consecutive fused NativeStages")`.
-- **Direct `NativeStage` & raw `PyCapsule` interop**: Raw `mojo_strata.NativeStage` objects are directly callable (`__call__`), and both raw `NativeStage` and `"strata.native_stage.v1"` `PyCapsule` objects work across `TaskGroup(...)`, `|`, `&`, fused chains, combinators (`group`, `retry`, `fallback`, `timeout`, `branch`, `map_task`, `zip_tasks`), `SequentialExecutor`, `TracingExecutor`, and `arun(...)`.
-- **`native_cpu_work`**: `iterations=0` and negative counts clamp to `0` and return a deterministic non-negative 63-bit integer.
-- **Hybrid parallel errors**: Native unboxing or fused-chain `TypeError`s combine cleanly with Python branch exceptions (e.g., `ValueError`) into a single PEP 654 `ExceptionGroup` (with one sub-exception per failing branch).
-
-### `AsyncTask`, `arun` & Streaming (`map` / `stream` / `astream`)
-- **Calling `@async_task` synchronously inside an active event loop**: Calling `async_stage(x)` synchronously while an asyncio loop is already running on the current thread automatically instantiates and runs the coroutine inside a dedicated daemon worker thread (`asyncio.run(...)`) instead of raising a nested-loop `RuntimeError`.
-- **`arun` coverage**: Works uniformly on single `AsyncTask`, single sync `@task`, single `NativeTask`, raw `PyCapsule`, empty `map_task`, `RetryTask`, `FallbackTask` (primary success short-circuit & non-matching `catch`), and `TimeoutTask`, including combinator subclasses.
-- **Streaming boundaries & error cleanup**:
-  - `map`, `stream`, and `astream` handle empty and single-element iterables, `max_in_flight=1` (zero-thread / sequential fast path), and `max_in_flight > len(items)`.
-  - `map` / `map_stage` accept `max_in_flight >= 0` (`0` = CPU-scaled default, `< 0` raises `ValueError`); `stream` / `astream` require `max_in_flight >= 1`.
-  - Both `stream` and `astream` yield completed outputs *before* pulling the next item from the upstream iterator, so an upstream error never drops already-completed outputs.
-  - Early `break` or mid-stream exceptions (in both `ordered=True` and `ordered=False` modes) close upstream sync (`.close()`) and async (`.aclose()`) generators, unwind sync thread pools without blocking on slow in-flight threads, and cancel/await all remaining in-flight `asyncio.Task`s (preventing `"Task exception was never retrieved"` warnings).
-
+- **Native numeric validation**:
+  - `bool` (`True` / `False`) is rejected with `TypeError` by integer and float native stages and constructors.
+  - `native_int_linear` checks 64-bit bounds on inputs and intermediate arithmetic, raising `OverflowError` on overflow rather than wrapping silently.
+  - `native_float_linear` and `native_float_poly` accept Python `int` or `float` inputs and preserve IEEE-754 `NaN`, `+inf`, and `-inf`.
+  - Chaining `native_int_linear | native_float_linear` widens `int -> float` automatically; narrowing `native_float_linear | native_int_linear` raises `TypeError`.
+  - `native_cpu_work(iterations=...)` clamps `iterations <= 0` to `0` and returns a deterministic non-negative 63-bit integer.
+- **Stream cleanup**: Breaking out of `stream` or `astream` early (or raising mid-stream) closes upstream sync/async generators and cancels pending work cleanly without leaked tasks or warnings.

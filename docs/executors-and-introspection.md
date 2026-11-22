@@ -222,19 +222,11 @@ Explicit `group(...)` wrappers render as visual `subgraph` (Mermaid) and `subgra
 
 ---
 
-## Edge Cases & Behavioral Guarantees
+## Behavioral Notes
 
-- **`BoundedExecutor` (Mojo)**: `max_workers <= 0` clamps to `1` (sequential execution); `max_workers = 1` executes sequentially without spawning a `TaskGroup`; `max_workers > branch_count` executes all branches in a single parallel wave.
-- **`TracingExecutor` (Mojo & Python)**:
-  - Accumulates `TraceSpan`s across multiple runs until `.clear()` is called, and can be reused cleanly after `.clear()` (in Python, `.clear()` also clears its per-instance instrumentation cache; in Mojo, `TraceSpan.stage` is a zero-allocation `StaticString` and `comptime IS_TRACING = False` enables full compile-time dead-code elimination on untraced executors).
-  - In Mojo, `TracingExecutor` composes with any inner executor (`TracingExecutor[AsyncRTExecutor]`, `TracingExecutor[SequentialExecutor]`, `TracingExecutor[BoundedExecutor]`) and forwards inner executor tokens accurately; `Zip2.run_with` and `Zip3.run_with` both honor `BoundedExecutor` and emit per-branch spans.
-  - In Python, `SequentialExecutor`, `TracingExecutor` (`sequential=True` and `sequential=False`), `graph_stats`, and `to_mermaid`/`to_dot` all recursively traverse composite combinators (`MapTask`, `BranchTask`, `RetryTask`, `FallbackTask`, `TimeoutTask`, `ZipTask`, and `GroupedTask`) — ensuring `SequentialExecutor` never spawns parallel threads inside nested combinators and `TracingExecutor` traces leaf stages consistently.
-- **Static & Runtime Topology Metrics**:
-  - `STAGE_COUNT` sums leaf stages across both `|` and `&`.
-  - `MAX_PARALLEL_WIDTH` sums across `&`, takes `max` across `|`, and is transparent through `group(...)` (including double-nested `group(group(...))`).
-  - `CRITICAL_DEPTH` sums across `|` and takes `max` across `&`.
-- **Diagram Rendering (`to_mermaid` / `to_dot`)**:
-  - Special characters (`"`, `\`, newlines, and `]`) in stage labels are automatically escaped (single quotes in Mojo `compt.mojo`; `&quot;` for Mermaid and `\"` for DOT in Python `introspect.py`) to keep rendered diagrams syntactically valid.
-  - Python `to_mermaid(direction=...)` and `to_dot(name=..., direction=...)` validate `direction` (raising `ValueError` on invalid directions) and safely quote/escape non-identifier DOT graph `name`s.
-  - Explicit `group(...)`, double-nested `group(group(...))`, and `zip_tasks(...)` render as nested `subgraph` (Mermaid) / `subgraph cluster_*` (DOT) blocks.
+- **`BoundedExecutor` (Mojo)**: `max_workers <= 0` clamps to `1` (sequential execution); `max_workers > branch_count` runs all branches in a single wave.
+- **`TracingExecutor` (Mojo & Python)**: Accumulates `TraceSpan`s across runs until `.clear()` is called, and composes around `AsyncRTExecutor`, `SequentialExecutor`, or `BoundedExecutor`. In Python, both `SequentialExecutor` and `TracingExecutor` also traverse nested combinators (`map_task`, `branch`, `retry`, `fallback`, `timeout`, `zip_tasks`, `group`).
+- **Topology metrics & diagram escaping**: `MAX_PARALLEL_WIDTH` sums across `&` and takes `max` across `|`; `CRITICAL_DEPTH` sums across `|` and takes `max` across `&`. Special characters in stage names are escaped automatically in `to_mermaid()` and `to_dot()`, and invalid `direction` strings in Python raise `ValueError`.
+
+For internal executor specialization and lock-free span recording details, see [DESIGN.md](../DESIGN.md).
 

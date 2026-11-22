@@ -1,8 +1,12 @@
 # Strata (Python)
 
-Python bindings for **Strata v2**, a high-performance composable task graph execution framework powered by Mojo's native asynchronous runtime (`TaskGroup` / `_asyncrt`).
+Composable pipeline and parallel task-graph library for Python, backed by Mojo's multithreaded runtime (`mojo_strata.so`).
 
-## Installation / Build
+- **`a | b` (Pipe / Sequence)**: Passes the output of `a` into `b`.
+- **`a & b` (Parallel Fan-Out)**: Runs `a` and `b` concurrently on the same input and returns a flat tuple `(out_a, out_b)`.
+- **`group(a & b)` (Explicit Nesting)**: Preserves nested tuple output (`group(a & b) & group(c & d)` -> `((o1, o2), (o3, o4))`).
+
+## Installation
 
 ```bash
 python -m pip install .
@@ -10,9 +14,9 @@ python -m pip install .
 uv add "strata @ git+https://github.com/IbarraSamuel/strata.git#subdirectory=python"
 ```
 
-The package build installs Mojo as a Python build dependency and compiles `mojo_strata.so` automatically during installation. On Linux, Mojo wheels require glibc 2.34+.
+Installing compiles `mojo_strata.so` automatically using Mojo as a build dependency (Linux requires glibc 2.34+).
 
-For development:
+For local development:
 
 ```bash
 uv sync --no-install-project --group dev --group test
@@ -23,12 +27,12 @@ uv run --group dev ty check src tests
 
 ---
 
-## Quickstart
+## Usage
 
-Pipelines are immutable, strictly typed (PEP 695/646), and directly callable:
+### 1. Tasks, Operators & Immutability
 
 ```python
-from strata import group, spread, task
+from strata import Combinable, group, spread, task
 
 @task
 def parse_int(text: str) -> int:
@@ -49,21 +53,50 @@ def merge(a: int, b: int) -> str:
 pipeline = parse_int | (double & add_ten) | merge
 print(pipeline("5"))  # "Branch 1: 10, Branch 2: 15"
 
-# Parallel fan-outs flatten associatively; use `group(...)` for nested tuples:
+# Parallel fan-outs flatten associatively; wrap with `group(...)` for nested tuples:
 flat = (double & add_ten) & (double & add_ten)              # (10, 15, 10, 15)
 nested = group(double & add_ten) & group(double & add_ten)  # ((10, 15), (10, 15))
 ```
 
----
-
-## Feature Showcase
-
-### Hybrid GIL-Free Mojo Stages & PyCapsule Protocol
-
-Mix pure Python tasks with GIL-free Mojo stages in the same `|` / `&` graph. Consecutive native stages automatically fuse into a single `GILReleased` pass, and parallel native branches scale across CPU cores even with the GIL enabled:
+### 2. Combinators & Fault Tolerance
 
 ```python
-from strata import native_cpu_work, native_int_linear, native_stage, spread, task
+from strata import (
+    branch,
+    fallback,
+    identity,
+    map_task,
+    retry,
+    select,
+    task,
+    timeout,
+    zip_tasks,
+)
+
+@task
+def inc(x: int) -> int:
+    return x + 1
+
+@task
+def dbl(x: int) -> int:
+    return x * 2
+
+assert (identity() & dbl)(7) == (7, 14)
+assert ((inc & dbl) | select(1))(5) == 10
+assert zip_tasks(inc, dbl)((3, 4)) == (4, 8)
+assert branch(lambda x: x % 2 == 0, dbl, inc)(4) == 8
+assert map_task(dbl, max_concurrency=4)([1, 2, 3, 4]) == [2, 4, 6, 8]
+
+safe = fallback(retry(timeout(inc, seconds=1.0), max_attempts=3, backoff=0.01), dbl)
+assert safe(10) == 11
+```
+
+### 3. GIL-Free Native Mojo Stages
+
+Mix Python tasks with GIL-free Mojo stages that scale across CPU cores and fuse automatically across `|`:
+
+```python
+from strata import native_cpu_work, native_int_linear, spread, task
 
 scale = native_int_linear(scale=3, bias=1, name="scale")
 heavy = native_cpu_work(iterations=1_000_000, name="mix")
@@ -80,49 +113,11 @@ hybrid = (scale & tag & heavy) | format_row
 print(hybrid(7))
 ```
 
-### Dataflow & Resilience Combinators
-
-```python
-from strata import (
-    branch,
-    fallback,
-    identity,
-    map_task,
-    retry,
-    select,
-    spread,
-    task,
-    timeout,
-    zip_tasks,
-)
-
-@task
-def inc(x: int) -> int:
-    return x + 1
-
-@task
-def dbl(x: int) -> int:
-    return x * 2
-
-# Parallel product: (I1, I2) -> (O1, O2)
-assert zip_tasks(inc, dbl)((3, 4)) == (4, 8)
-
-# Conditional routing
-router = branch(lambda x: x % 2 == 0, dbl, inc)
-assert router(4) == 8 and router(5) == 6
-
-# Dynamic parallel map with bounded wave concurrency
-assert map_task(dbl, max_concurrency=4)([1, 2, 3, 4]) == [2, 4, 6, 8]
-
-# Resilience: retry, fallback, timeout
-safe = fallback(retry(timeout(inc, 1.0), max_attempts=3, backoff=0.01), dbl)
-```
-
-### Native `asyncio` (`@async_task` & `arun`)
+### 4. `async def` Tasks & Sliding-Window Streaming
 
 ```python
 import asyncio
-from strata import arun, async_task
+from strata import async_task
 
 @async_task
 async def fetch_a(x: int) -> int:
@@ -136,30 +131,23 @@ async def fetch_b(x: int) -> int:
 
 pipe = fetch_a & fetch_b
 print(asyncio.run(pipe.arun(5)))  # (6, 10)
-```
 
-### Sliding-Window Streaming (`map`, `stream`, `astream`)
-
-```python
-# Eager ordered batch
+# Batch & bounded-backpressure streaming:
 results = pipeline.map(["1", "2", "3", "4"], max_in_flight=4)
-
-# Lazy streaming with O(max_in_flight) backpressure (ordered or completion order)
 for item in pipeline.stream(["1", "2", "3", "4"], max_in_flight=4, ordered=False):
     print(item)
 ```
 
-### Introspection, Visualization & Executors
+### 5. Introspection, Diagrams & Tracing
 
 ```python
 from strata import SequentialExecutor, TracingExecutor
 
-print(pipeline.stats())          # GraphStats(stage_count=4, max_parallel_width=2, critical_depth=3)
-print(pipeline.to_mermaid())     # Mermaid flowchart
-print(pipeline.to_dot())         # Graphviz DOT
+print(pipeline.stats())        # GraphStats(stage_count=4, max_parallel_width=2, critical_depth=3)
+print(pipeline.to_mermaid())   # Mermaid flowchart
+print(pipeline.to_dot())       # Graphviz DOT
 
-seq = SequentialExecutor()
-assert seq.run(pipeline, "5") == "Branch 1: 10, Branch 2: 15"
+assert SequentialExecutor().run(pipeline, "5") == "Branch 1: 10, Branch 2: 15"
 
 tracer = TracingExecutor(sequential=False)
 _ = tracer.run(pipeline, "5")
@@ -168,10 +156,11 @@ print(tracer.format_report())
 
 ---
 
-## Detailed Guides
+## Further Reading
 
-- [Root README](../README.md)
+- [Root Usage Guide (`README.md`)](../README.md)
 - [Python Hybrid, Async & Streaming Guide](../docs/python-hybrid-async-streaming.md)
 - [Combinators & Resilience Guide](../docs/combinators-and-resilience.md)
 - [Executors & Introspection Guide](../docs/executors-and-introspection.md)
 - [Mojo Pipelines Guide](../docs/mojo-pipelines.md)
+- [Design & Architecture (`DESIGN.md`)](../DESIGN.md)
