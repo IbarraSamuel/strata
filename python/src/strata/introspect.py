@@ -57,6 +57,14 @@ def _callable_name(fn: object, default: str | None = None) -> str:
 
 
 def _stage_label(obj: object) -> str:
+    if isinstance(obj, mojo_strata.NativeStage):
+        return f"native({obj.get_name()})"
+    inner_native = getattr(obj, "inner_native", None)
+    if isinstance(inner_native, mojo_strata.NativeStage):
+        return f"native({inner_native.get_name()})"
+    if type(obj).__name__ == "AsyncTask" and hasattr(obj, "inner_fn"):
+        return f"async({_callable_name(cast('Any', obj).inner_fn)})"
+
     formatters: dict[type[object], Any] = {
         FnTask: lambda o: _callable_name(o.inner_fn),
         SpreadTask: lambda o: f"spread({_callable_name(o.inner_fn)})",
@@ -78,6 +86,12 @@ def _stage_label(obj: object) -> str:
     if callable(obj) and isinstance(getattr(obj, "__name__", None), str):
         return str(getattr(obj, "__name__", type(obj).__name__))
     return type(obj).__name__
+
+
+def _invoke_leaf(obj: object, msg: object) -> object:
+    if isinstance(obj, mojo_strata.NativeStage):
+        return obj.call(msg)
+    return cast("Any", obj)(msg)
 
 
 def _unwrap_group(obj: object) -> mojo_strata.TaskGroup[Any, Any] | None:
@@ -302,7 +316,7 @@ class SequentialExecutor:
                 self._exec(child, seq[idx]) for idx, child in enumerate(obj.stages)
             )
 
-        return cast("Any", obj)(msg)
+        return _invoke_leaf(obj, msg)
 
 
 @dataclass
@@ -389,7 +403,7 @@ class TracingExecutor:
 
         label = _stage_label(obj)
         start = perf_counter_ns()
-        res = cast("Any", obj)(msg)
+        res = _invoke_leaf(obj, msg)
         end = perf_counter_ns()
         self.spans.append(TraceSpan(stage=label, start_ns=start, end_ns=end))
         return res
@@ -423,7 +437,7 @@ class TracingExecutor:
 
         def _traced_call(val: object) -> object:
             start = perf_counter_ns()
-            res = cast("Any", obj)(val)
+            res = _invoke_leaf(obj, val)
             end = perf_counter_ns()
             spans.append(TraceSpan(stage=label, start_ns=start, end_ns=end))
             return res

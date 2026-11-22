@@ -17,8 +17,10 @@ Strata v2 provides a single, unified operator algebra across every Mojo and Pyth
 - **Borrowed & Owned Pipelines**: Zero-allocation borrowed graphs (`Stage` / `ComposableStage`) plus value-owning `owned(...)` graphs that can be returned cleanly from factory functions.
 - **Native Error Propagation**: Raising Mojo stages (`strata.pipeline.fallible`) and exact Python exception preservation (raising PEP 654 `ExceptionGroup` on multi-branch parallel failures).
 - **Pluggable Executors**: Swap execution policies via `run_with(exec, x)` — `AsyncRTExecutor` (default), `SequentialExecutor` (deterministic debugging), `BoundedExecutor(max_workers=N)` (wave-capped concurrency), and `TracingExecutor` (per-stage monotonic nanosecond spans).
-- **Dataflow & Resilience Combinators**: `identity`, `select`, `spread` (tuple unpacking), `zip_stages` / `zip_tasks` (parallel product `(I1, I2) -> (O1, O2)`), `map_stage` / `map_task` (dynamic parallel map), `branch` (conditional routing), plus `retry`, `fallback`, `timeout`, and `recover`.
+- **Dataflow & Resilience Combinators**: `identity`, `select`, `spread` (tuple unpacking), `zip_stages` / `zip_tasks` (parallel product `(I1, I2) -> (O1, O2)`), `map_stage` / `map_task` (dynamic parallel map), `stream_map` (Mojo bounded-memory windowed streaming), `branch` (conditional routing), plus `retry`, `fallback`, `timeout`, and `recover`.
 - **Graph Introspection & Visualization**: Static topology metrics (`STAGE_COUNT`, `MAX_PARALLEL_WIDTH`, `CRITICAL_DEPTH` / `pipeline.stats()`) and `to_mermaid()` / `to_dot()` diagram export in both Mojo `compt` and Python.
+- **Hybrid GIL-Free Mojo + Python Pipelines**: `NativeTask` and the `strata.native_stage.v1` `PyCapsule` C-ABI protocol let native Mojo stages fuse consecutively and execute **100% GIL-free** in parallel alongside Python stages inside the same `|` / `&` graph.
+- **Python `async def` & Bounded Streaming**: `@async_task` + `await pipeline.arun(x)` for native asyncio graphs, `runtime_info()` / `is_gil_enabled()` for free-threaded Python (`3.13t`+), and sliding-window `pipeline.map(...)`, `pipeline.stream(..., max_in_flight=N, ordered=True|False)`, and `pipeline.astream(...)` with backpressure.
 - **Immutable Python Graphs**: Copy-on-write composition so sub-pipelines can be safely branched and reused without side effects.
 
 ---
@@ -43,15 +45,19 @@ strata/
 │   │   ├── __init__.mojo              # MutStage, Series, flat Parallel (1 TaskGroup)
 │   │   └── async_stage.mojo           # AsyncMutStage, AsyncSeries, flat AsyncParallel (1 TaskGroup)
 │   └── interop/
-│       └── python_interop.mojo        # CPython extension (mojo_strata.so)
+│       ├── native_abi.mojo            # Public Mojo C-ABI helpers for exporting strata.native_stage.v1 PyCapsules
+│       └── python_interop.mojo        # CPython extension (mojo_strata.so) with GIL-free NativeStage & chain fusion
 ├── python/                            # Python bindings and package
 │   ├── src/strata/
 │   │   ├── graph.py                   # Combinable, Task, FnTask, task, GroupedTask, group, *TaskGroup
 │   │   ├── combinators.py             # identity, select, spread, zip_tasks, map_task, branch, retry, fallback, timeout
 │   │   ├── introspect.py              # GraphStats, to_mermaid, to_dot, SequentialExecutor, TracingExecutor
+│   │   ├── native.py                  # NativeTask, native_stage, native_* kernels, runtime_info, is_gil_enabled
+│   │   ├── async_support.py           # AsyncTask, async_task, native asyncio arun
+│   │   ├── streaming.py               # stream_stage, map_stage, astream_stage with sliding-window backpressure
 │   │   └── mojo_strata.pyi            # PEP 695/646 type stubs
 │   └── tests/                         # pytest test suite
-├── examples/                          # Runnable pipeline examples
+├── examples/                          # Runnable Mojo & hybrid Python benchmark examples
 └── tests/                             # Mojo test suites & docstring completeness check
 ```
 
@@ -228,11 +234,13 @@ pixi run test_executors
 pixi run test_combinators
 pixi run test_resilience
 pixi run test_introspect
+pixi run test_stream_and_abi
 
-# Run Python tests, example, and docstring validation
+# Run Python tests, examples, benchmark, and docstring validation
 pixi run python_test
 pixi run generic_pipeline_example
 pixi run test_docs
+cd python && uv run python ../examples/benchmark_hybrid.py
 ```
 
 ---

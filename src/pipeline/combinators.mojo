@@ -940,3 +940,103 @@ def branch[
     return Branch(
         rebind[def(TrueStage.I) thin -> Bool](predicate), on_true, on_false
     )
+
+
+# ===----------------------------------------------------------------------=== #
+# Bounded-Memory Streaming Batch Execution
+# ===----------------------------------------------------------------------=== #
+
+
+trait OutputSink:
+    """Consumer receiving streamed outputs from `stream_map` in input order."""
+
+    comptime Item: Movable
+    """Item type delivered to `on_item`."""
+
+    def on_item(mut self, var item: Self.Item):
+        """Consume one produced output item.
+
+        Args:
+            item: Produced output item in original input order.
+        """
+        ...
+
+
+__async def _run_stream_item[
+    S: Stage,
+    InT: AnyType,
+    OutT: _CopyMovStageVal,
+    stage_orig: ImmOrigin,
+    in_orig: ImmOrigin,
+    out_orig: MutOrigin,
+](
+    stage_ptr: Pointer[S, stage_orig],
+    in_ptr: Pointer[InT, in_orig],
+    out_ptr: Pointer[Optional[OutT], out_orig],
+) where (S.I == InT and S.O == OutT):
+    var res = stage_ptr[](rebind[S.I](in_ptr[]))
+    out_ptr[] = rebind_var[OutT](res^)
+
+
+def stream_map[
+    S: Stage,
+    InElem: _CopyMovStageVal,
+    OutElem: _CopyMovStageVal,
+    Sink: OutputSink,
+](
+    stage: S,
+    items: List[InElem],
+    max_in_flight: Int,
+    mut sink: Sink,
+) where (S.I == InElem and S.O == OutElem and Sink.Item == OutElem):
+    """Execute `stage` across `items` in bounded parallel windows, streaming results to `sink`.
+
+    Unlike `Map`, which buffers all `len(items)` outputs in a single `List`,
+    `stream_map` bounds intermediate output memory to `O(max_in_flight)` by
+    delivering each completed window to `sink.on_item(...)` in input order
+    before starting the next window.
+
+    Parameters:
+        S: Element-wise stage type.
+        InElem: Input item type (must match `S.I`).
+        OutElem: Output item type (must match `S.O`).
+        Sink: Consumer type implementing `OutputSink` for `OutElem`.
+
+    Args:
+        stage: Stage applied concurrently to each input item.
+        items: Input items to process.
+        max_in_flight: Maximum concurrent tasks per window (`<= 1` runs sequentially).
+        sink: Output consumer receiving items in input order.
+    """
+    var n = len(items)
+    if n == 0:
+        return
+
+    if max_in_flight <= 1 or n == 1:
+        for i in range(n):
+            var r = stage(rebind[S.I](items[i]))
+            sink.on_item(rebind_var[Sink.Item](r^))
+        return
+
+    var window = min(max_in_flight, n)
+    var stage_ptr = Pointer(to=stage)
+    var offset = 0
+    while offset < n:
+        var count = min(window, n - offset)
+        var slots = List[Optional[OutElem]](length=count, fill=None)
+        var tg = TaskGroup()
+        for j in range(count):
+            var in_ptr = Pointer(to=items[offset + j]).unsafe_origin_cast[
+                ImmUntrackedOrigin
+            ]()
+            var out_ptr = Pointer(to=slots[j]).unsafe_origin_cast[
+                MutUntrackedOrigin
+            ]()
+            tg.create_task(_run_stream_item(stage_ptr, in_ptr, out_ptr))
+        tg.wait()
+        for j in range(count):
+            if case .Some(val) = slots[j]:
+                var item = val.copy()
+                sink.on_item(rebind_var[Sink.Item](item^))
+        offset += count
+

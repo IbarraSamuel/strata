@@ -1,6 +1,7 @@
 """Parallel Executor Written in Mojo."""
 
 from . import mojo_strata
+from .async_support import AsyncTask, arun, async_task
 from .combinators import (
     BranchTask,
     FallbackTask,
@@ -41,8 +42,22 @@ from .introspect import (
     to_dot,
     to_mermaid,
 )
+from .native import (
+    NativeCapsuleProvider,
+    NativeTask,
+    RuntimeInfo,
+    is_gil_enabled,
+    native_cpu_work,
+    native_float_linear,
+    native_float_poly,
+    native_int_linear,
+    native_stage,
+    runtime_info,
+)
+from .streaming import astream_stage, map_stage, stream_stage
 
 __all__ = [
+    "AsyncTask",
     "BranchTask",
     "Combinable",
     "FallbackTask",
@@ -51,8 +66,11 @@ __all__ = [
     "GroupedTask",
     "IdTask",
     "MapTask",
+    "NativeCapsuleProvider",
+    "NativeTask",
     "ParTaskGroup",
     "RetryTask",
+    "RuntimeInfo",
     "SelectTask",
     "SequentialExecutor",
     "SerTaskGroup",
@@ -63,16 +81,28 @@ __all__ = [
     "TraceSpan",
     "TracingExecutor",
     "ZipTask",
+    "arun",
+    "astream_stage",
+    "async_task",
     "branch",
     "fallback",
     "graph_stats",
     "group",
     "identity",
+    "is_gil_enabled",
+    "map_stage",
     "map_task",
     "mojo_strata",
+    "native_cpu_work",
+    "native_float_linear",
+    "native_float_poly",
+    "native_int_linear",
+    "native_stage",
     "retry",
+    "runtime_info",
     "select",
     "spread",
+    "stream_stage",
     "task",
     "timeout",
     "to_dot",

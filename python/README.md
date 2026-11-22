@@ -55,6 +55,9 @@ nested = group(double & add_ten) & group(double & add_ten)  # ((10, 15), (10, 15
 - **`group(...)`**: Wraps a parallel stage to preserve nested tuple structure under `&`.
 - **Combinators & Resilience**: `identity()`, `select(i)`, `@spread`, `zip_tasks(...)`, `map_task(stage, max_concurrency=...)`, `branch(pred, on_true, on_false)`, `retry(...)`, `fallback(...)`, and `timeout(...)`.
 - **Introspection & Executors**: `pipeline.stats()`, `pipeline.to_mermaid()`, `pipeline.to_dot()`, `SequentialExecutor`, and `TracingExecutor`.
+- **Hybrid GIL-Free Mojo Stages**: Compose `native_int_linear`, `native_float_linear`, `native_float_poly`, `native_cpu_work`, or external `strata.native_stage.v1` `PyCapsule`s via `native_stage(...)` directly with `|` and `&`. Consecutive native stages fuse into a single GIL-free pass and parallel native branches run concurrently without acquiring the GIL.
+- **Python `async def` & Free-Threaded Support**: Wrap coroutines with `@async_task`, execute natively on asyncio via `await pipeline.arun(x)` / `await arun(pipeline, x)`, and inspect runtime capabilities with `runtime_info()` / `is_gil_enabled()`.
+- **Bounded Streaming & Batch Execution**: `pipeline.map(items, max_in_flight=...)`, `pipeline.stream(iterable, max_in_flight=8, ordered=True|False)`, and `pipeline.astream(async_or_sync_iterable, ...)` provide true sliding-window backpressure.
 - **Exception Propagation**: Single-branch failures re-raise the exact original Python exception and traceback; multi-branch parallel failures raise a PEP 654 `ExceptionGroup`.
 
 See the root [README.md](../README.md) for Mojo usage and architecture details.

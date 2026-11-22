@@ -6,7 +6,13 @@ from typing import TYPE_CHECKING, Protocol, cast, overload, override
 from strata import mojo_strata
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import (
+        AsyncIterable,
+        AsyncIterator,
+        Callable,
+        Iterable,
+        Iterator,
+    )
 
     from strata.introspect import GraphStats
 
@@ -46,9 +52,12 @@ type _NonParStage[I, O] = (
 
 def _unwrap_target[I, O](
     other: _Stage[I, O],
-) -> Task[I, O] | mojo_strata.TaskGroup[I, O]:
+) -> Task[I, O] | mojo_strata.TaskGroup[I, O] | mojo_strata.NativeStage[I, O]:
     if isinstance(other, _BaseTaskGroup):
         return cast("mojo_strata.TaskGroup[I, O]", other.inner)
+    inner_native = getattr(other, "inner_native", None)
+    if isinstance(inner_native, mojo_strata.NativeStage):
+        return cast("mojo_strata.NativeStage[I, O]", inner_native)
     return other
 
 
@@ -120,6 +129,110 @@ class _BaseTaskGroup[I, O]:
         from strata.introspect import to_dot  # ruff: ignore[import-outside-top-level]
 
         return to_dot(self, name=name, direction=direction)
+
+    def map(self, items: Iterable[I], *, max_in_flight: int = 0) -> list[O]:
+        """Run this pipeline concurrently across `items` and return ordered results.
+
+        Parameters
+        ----------
+        items : Iterable[I]
+            Input items to process.
+        max_in_flight : int, optional
+            Maximum items active concurrently (`0` chooses a CPU-scaled default).
+
+        Returns
+        -------
+        list[O]
+            Ordered list of pipeline outputs.
+        """
+        from strata.streaming import map_stage  # ruff: ignore[import-outside-top-level]
+
+        return map_stage(self, items, max_in_flight=max_in_flight)
+
+    def stream(
+        self,
+        items: Iterable[I],
+        *,
+        max_in_flight: int = 8,
+        ordered: bool = True,
+    ) -> Iterator[O]:
+        """Stream `items` through this pipeline with bounded backpressure.
+
+        Parameters
+        ----------
+        items : Iterable[I]
+            Input iterable or generator.
+        max_in_flight : int, optional
+            Maximum items in flight simultaneously (`>= 1`).
+        ordered : bool, optional
+            Preserve input order (`True`) or yield in completion order (`False`).
+
+        Returns
+        -------
+        Iterator[O]
+            Lazy iterator yielding pipeline outputs.
+        """
+        from strata.streaming import (  # ruff: ignore[import-outside-top-level]
+            stream_stage,
+        )
+
+        return stream_stage(
+            self,
+            items,
+            max_in_flight=max_in_flight,
+            ordered=ordered,
+        )
+
+    async def arun(self, msg: I, /) -> O:
+        """Execute this pipeline natively on the active asyncio event loop.
+
+        Parameters
+        ----------
+        msg : I
+            Input value.
+
+        Returns
+        -------
+        O
+            Pipeline output value.
+        """
+        from strata.async_support import arun  # ruff: ignore[import-outside-top-level]
+
+        return await arun(self, msg)
+
+    def astream(
+        self,
+        items: Iterable[I] | AsyncIterable[I],
+        *,
+        max_in_flight: int = 8,
+        ordered: bool = True,
+    ) -> AsyncIterator[O]:
+        """Asynchronously stream `items` through this pipeline with backpressure.
+
+        Parameters
+        ----------
+        items : Iterable[I] | AsyncIterable[I]
+            Input synchronous or asynchronous iterable.
+        max_in_flight : int, optional
+            Maximum tasks in flight simultaneously (`>= 1`).
+        ordered : bool, optional
+            Preserve input order (`True`) or yield in completion order (`False`).
+
+        Returns
+        -------
+        AsyncIterator[O]
+            Async iterator yielding pipeline outputs.
+        """
+        from strata.streaming import (  # ruff: ignore[import-outside-top-level]
+            astream_stage,
+        )
+
+        return astream_stage(
+            self,
+            items,
+            max_in_flight=max_in_flight,
+            ordered=ordered,
+        )
 
 
 class SerTaskGroup[I, O](_BaseTaskGroup[I, O]):
@@ -211,7 +324,15 @@ class TaskGroup[I, O](_BaseTaskGroup[I, O]):
     """
 
     def __init__(self, task: Task[I, O]) -> None:
-        super().__init__(mojo_strata.TaskGroup(task=task))
+        inner_native = getattr(task, "inner_native", None)
+        if isinstance(inner_native, mojo_strata.NativeStage):
+            super().__init__(
+                mojo_strata.TaskGroup(
+                    task=cast("mojo_strata.NativeStage[I, O]", inner_native)
+                )
+            )
+        else:
+            super().__init__(mojo_strata.TaskGroup(task=task))
 
     @overload
     def __and__[*Os](
@@ -267,6 +388,115 @@ class Combinable(Protocol):
         return cast(
             "ParTaskGroup[I, tuple[object, ...]]",
             cast("object", group_stage & other),
+        )
+
+    def map[I, O](
+        self: Task[I, O],
+        items: Iterable[I],
+        *,
+        max_in_flight: int = 0,
+    ) -> list[O]:
+        """Run this task concurrently across `items` and return ordered results.
+
+        Parameters
+        ----------
+        items : Iterable[I]
+            Input items to process.
+        max_in_flight : int, optional
+            Maximum items active concurrently (`0` chooses a CPU-scaled default).
+
+        Returns
+        -------
+        list[O]
+            Ordered list of outputs.
+        """
+        from strata.streaming import map_stage  # ruff: ignore[import-outside-top-level]
+
+        return map_stage(self, items, max_in_flight=max_in_flight)
+
+    def stream[I, O](
+        self: Task[I, O],
+        items: Iterable[I],
+        *,
+        max_in_flight: int = 8,
+        ordered: bool = True,
+    ) -> Iterator[O]:
+        """Stream `items` through this task with bounded backpressure.
+
+        Parameters
+        ----------
+        items : Iterable[I]
+            Input iterable or generator.
+        max_in_flight : int, optional
+            Maximum items in flight simultaneously (`>= 1`).
+        ordered : bool, optional
+            Preserve input order (`True`) or yield in completion order (`False`).
+
+        Returns
+        -------
+        Iterator[O]
+            Lazy iterator yielding outputs.
+        """
+        from strata.streaming import (  # ruff: ignore[import-outside-top-level]
+            stream_stage,
+        )
+
+        return stream_stage(
+            self,
+            items,
+            max_in_flight=max_in_flight,
+            ordered=ordered,
+        )
+
+    async def arun[I, O](self: Task[I, O], msg: I, /) -> O:
+        """Execute this task natively on the active asyncio event loop.
+
+        Parameters
+        ----------
+        msg : I
+            Input value.
+
+        Returns
+        -------
+        O
+            Task output value.
+        """
+        from strata.async_support import arun  # ruff: ignore[import-outside-top-level]
+
+        return await arun(self, msg)
+
+    def astream[I, O](
+        self: Task[I, O],
+        items: Iterable[I] | AsyncIterable[I],
+        *,
+        max_in_flight: int = 8,
+        ordered: bool = True,
+    ) -> AsyncIterator[O]:
+        """Asynchronously stream `items` through this task with backpressure.
+
+        Parameters
+        ----------
+        items : Iterable[I] | AsyncIterable[I]
+            Input synchronous or asynchronous iterable.
+        max_in_flight : int, optional
+            Maximum tasks in flight simultaneously (`>= 1`).
+        ordered : bool, optional
+            Preserve input order (`True`) or yield in completion order (`False`).
+
+        Returns
+        -------
+        AsyncIterator[O]
+            Async iterator yielding outputs.
+        """
+        from strata.streaming import (  # ruff: ignore[import-outside-top-level]
+            astream_stage,
+        )
+
+        return astream_stage(
+            self,
+            items,
+            max_in_flight=max_in_flight,
+            ordered=ordered,
         )
 
 
