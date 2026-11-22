@@ -114,6 +114,14 @@ def PyInit_mojo_strata() abi("C") -> PythonObject:
                 "Return a new TaskGroup with an additional task without mutating self.",
             )
             .def_method[TaskGroup.call]("call", "Execute this task group.")
+            .def_method[TaskGroup.get_mode](
+                "get_mode",
+                "Return this task group's execution mode (-1 undefined, 0 serial, 1 parallel).",
+            )
+            .def_method[TaskGroup.get_tasks](
+                "get_tasks",
+                "Return a shallow Python list of tasks contained in this group.",
+            )
         )
 
         var mod = strata.finalize()
@@ -356,3 +364,40 @@ struct TaskGroup(Movable, Writable):
         if case .Some(exc) = res.error:
             return _restore_python_exception(exc)
         return res.value
+
+    @staticmethod
+    def get_mode(
+        self_ptr: Pointer[Self, MutAnyOrigin]
+    ) raises -> PythonObject:
+        """Return this task group's mode integer to Python.
+
+        Args:
+            self_ptr: Pointer to self.
+
+        Returns:
+            Python int (`-1` undefined, `0` serial, `1` parallel).
+
+        Raises:
+            Error if Python conversion fails.
+        """
+        return PythonObject(self_ptr[].mode)
+
+    @staticmethod
+    def get_tasks(
+        self_ptr: Pointer[Self, MutAnyOrigin]
+    ) raises -> PythonObject:
+        """Return a shallow Python list of tasks stored in this group.
+
+        Args:
+            self_ptr: Pointer to self.
+
+        Returns:
+            Python list of child task objects and nested `TaskGroup`s.
+
+        Raises:
+            Error if Python list construction fails.
+        """
+        var out = Python.list()
+        for obj in self_ptr[].objects:
+            _ = out.append(obj)
+        return out^

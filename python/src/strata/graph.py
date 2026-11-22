@@ -8,6 +8,8 @@ from strata import mojo_strata
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from strata.introspect import GraphStats
+
 
 class GroupMode(IntEnum):
     UNDEFINED = -1
@@ -66,6 +68,58 @@ class _BaseTaskGroup[I, O]:
         return SerTaskGroup[I, T](
             self.inner.with_task(target, GroupMode.SERIAL.value)
         )
+
+    def stats(self) -> GraphStats:
+        """Return static topology metrics for this pipeline.
+
+        Returns
+        -------
+        GraphStats
+            Stage count, maximum parallel width, and critical path depth.
+        """
+        from strata.introspect import (  # ruff: ignore[import-outside-top-level]
+            graph_stats,
+        )
+
+        return graph_stats(self)
+
+    def to_mermaid(self, *, direction: str = "LR") -> str:
+        """Render this pipeline topology as a Mermaid flowchart.
+
+        Parameters
+        ----------
+        direction : str, optional
+            Mermaid flowchart direction (`"LR"`, `"TD"`, etc.).
+
+        Returns
+        -------
+        str
+            Mermaid flowchart source string.
+        """
+        from strata.introspect import (  # ruff: ignore[import-outside-top-level]
+            to_mermaid,
+        )
+
+        return to_mermaid(self, direction=direction)
+
+    def to_dot(self, *, name: str = "Strata", direction: str = "LR") -> str:
+        """Render this pipeline topology as Graphviz DOT.
+
+        Parameters
+        ----------
+        name : str, optional
+            Graphviz `digraph` identifier.
+        direction : str, optional
+            Graphviz `rankdir` (`"LR"`, `"TB"`, etc.).
+
+        Returns
+        -------
+        str
+            Graphviz DOT source string.
+        """
+        from strata.introspect import to_dot  # ruff: ignore[import-outside-top-level]
+
+        return to_dot(self, name=name, direction=direction)
 
 
 class SerTaskGroup[I, O](_BaseTaskGroup[I, O]):

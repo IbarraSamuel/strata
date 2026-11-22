@@ -16,6 +16,9 @@ Strata v2 provides a single, unified operator algebra across every Mojo and Pyth
 - **Compile-Time Safety & Evaluation**: Mismatched stage types fail at compile time, and `strata.pipeline.compt` supports `comptime_run` even across parallel diamonds.
 - **Borrowed & Owned Pipelines**: Zero-allocation borrowed graphs (`Stage` / `ComposableStage`) plus value-owning `owned(...)` graphs that can be returned cleanly from factory functions.
 - **Native Error Propagation**: Raising Mojo stages (`strata.pipeline.fallible`) and exact Python exception preservation (raising PEP 654 `ExceptionGroup` on multi-branch parallel failures).
+- **Pluggable Executors**: Swap execution policies via `run_with(exec, x)` — `AsyncRTExecutor` (default), `SequentialExecutor` (deterministic debugging), `BoundedExecutor(max_workers=N)` (wave-capped concurrency), and `TracingExecutor` (per-stage monotonic nanosecond spans).
+- **Dataflow & Resilience Combinators**: `identity`, `select`, `spread` (tuple unpacking), `zip_stages` / `zip_tasks` (parallel product `(I1, I2) -> (O1, O2)`), `map_stage` / `map_task` (dynamic parallel map), `branch` (conditional routing), plus `retry`, `fallback`, `timeout`, and `recover`.
+- **Graph Introspection & Visualization**: Static topology metrics (`STAGE_COUNT`, `MAX_PARALLEL_WIDTH`, `CRITICAL_DEPTH` / `pipeline.stats()`) and `to_mermaid()` / `to_dot()` diagram export in both Mojo `compt` and Python.
 - **Immutable Python Graphs**: Copy-on-write composition so sub-pipelines can be safely branched and reused without side effects.
 
 ---
@@ -27,11 +30,15 @@ strata/
 ├── src/                               # Mojo source modules (v2.0)
 │   ├── _internal/
 │   │   └── runtime.mojo               # Single facade over std.runtime._asyncrt & intrinsics
+│   ├── executors/
+│   │   └── __init__.mojo              # Executor trait, AsyncRTExecutor, SequentialExecutor, BoundedExecutor, TracingExecutor
 │   ├── pipeline/                      # Value-passing & unit pipelines
-│   │   ├── __init__.mojo              # Stage, ComposableStage, Fn, UnitFn, Sequence, Parallel, Group, Owned*
-│   │   ├── compt.mojo                 # Zero-sized comptime F[fn], Unit[fn], Sequence, Parallel, Group, comptime_run
+│   │   ├── __init__.mojo              # Stage, ComposableStage, Fn, UnitFn, Sequence, Parallel, Group, Owned*, run_with
+│   │   ├── compt.mojo                 # Zero-sized comptime F[fn], Unit[fn], Id, Spread*, metadata, to_mermaid/to_dot
+│   │   ├── combinators.mojo           # Id, Select, Spread*, Zip*, Map, Branch
 │   │   ├── async_fn.mojo              # AF[fn], Sync[fn], AsyncSequence, AsyncParallel, AsyncGroup
-│   │   └── fallible.mojo              # FallibleStage, RaisingFn, RaisingSequence, RaisingParallel, raising_group
+│   │   ├── fallible.mojo              # FallibleStage, RaisingFn, RaisingSequence, RaisingParallel, raising_group
+│   │   └── resilience.mojo            # Retry, Fallback, Timeout, Recover
 │   ├── stateful/                      # In-place `mut self` pipelines (unified `|` and `&`)
 │   │   ├── __init__.mojo              # MutStage, Series, flat Parallel (1 TaskGroup)
 │   │   └── async_stage.mojo           # AsyncMutStage, AsyncSeries, flat AsyncParallel (1 TaskGroup)
@@ -40,6 +47,8 @@ strata/
 ├── python/                            # Python bindings and package
 │   ├── src/strata/
 │   │   ├── graph.py                   # Combinable, Task, FnTask, task, GroupedTask, group, *TaskGroup
+│   │   ├── combinators.py             # identity, select, spread, zip_tasks, map_task, branch, retry, fallback, timeout
+│   │   ├── introspect.py              # GraphStats, to_mermaid, to_dot, SequentialExecutor, TracingExecutor
 │   │   └── mojo_strata.pyi            # PEP 695/646 type stubs
 │   └── tests/                         # pytest test suite
 ├── examples/                          # Runnable pipeline examples
@@ -215,6 +224,10 @@ pixi run test_pipeline_async
 pixi run test_pipeline_fallible
 pixi run test_stateful
 pixi run test_stateful_async
+pixi run test_executors
+pixi run test_combinators
+pixi run test_resilience
+pixi run test_introspect
 
 # Run Python tests, example, and docstring validation
 pixi run python_test

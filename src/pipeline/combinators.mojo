@@ -1,0 +1,942 @@
+"""Dataflow combinators for runtime Mojo pipelines.
+
+Provides composable building blocks that plug directly into `|` and `&`:
+
+- `Id` / `identity`: Pass-through identity stage (`T -> T`).
+- `Select` / `select`: Extract element `Idx` from a `Tuple` (`Tuple[*Ts] -> Ts[Idx]`).
+- `Spread2` / `Spread3` / `Spread4` / `spread`: Unpack a `Tuple` into multi-argument functions.
+- `Zip2` / `Zip3` / `Zip4` / `zip_stages`: Parallel product (`(I1, I2, ...) -> (O1, O2, ...)`).
+- `Map` / `map_stage`: Dynamic parallel map over `List[I] -> List[O]`.
+- `Branch` / `branch`: Predicate-driven conditional routing (`on_true` vs `on_false`).
+"""
+
+from std.builtin.rebind import downcast
+from std.reflection import reflect
+from std.time import perf_counter_ns
+
+from .._internal.runtime import TaskGroup, uninitialized_storage
+from ..executors import Executor
+from . import ComposableStage, Stage
+
+comptime _CopyMovStageVal = Copyable & Deinitable
+
+
+# ===----------------------------------------------------------------------=== #
+# Id (Identity Stage)
+# ===----------------------------------------------------------------------=== #
+
+
+@fieldwise_init
+struct Id[T: _CopyMovStageVal](ComposableStage, Copyable, Movable):
+    """Identity stage returning a copy of its input unchanged.
+
+    Parameters:
+        T: Value type passed through unchanged.
+    """
+
+    comptime I = Self.T
+    """Input type."""
+    comptime O = Self.T
+    """Output type."""
+
+    def __call__(self, arg: Self.I) -> Self.O:
+        """Return a copy of `arg`.
+
+        Args:
+            arg: Input value.
+
+        Returns:
+            Copy of `arg`.
+        """
+        return arg.copy()
+
+
+def identity[T: _CopyMovStageVal]() -> Id[T]:
+    """Create an identity stage for type `T`.
+
+    Parameters:
+        T: Value type passed through unchanged.
+
+    Returns:
+        An `Id[T]` stage conforming to `ComposableStage`.
+    """
+    return Id[T]()
+
+
+# ===----------------------------------------------------------------------=== #
+# Select (Tuple Element Projection)
+# ===----------------------------------------------------------------------=== #
+
+
+@fieldwise_init
+struct Select[Idx: Int, *Ts: _CopyMovStageVal](
+    ComposableStage, Copyable, Movable
+) where (Idx >= 0 and Idx < Ts.length):
+    """Extract element `Idx` from a `Tuple[*Ts]`.
+
+    Parameters:
+        Idx: Zero-based tuple element index.
+        Ts: Tuple element types.
+    """
+
+    comptime I = Tuple[*Self.Ts]
+    """Tuple input type."""
+    comptime O = Self.Ts[Self.Idx]
+    """Projected element type."""
+
+    def __call__(self, arg: Self.I) -> Self.O:
+        """Return a copy of `arg[Idx]`.
+
+        Args:
+            arg: Input tuple.
+
+        Returns:
+            Projected element `arg[Idx]`.
+        """
+        return arg[Self.Idx].copy()
+
+
+def select[Idx: Int, *Ts: _CopyMovStageVal]() -> Select[
+    Idx, *Ts
+] where (Idx >= 0 and Idx < Ts.length):
+    """Create a tuple projection stage extracting element `Idx`.
+
+    Parameters:
+        Idx: Zero-based tuple element index.
+        Ts: Tuple element types.
+
+    Returns:
+        A `Select[Idx, *Ts]` stage conforming to `ComposableStage`.
+    """
+    return Select[Idx, *Ts]()
+
+
+# ===----------------------------------------------------------------------=== #
+# Spread (Tuple Unpacking Adapters)
+# ===----------------------------------------------------------------------=== #
+
+
+@fieldwise_init("implicit")
+struct Spread2[
+    A: Movable & Deinitable,
+    B: Movable & Deinitable,
+    Out: Movable & Deinitable,
+](ComposableStage, Copyable, Movable):
+    """Unpack a 2-tuple into a two-argument function.
+
+    Parameters:
+        A: First tuple element type.
+        B: Second tuple element type.
+        Out: Output type.
+    """
+
+    comptime I = Tuple[Self.A, Self.B]
+    """2-tuple input type."""
+    comptime O = Self.Out
+    """Output type."""
+
+    var func: def(Self.A, Self.B) thin -> Self.Out
+    """Wrapped two-argument function."""
+
+    def __call__(self, arg: Self.I) -> Self.O:
+        """Call `self.func(arg[0], arg[1])`.
+
+        Args:
+            arg: 2-tuple input.
+
+        Returns:
+            Result of `self.func`.
+        """
+        return self.func(arg[0], arg[1])
+
+
+@fieldwise_init("implicit")
+struct Spread3[
+    A: Movable & Deinitable,
+    B: Movable & Deinitable,
+    C: Movable & Deinitable,
+    Out: Movable & Deinitable,
+](ComposableStage, Copyable, Movable):
+    """Unpack a 3-tuple into a three-argument function.
+
+    Parameters:
+        A: First tuple element type.
+        B: Second tuple element type.
+        C: Third tuple element type.
+        Out: Output type.
+    """
+
+    comptime I = Tuple[Self.A, Self.B, Self.C]
+    """3-tuple input type."""
+    comptime O = Self.Out
+    """Output type."""
+
+    var func: def(Self.A, Self.B, Self.C) thin -> Self.Out
+    """Wrapped three-argument function."""
+
+    def __call__(self, arg: Self.I) -> Self.O:
+        """Call `self.func(arg[0], arg[1], arg[2])`.
+
+        Args:
+            arg: 3-tuple input.
+
+        Returns:
+            Result of `self.func`.
+        """
+        return self.func(arg[0], arg[1], arg[2])
+
+
+@fieldwise_init("implicit")
+struct Spread4[
+    A: Movable & Deinitable,
+    B: Movable & Deinitable,
+    C: Movable & Deinitable,
+    D: Movable & Deinitable,
+    Out: Movable & Deinitable,
+](ComposableStage, Copyable, Movable):
+    """Unpack a 4-tuple into a four-argument function.
+
+    Parameters:
+        A: First tuple element type.
+        B: Second tuple element type.
+        C: Third tuple element type.
+        D: Fourth tuple element type.
+        Out: Output type.
+    """
+
+    comptime I = Tuple[Self.A, Self.B, Self.C, Self.D]
+    """4-tuple input type."""
+    comptime O = Self.Out
+    """Output type."""
+
+    var func: def(Self.A, Self.B, Self.C, Self.D) thin -> Self.Out
+    """Wrapped four-argument function."""
+
+    def __call__(self, arg: Self.I) -> Self.O:
+        """Call `self.func(arg[0], arg[1], arg[2], arg[3])`.
+
+        Args:
+            arg: 4-tuple input.
+
+        Returns:
+            Result of `self.func`.
+        """
+        return self.func(arg[0], arg[1], arg[2], arg[3])
+
+
+def spread[
+    A: Movable & Deinitable,
+    B: Movable & Deinitable,
+    Out: Movable & Deinitable,
+](func: def(A, B) thin -> Out) -> Spread2[A, B, Out]:
+    """Lift a 2-argument function into a `ComposableStage` taking `Tuple[A, B]`.
+
+    Parameters:
+        A: First argument type.
+        B: Second argument type.
+        Out: Return type.
+
+    Args:
+        func: Two-argument function pointer.
+
+    Returns:
+        A `Spread2` stage unpacking `Tuple[A, B]`.
+    """
+    return Spread2(func)
+
+
+def spread[
+    A: Movable & Deinitable,
+    B: Movable & Deinitable,
+    C: Movable & Deinitable,
+    Out: Movable & Deinitable,
+](func: def(A, B, C) thin -> Out) -> Spread3[A, B, C, Out]:
+    """Lift a 3-argument function into a `ComposableStage` taking `Tuple[A, B, C]`.
+
+    Parameters:
+        A: First argument type.
+        B: Second argument type.
+        C: Third argument type.
+        Out: Return type.
+
+    Args:
+        func: Three-argument function pointer.
+
+    Returns:
+        A `Spread3` stage unpacking `Tuple[A, B, C]`.
+    """
+    return Spread3(func)
+
+
+def spread[
+    A: Movable & Deinitable,
+    B: Movable & Deinitable,
+    C: Movable & Deinitable,
+    D: Movable & Deinitable,
+    Out: Movable & Deinitable,
+](func: def(A, B, C, D) thin -> Out) -> Spread4[A, B, C, D, Out]:
+    """Lift a 4-argument function into a `ComposableStage` taking `Tuple[A, B, C, D]`.
+
+    Parameters:
+        A: First argument type.
+        B: Second argument type.
+        C: Third argument type.
+        D: Fourth argument type.
+        Out: Return type.
+
+    Args:
+        func: Four-argument function pointer.
+
+    Returns:
+        A `Spread4` stage unpacking `Tuple[A, B, C, D]`.
+    """
+    return Spread4(func)
+
+
+# ===----------------------------------------------------------------------=== #
+# Zip (Parallel Product: (I1, I2, ...) -> (O1, O2, ...))
+# ===----------------------------------------------------------------------=== #
+
+
+@always_inline
+__async def _run_zip_branch[
+    S: Stage,
+    InT: AnyType,
+    s_orig: ImmOrigin,
+    in_orig: ImmOrigin,
+    out_orig: MutOrigin,
+](
+    stage_ptr: Pointer[S, s_orig],
+    in_ptr: Pointer[InT, in_orig],
+    out_ptr: Pointer[S.O, out_orig],
+):
+    out_ptr[] = stage_ptr[](rebind[S.I](in_ptr[]))
+
+
+@always_inline
+__async def _run_zip_branch_traced[
+    S: Stage,
+    InT: AnyType,
+    s_orig: ImmOrigin,
+    in_orig: ImmOrigin,
+    out_orig: MutOrigin,
+    t_orig: MutOrigin,
+](
+    stage_ptr: Pointer[S, s_orig],
+    in_ptr: Pointer[InT, in_orig],
+    out_ptr: Pointer[S.O, out_orig],
+    start_ptr: Pointer[Int, t_orig],
+    end_ptr: Pointer[Int, t_orig],
+):
+    start_ptr[] = perf_counter_ns()
+    out_ptr[] = stage_ptr[](rebind[S.I](in_ptr[]))
+    end_ptr[] = perf_counter_ns()
+
+
+struct Zip2[
+    O1: ImmOrigin,
+    O2: ImmOrigin,
+    //,
+    S1: Stage,
+    S2: Stage,
+](ComposableStage) where (
+    conforms_to(S1.I, Movable)
+    and conforms_to(S1.I, Deinitable)
+    and conforms_to(S2.I, Movable)
+    and conforms_to(S2.I, Deinitable)
+):
+    """Parallel product executing `s1(inp[0])` and `s2(inp[1])` concurrently.
+
+    Parameters:
+        O1: Origin of `s1`.
+        O2: Origin of `s2`.
+        S1: First stage type.
+        S2: Second stage type.
+    """
+
+    comptime _I1 = downcast[Self.S1.I, Movable & Deinitable]
+    comptime _I2 = downcast[Self.S2.I, Movable & Deinitable]
+    comptime I = Tuple[Self._I1, Self._I2]
+    """2-tuple input `(S1.I, S2.I)`."""
+    comptime O = Tuple[Self.S1.O, Self.S2.O]
+    """2-tuple output `(S1.O, S2.O)`."""
+
+    var s1: Pointer[Self.S1, Self.O1]
+    """Pointer to the first stage."""
+    var s2: Pointer[Self.S2, Self.O2]
+    """Pointer to the second stage."""
+
+    def __init__(
+        out self, ref[Self.O1] s1: Self.S1, ref[Self.O2] s2: Self.S2
+    ):
+        """Initialize with references to two stages.
+
+        Args:
+            s1: First stage applied to `arg[0]`.
+            s2: Second stage applied to `arg[1]`.
+        """
+        self.s1 = Pointer(to=s1)
+        self.s2 = Pointer(to=s2)
+
+    def __call__(self, arg: Self.I) -> Self.O:
+        """Execute both stages concurrently on their respective tuple elements.
+
+        Args:
+            arg: 2-tuple `(in1, in2)`.
+
+        Returns:
+            2-tuple `(s1(in1), s2(in2))`.
+        """
+        var out = uninitialized_storage[Self.O]()
+        var tg = TaskGroup()
+        var p0 = Pointer(to=rebind[Self.S1.I](arg[0]))
+        var p1 = Pointer(to=rebind[Self.S2.I](arg[1]))
+        tg.create_task(_run_zip_branch(self.s1, p0, Pointer(to=out[0])))
+        tg.create_task(_run_zip_branch(self.s2, p1, Pointer(to=out[1])))
+        tg.wait()
+        return out^
+
+    def run_with[E: Executor](self, mut exec: E, arg: Self.I) -> Self.O:
+        """Execute this parallel product using executor `exec`.
+
+        Parameters:
+            E: Executor strategy type.
+
+        Args:
+            exec: Executor controlling concurrency and tracing.
+            arg: 2-tuple `(in1, in2)`.
+
+        Returns:
+            2-tuple `(s1(in1), s2(in2))`.
+        """
+        comptime if not E.IS_PARALLEL:
+            var r0 = self.s1[].run_with(exec, rebind[Self.S1.I](arg[0]))
+            var r1 = self.s2[].run_with(exec, rebind[Self.S2.I](arg[1]))
+            return (r0^, r1^)
+        else:
+            var limit = exec.concurrency_limit()
+            if limit == 1:
+                var r0 = self.s1[].run_with(exec, rebind[Self.S1.I](arg[0]))
+                var r1 = self.s2[].run_with(exec, rebind[Self.S2.I](arg[1]))
+                return (r0^, r1^)
+
+            var out = uninitialized_storage[Self.O]()
+            var p0 = Pointer(to=rebind[Self.S1.I](arg[0]))
+            var p1 = Pointer(to=rebind[Self.S2.I](arg[1]))
+            if exec.is_tracing():
+                var starts = List[Int](length=2, fill=0)
+                var ends = List[Int](length=2, fill=0)
+                var tg = TaskGroup()
+                tg.create_task(
+                    _run_zip_branch_traced(
+                        self.s1,
+                        p0,
+                        Pointer(to=out[0]),
+                        Pointer(to=starts[0]).unsafe_origin_cast[
+                            MutUntrackedOrigin
+                        ](),
+                        Pointer(to=ends[0]).unsafe_origin_cast[
+                            MutUntrackedOrigin
+                        ](),
+                    )
+                )
+                tg.create_task(
+                    _run_zip_branch_traced(
+                        self.s2,
+                        p1,
+                        Pointer(to=out[1]),
+                        Pointer(to=starts[1]).unsafe_origin_cast[
+                            MutUntrackedOrigin
+                        ](),
+                        Pointer(to=ends[1]).unsafe_origin_cast[
+                            MutUntrackedOrigin
+                        ](),
+                    )
+                )
+                tg.wait()
+                exec.record_span(reflect[Self.S1].name(), starts[0], ends[0])
+                exec.record_span(reflect[Self.S2].name(), starts[1], ends[1])
+                return out^
+
+            var tg = TaskGroup()
+            tg.create_task(_run_zip_branch(self.s1, p0, Pointer(to=out[0])))
+            tg.create_task(_run_zip_branch(self.s2, p1, Pointer(to=out[1])))
+            tg.wait()
+            return out^
+
+
+struct Zip3[
+    O1: ImmOrigin,
+    O2: ImmOrigin,
+    O3: ImmOrigin,
+    //,
+    S1: Stage,
+    S2: Stage,
+    S3: Stage,
+](ComposableStage) where (
+    conforms_to(S1.I, Movable)
+    and conforms_to(S1.I, Deinitable)
+    and conforms_to(S2.I, Movable)
+    and conforms_to(S2.I, Deinitable)
+    and conforms_to(S3.I, Movable)
+    and conforms_to(S3.I, Deinitable)
+):
+    """Parallel product executing `s1(inp[0])`, `s2(inp[1])`, `s3(inp[2])` concurrently.
+
+    Parameters:
+        O1: Origin of `s1`.
+        O2: Origin of `s2`.
+        O3: Origin of `s3`.
+        S1: First stage type.
+        S2: Second stage type.
+        S3: Third stage type.
+    """
+
+    comptime _I1 = downcast[Self.S1.I, Movable & Deinitable]
+    comptime _I2 = downcast[Self.S2.I, Movable & Deinitable]
+    comptime _I3 = downcast[Self.S3.I, Movable & Deinitable]
+    comptime I = Tuple[Self._I1, Self._I2, Self._I3]
+    """3-tuple input `(S1.I, S2.I, S3.I)`."""
+    comptime O = Tuple[Self.S1.O, Self.S2.O, Self.S3.O]
+    """3-tuple output `(S1.O, S2.O, S3.O)`."""
+
+    var s1: Pointer[Self.S1, Self.O1]
+    """Pointer to the first stage."""
+    var s2: Pointer[Self.S2, Self.O2]
+    """Pointer to the second stage."""
+    var s3: Pointer[Self.S3, Self.O3]
+    """Pointer to the third stage."""
+
+    def __init__(
+        out self,
+        ref[Self.O1] s1: Self.S1,
+        ref[Self.O2] s2: Self.S2,
+        ref[Self.O3] s3: Self.S3,
+    ):
+        """Initialize with references to three stages.
+
+        Args:
+            s1: First stage applied to `arg[0]`.
+            s2: Second stage applied to `arg[1]`.
+            s3: Third stage applied to `arg[2]`.
+        """
+        self.s1 = Pointer(to=s1)
+        self.s2 = Pointer(to=s2)
+        self.s3 = Pointer(to=s3)
+
+    def __call__(self, arg: Self.I) -> Self.O:
+        """Execute all three stages concurrently on their tuple elements.
+
+        Args:
+            arg: 3-tuple `(in1, in2, in3)`.
+
+        Returns:
+            3-tuple `(s1(in1), s2(in2), s3(in3))`.
+        """
+        var out = uninitialized_storage[Self.O]()
+        var tg = TaskGroup()
+        var p0 = Pointer(to=rebind[Self.S1.I](arg[0]))
+        var p1 = Pointer(to=rebind[Self.S2.I](arg[1]))
+        var p2 = Pointer(to=rebind[Self.S3.I](arg[2]))
+        tg.create_task(_run_zip_branch(self.s1, p0, Pointer(to=out[0])))
+        tg.create_task(_run_zip_branch(self.s2, p1, Pointer(to=out[1])))
+        tg.create_task(_run_zip_branch(self.s3, p2, Pointer(to=out[2])))
+        tg.wait()
+        return out^
+
+    def run_with[E: Executor](self, mut exec: E, arg: Self.I) -> Self.O:
+        """Execute this 3-way parallel product using executor `exec`.
+
+        Parameters:
+            E: Executor strategy type.
+
+        Args:
+            exec: Executor controlling concurrency and tracing.
+            arg: 3-tuple `(in1, in2, in3)`.
+
+        Returns:
+            3-tuple `(s1(in1), s2(in2), s3(in3))`.
+        """
+        comptime if not E.IS_PARALLEL:
+            var r0 = self.s1[].run_with(exec, rebind[Self.S1.I](arg[0]))
+            var r1 = self.s2[].run_with(exec, rebind[Self.S2.I](arg[1]))
+            var r2 = self.s3[].run_with(exec, rebind[Self.S3.I](arg[2]))
+            return (r0^, r1^, r2^)
+        else:
+            if exec.concurrency_limit() == 1:
+                var r0 = self.s1[].run_with(exec, rebind[Self.S1.I](arg[0]))
+                var r1 = self.s2[].run_with(exec, rebind[Self.S2.I](arg[1]))
+                var r2 = self.s3[].run_with(exec, rebind[Self.S3.I](arg[2]))
+                return (r0^, r1^, r2^)
+            var token = exec.on_stage_start("Zip3")
+            var res = self(arg)
+            exec.on_stage_end("Zip3", token)
+            return res^
+
+
+def zip_stages[
+    O1: ImmOrigin, O2: ImmOrigin, //, S1: Stage, S2: Stage
+](ref[O1] s1: S1, ref[O2] s2: S2) -> Zip2[
+    O1=O1, O2=O2, S1, S2
+] where (
+    conforms_to(S1.I, Movable)
+    and conforms_to(S1.I, Deinitable)
+    and conforms_to(S2.I, Movable)
+    and conforms_to(S2.I, Deinitable)
+):
+    """Create a 2-way parallel product stage `(I1, I2) -> (O1, O2)`.
+
+    Parameters:
+        O1: Origin of `s1`.
+        O2: Origin of `s2`.
+        S1: First stage type.
+        S2: Second stage type.
+
+    Args:
+        s1: Stage applied to element 0.
+        s2: Stage applied to element 1.
+
+    Returns:
+        A `Zip2` stage conforming to `ComposableStage`.
+    """
+    return Zip2(s1, s2)
+
+
+def zip_stages[
+    O1: ImmOrigin,
+    O2: ImmOrigin,
+    O3: ImmOrigin,
+    //,
+    S1: Stage,
+    S2: Stage,
+    S3: Stage,
+](ref[O1] s1: S1, ref[O2] s2: S2, ref[O3] s3: S3) -> Zip3[
+    O1=O1, O2=O2, O3=O3, S1, S2, S3
+] where (
+    conforms_to(S1.I, Movable)
+    and conforms_to(S1.I, Deinitable)
+    and conforms_to(S2.I, Movable)
+    and conforms_to(S2.I, Deinitable)
+    and conforms_to(S3.I, Movable)
+    and conforms_to(S3.I, Deinitable)
+):
+    """Create a 3-way parallel product stage `(I1, I2, I3) -> (O1, O2, O3)`.
+
+    Parameters:
+        O1: Origin of `s1`.
+        O2: Origin of `s2`.
+        O3: Origin of `s3`.
+        S1: First stage type.
+        S2: Second stage type.
+        S3: Third stage type.
+
+    Args:
+        s1: Stage applied to element 0.
+        s2: Stage applied to element 1.
+        s3: Stage applied to element 2.
+
+    Returns:
+        A `Zip3` stage conforming to `ComposableStage`.
+    """
+    return Zip3(s1, s2, s3)
+
+
+# ===----------------------------------------------------------------------=== #
+# Map (Dynamic Parallel Map over List[I] -> List[O])
+# ===----------------------------------------------------------------------=== #
+
+
+@always_inline
+__async def _run_map_item[
+    S: Stage,
+    InT: AnyType,
+    s_orig: ImmOrigin,
+    in_orig: ImmOrigin,
+    out_orig: MutOrigin,
+](
+    stage_ptr: Pointer[S, s_orig],
+    in_ptr: Pointer[InT, in_orig],
+    out_ptr: Pointer[Optional[downcast[S.O, _CopyMovStageVal]], out_orig],
+) where (
+    conforms_to(S.O, Copyable)
+    and conforms_to(S.O, Deinitable)
+):
+    comptime OutT = downcast[S.O, _CopyMovStageVal]
+    out_ptr[] = rebind_var[OutT](stage_ptr[](rebind[S.I](in_ptr[])))
+
+
+struct Map[origin: ImmOrigin, //, Inner: Stage](ComposableStage) where (
+    conforms_to(Inner.I, Copyable)
+    and conforms_to(Inner.I, Movable)
+    and conforms_to(Inner.I, Deinitable)
+    and conforms_to(Inner.O, Copyable)
+    and conforms_to(Inner.O, Movable)
+    and conforms_to(Inner.O, Deinitable)
+):
+    """Dynamic parallel map applying `Inner` to each element of `List[Inner.I]`.
+
+    Preserves input element order in the returned `List[Inner.O]`. Optional
+    `max_concurrency` caps concurrent tasks in flight per wave (`0` = unbounded).
+
+    Parameters:
+        origin: Origin of the wrapped stage reference.
+        Inner: Element-wise stage type.
+    """
+
+    comptime _ElemIn = downcast[Self.Inner.I, _CopyMovStageVal]
+    comptime _ElemOut = downcast[Self.Inner.O, _CopyMovStageVal]
+    comptime I = List[Self._ElemIn]
+    """Input list type."""
+    comptime O = List[Self._ElemOut]
+    """Output list type."""
+
+    var inner: Pointer[Self.Inner, Self.origin]
+    """Pointer to the per-element stage."""
+    var max_concurrency: Int
+    """Maximum concurrent tasks per wave (`0` = unbounded)."""
+
+    def __init__(
+        out self,
+        ref[Self.origin] inner: Self.Inner,
+        max_concurrency: Int = 0,
+    ):
+        """Initialize a dynamic parallel map stage.
+
+        Args:
+            inner: Stage to execute on every input element.
+            max_concurrency: Optional concurrency cap (`0` for unbounded).
+        """
+        self.inner = Pointer(to=inner)
+        self.max_concurrency = max_concurrency if max_concurrency > 0 else 0
+
+    def _run_waves(self, arg: Self.I, limit: Int) -> Self.O:
+        var n = len(arg)
+        if n == 0:
+            return Self.O()
+
+        if limit == 1:
+            var out = Self.O(capacity=n)
+            for i in range(n):
+                var r = self.inner[](rebind[Self.Inner.I](arg[i]))
+                out.append(rebind_var[Self._ElemOut](r^))
+            return out^
+
+        var slots = List[Optional[Self._ElemOut]](length=n, fill=None)
+        var wave_size = limit if limit > 0 else n
+        var wave_start = 0
+        while wave_start < n:
+            var wave_end = min(wave_start + wave_size, n)
+            var tg = TaskGroup()
+            for i in range(wave_start, wave_end):
+                var in_ptr = Pointer(
+                    to=rebind[Self.Inner.I](arg[i])
+                ).unsafe_origin_cast[ImmUntrackedOrigin]()
+                var out_ptr = Pointer(to=slots[i]).unsafe_origin_cast[
+                    MutUntrackedOrigin
+                ]()
+                tg.create_task(_run_map_item(self.inner, in_ptr, out_ptr))
+            tg.wait()
+            wave_start = wave_end
+
+        var results = Self.O(capacity=n)
+        for i in range(n):
+            if case .Some(val) = slots[i]:
+                results.append(val.copy())
+        return results^
+
+    def __call__(self, arg: Self.I) -> Self.O:
+        """Apply `inner` to every element of `arg` concurrently.
+
+        Args:
+            arg: Input list of elements.
+
+        Returns:
+            Output list of transformed elements in original order.
+        """
+        return self._run_waves(arg, self.max_concurrency)
+
+    def run_with[E: Executor](self, mut exec: E, arg: Self.I) -> Self.O:
+        """Execute this dynamic map using executor `exec`.
+
+        Parameters:
+            E: Executor strategy type.
+
+        Args:
+            exec: Executor controlling concurrency and tracing.
+            arg: Input list of elements.
+
+        Returns:
+            Output list of transformed elements.
+        """
+        var token = exec.on_stage_start(reflect[Self].name())
+        comptime if not E.IS_PARALLEL:
+            var out = Self.O(capacity=len(arg))
+            for i in range(len(arg)):
+                var r = self.inner[].run_with(
+                    exec, rebind[Self.Inner.I](arg[i])
+                )
+                out.append(rebind_var[Self._ElemOut](r^))
+            exec.on_stage_end(reflect[Self].name(), token)
+            return out^
+        else:
+            var exec_limit = exec.concurrency_limit()
+            var effective_limit = self.max_concurrency
+            if exec_limit > 0:
+                if effective_limit <= 0 or exec_limit < effective_limit:
+                    effective_limit = exec_limit
+            var res = self._run_waves(arg, effective_limit)
+            exec.on_stage_end(reflect[Self].name(), token)
+            return res^
+
+
+def map_stage[
+    origin: ImmOrigin, //, Inner: Stage
+](ref[origin] inner: Inner, max_concurrency: Int = 0) -> Map[
+    origin=origin, Inner
+] where (
+    conforms_to(Inner.I, Copyable)
+    and conforms_to(Inner.I, Movable)
+    and conforms_to(Inner.I, Deinitable)
+    and conforms_to(Inner.O, Copyable)
+    and conforms_to(Inner.O, Movable)
+    and conforms_to(Inner.O, Deinitable)
+):
+    """Lift a stage `I -> O` into a parallel `Map` stage `List[I] -> List[O]`.
+
+    Parameters:
+        origin: Origin of `inner`.
+        Inner: Element-wise stage type.
+
+    Args:
+        inner: Stage applied to every item.
+        max_concurrency: Maximum concurrent tasks per wave (`0` = unbounded).
+
+    Returns:
+        A `Map` stage conforming to `ComposableStage`.
+    """
+    return Map(inner, max_concurrency)
+
+
+# ===----------------------------------------------------------------------=== #
+# Branch (Conditional Routing)
+# ===----------------------------------------------------------------------=== #
+
+
+struct Branch[
+    O1: ImmOrigin,
+    O2: ImmOrigin,
+    //,
+    TrueStage: Stage,
+    FalseStage: Stage,
+](ComposableStage) where (
+    TrueStage.I == FalseStage.I and TrueStage.O == FalseStage.O
+):
+    """Conditional router choosing between `on_true` and `on_false` via `predicate`.
+
+    Parameters:
+        O1: Origin of `on_true`.
+        O2: Origin of `on_false`.
+        TrueStage: Stage executed when `predicate(arg)` returns `True`.
+        FalseStage: Stage executed when `predicate(arg)` returns `False`.
+    """
+
+    comptime I = Self.TrueStage.I
+    """Input type."""
+    comptime O = Self.TrueStage.O
+    """Output type."""
+
+    var predicate: def(Self.I) thin -> Bool
+    """Routing predicate evaluated on the input."""
+    var on_true: Pointer[Self.TrueStage, Self.O1]
+    """Pointer to the true branch stage."""
+    var on_false: Pointer[Self.FalseStage, Self.O2]
+    """Pointer to the false branch stage."""
+
+    def __init__(
+        out self,
+        predicate: def(Self.I) thin -> Bool,
+        ref[Self.O1] on_true: Self.TrueStage,
+        ref[Self.O2] on_false: Self.FalseStage,
+    ):
+        """Initialize a conditional branch stage.
+
+        Args:
+            predicate: Pure predicate choosing the branch.
+            on_true: Stage invoked when `predicate(arg)` is `True`.
+            on_false: Stage invoked when `predicate(arg)` is `False`.
+        """
+        self.predicate = predicate
+        self.on_true = Pointer(to=on_true)
+        self.on_false = Pointer(to=on_false)
+
+    def __call__(self, arg: Self.I) -> Self.O:
+        """Route `arg` to `on_true` or `on_false` based on `predicate(arg)`.
+
+        Args:
+            arg: Input argument.
+
+        Returns:
+            Output from the selected branch.
+        """
+        if self.predicate(arg):
+            return self.on_true[](arg)
+        return rebind_var[Self.O](
+            self.on_false[](rebind[Self.FalseStage.I](arg))
+        )
+
+    def run_with[E: Executor](self, mut exec: E, arg: Self.I) -> Self.O:
+        """Route `arg` to the selected branch and execute it with `exec`.
+
+        Parameters:
+            E: Executor strategy type.
+
+        Args:
+            exec: Executor controlling concurrency and tracing.
+            arg: Input argument.
+
+        Returns:
+            Output from the selected branch.
+        """
+        if self.predicate(arg):
+            return self.on_true[].run_with(exec, arg)
+        return rebind_var[Self.O](
+            self.on_false[].run_with(exec, rebind[Self.FalseStage.I](arg))
+        )
+
+
+def branch[
+    In: AnyType,
+    O1: ImmOrigin,
+    O2: ImmOrigin,
+    //,
+    TrueStage: Stage,
+    FalseStage: Stage,
+](
+    predicate: def(In) thin -> Bool,
+    ref[O1] on_true: TrueStage,
+    ref[O2] on_false: FalseStage,
+) -> Branch[O1=O1, O2=O2, TrueStage, FalseStage] where (
+    In == TrueStage.I
+    and TrueStage.I == FalseStage.I
+    and TrueStage.O == FalseStage.O
+):
+    """Create a conditional `Branch` routing stage.
+
+    Parameters:
+        In: Predicate input type (must match `TrueStage.I`).
+        O1: Origin of `on_true`.
+        O2: Origin of `on_false`.
+        TrueStage: Stage executed when `predicate(arg)` is `True`.
+        FalseStage: Stage executed when `predicate(arg)` is `False`.
+
+    Args:
+        predicate: Function returning `True` or `False` for the input.
+        on_true: Stage executed on `True`.
+        on_false: Stage executed on `False`.
+
+    Returns:
+        A `Branch` stage conforming to `ComposableStage`.
+    """
+    return Branch(
+        rebind[def(TrueStage.I) thin -> Bool](predicate), on_true, on_false
+    )

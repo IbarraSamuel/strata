@@ -48,11 +48,13 @@ flat = (double & add_ten) & (double & add_ten)              # (10, 15, 10, 15)
 nested = group(double & add_ten) & group(double & add_ten)  # ((10, 15), (10, 15))
 ```
 
-## Composition Operators & Error Propagation
+## Composition Operators, Combinators & Introspection
 
 - **`|` (Pipe / Sequence)**: Pipes output from left stage into input of right stage without mutating existing stages.
 - **`&` (Parallel Fan-Out)**: Dispatches tasks concurrently in a single flat `TaskGroup`, flattening associatively into a flat tuple.
 - **`group(...)`**: Wraps a parallel stage to preserve nested tuple structure under `&`.
+- **Combinators & Resilience**: `identity()`, `select(i)`, `@spread`, `zip_tasks(...)`, `map_task(stage, max_concurrency=...)`, `branch(pred, on_true, on_false)`, `retry(...)`, `fallback(...)`, and `timeout(...)`.
+- **Introspection & Executors**: `pipeline.stats()`, `pipeline.to_mermaid()`, `pipeline.to_dot()`, `SequentialExecutor`, and `TracingExecutor`.
 - **Exception Propagation**: Single-branch failures re-raise the exact original Python exception and traceback; multi-branch parallel failures raise a PEP 654 `ExceptionGroup`.
 
 See the root [README.md](../README.md) for Mojo usage and architecture details.

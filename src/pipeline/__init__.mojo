@@ -8,8 +8,11 @@ one flat `TaskGroup` unless wrapped explicitly with `group(...)`.
 """
 
 from std.builtin.rebind import downcast
+from std.reflection import reflect
+from std.time import perf_counter_ns
 
 from .._internal.runtime import TaskGroup, uninitialized_storage
+from ..executors import Executor
 
 comptime StageToOut[t: Stage] = t.O
 """Extract the output type of a `Stage`.
@@ -93,6 +96,28 @@ trait Stage:
             Computed stage result.
         """
         ...
+
+    def run_with[E: Executor](self, mut exec: E, arg: Self.I) -> Self.O:
+        """Execute this stage using a pluggable `Executor`.
+
+        Default implementation wraps `self(arg)` with `exec`'s start/end hooks.
+        Composite stages (`Sequence`, `Parallel`, `Group`, etc.) override this
+        to propagate `exec` into child stages.
+
+        Parameters:
+            E: Executor strategy type.
+
+        Args:
+            exec: Executor controlling concurrency and observability.
+            arg: Input argument.
+
+        Returns:
+            Computed stage result.
+        """
+        var token = exec.on_stage_start(reflect[Self].name())
+        var res = self(arg)
+        exec.on_stage_end(reflect[Self].name(), token)
+        return res^
 
 
 trait ComposableStage(Stage):
@@ -233,6 +258,22 @@ struct Sequence[
         """
         return self.t2[](rebind[Self.T2.I](self.t1[](arg)))
 
+    def run_with[E: Executor](self, mut exec: E, arg: Self.I) -> Self.O:
+        """Execute both stages in sequence using `exec`.
+
+        Parameters:
+            E: Executor strategy type.
+
+        Args:
+            exec: Executor controlling concurrency and observability.
+            arg: Input argument for `t1`.
+
+        Returns:
+            Output produced by `t2`.
+        """
+        var mid = self.t1[].run_with(exec, arg)
+        return self.t2[].run_with(exec, rebind[Self.T2.I](mid))
+
 
 struct Group[origin: ImmOrigin, //, Inner: Stage](ComposableStage):
     """Opaque wrapper preventing `&` from flattening an inner `Parallel` stage.
@@ -268,6 +309,21 @@ struct Group[origin: ImmOrigin, //, Inner: Stage](ComposableStage):
             Output of the wrapped stage.
         """
         return self.inner[](arg)
+
+    def run_with[E: Executor](self, mut exec: E, arg: Self.I) -> Self.O:
+        """Execute the wrapped stage using `exec`.
+
+        Parameters:
+            E: Executor strategy type.
+
+        Args:
+            exec: Executor controlling concurrency and observability.
+            arg: Input argument.
+
+        Returns:
+            Output of the wrapped stage.
+        """
+        return self.inner[].run_with(exec, arg)
 
 
 def group[
@@ -347,6 +403,25 @@ struct Parallel[
         ref in_value = rebind[Self.elements[i].I](in_ptr[])
         out_ptr[] = rebind_var[to](task_ptr[](in_value))
 
+    @staticmethod
+    __async def _run_elem_traced[
+        i: Int,
+        in_orig: ImmOrigin,
+        out_orig: MutOrigin,
+        t_orig: MutOrigin,
+    ](
+        task_ptr: Pointer[Self.elements[i], Self.origin],
+        in_ptr: Pointer[Self.I, in_orig],
+        out_ptr: Pointer[Self.O.Ts[i], out_orig],
+        start_ptr: Pointer[Int, t_orig],
+        end_ptr: Pointer[Int, t_orig],
+    ):
+        comptime to = downcast[Self.O.Ts[i], Movable]
+        ref in_value = rebind[Self.elements[i].I](in_ptr[])
+        start_ptr[] = perf_counter_ns()
+        out_ptr[] = rebind_var[to](task_ptr[](in_value))
+        end_ptr[] = perf_counter_ns()
+
     def __call__(self, v: Self.I) -> Self.O:
         """Execute all branches concurrently on `v` in a single `TaskGroup`.
 
@@ -369,6 +444,88 @@ struct Parallel[
 
         tg.wait()
         return _out_tp^
+
+    def run_with[E: Executor](self, mut exec: E, v: Self.I) -> Self.O:
+        """Execute all branches according to executor `exec`.
+
+        Respects `SequentialExecutor` (zero asyncrt calls), `BoundedExecutor`
+        (wave-limited `TaskGroup` batches), and `TracingExecutor` (lock-free
+        per-branch span capture).
+
+        Parameters:
+            E: Executor strategy type.
+
+        Args:
+            exec: Executor controlling concurrency and tracing.
+            v: Input value broadcast to all branches.
+
+        Returns:
+            Flat tuple of branch outputs.
+        """
+        var _out_tp = uninitialized_storage[Self.O]()
+        comptime if not E.IS_PARALLEL:
+            comptime for i in range(Self.elements.length):
+                comptime to = downcast[Self.O.Ts[i], Movable]
+                ref task_i = rebind[
+                    Pointer[Self.elements[i], origin=Self.origin]
+                ](self.tasks[i])
+                ref in_value = rebind[Self.elements[i].I](v)
+                _out_tp[i] = rebind_var[to](task_i[].run_with(exec, in_value))
+            return _out_tp^
+        else:
+            var limit = exec.concurrency_limit()
+            if limit == 1:
+                comptime for i in range(Self.elements.length):
+                    comptime to = downcast[Self.O.Ts[i], Movable]
+                    ref task_i = rebind[
+                        Pointer[Self.elements[i], origin=Self.origin]
+                    ](self.tasks[i])
+                    ref in_value = rebind[Self.elements[i].I](v)
+                    _out_tp[i] = rebind_var[to](
+                        task_i[].run_with(exec, in_value)
+                    )
+                return _out_tp^
+
+            var in_ptr = Pointer(to=v)
+            var tracing = exec.is_tracing()
+            var starts = List[Int](length=Self.elements.length, fill=0)
+            var ends = List[Int](length=Self.elements.length, fill=0)
+            var wave_size = limit if limit > 0 else Self.elements.length
+            var wave_start = 0
+            while wave_start < Self.elements.length:
+                var wave_end = min(wave_start + wave_size, Self.elements.length)
+                var tg = TaskGroup()
+                comptime for i in range(Self.elements.length):
+                    if i >= wave_start and i < wave_end:
+                        ref task_i = rebind[
+                            Pointer[Self.elements[i], origin=Self.origin]
+                        ](self.tasks[i])
+                        var out_ptr = Pointer(to=_out_tp[i])
+                        if tracing:
+                            var s_ptr = Pointer(
+                                to=starts[i]
+                            ).unsafe_origin_cast[MutUntrackedOrigin]()
+                            var e_ptr = Pointer(
+                                to=ends[i]
+                            ).unsafe_origin_cast[MutUntrackedOrigin]()
+                            tg.create_task(
+                                Self._run_elem_traced[i](
+                                    task_i, in_ptr, out_ptr, s_ptr, e_ptr
+                                )
+                            )
+                        else:
+                            tg.create_task(
+                                Self._run_elem[i](task_i, in_ptr, out_ptr)
+                            )
+                tg.wait()
+                wave_start = wave_end
+
+            if tracing:
+                comptime for i in range(Self.elements.length):
+                    exec.record_span(
+                        reflect[Self.elements[i]].name(), starts[i], ends[i]
+                    )
+            return _out_tp^
 
     def __or__[
         so: ImmOrigin,
@@ -571,6 +728,22 @@ struct OwnedSequence[T1: _MovableStage, T2: _MovableStage](Stage, Movable):
         """
         return self.t2(rebind[Self.T2.I](self.t1(arg)))
 
+    def run_with[E: Executor](self, mut exec: E, arg: Self.I) -> Self.O:
+        """Execute both owned stages sequentially using `exec`.
+
+        Parameters:
+            E: Executor strategy type.
+
+        Args:
+            exec: Executor controlling concurrency and tracing.
+            arg: Input argument for `t1`.
+
+        Returns:
+            Output of `t2`.
+        """
+        var mid = self.t1.run_with(exec, arg)
+        return self.t2.run_with(exec, rebind[Self.T2.I](mid))
+
     def __or__[
         Other: _MovableStage
     ](deinit self, var other: Other) -> OwnedSequence[
@@ -691,6 +864,26 @@ struct OwnedParallel[*elements: _MovableStage](Stage, Movable):
         ref in_value = rebind[Self.elements[i].I](in_ptr[])
         out_ptr[] = rebind_var[to](task_ptr[](in_value))
 
+    @staticmethod
+    __async def _run_elem_traced[
+        i: Int,
+        task_orig: ImmOrigin,
+        in_orig: ImmOrigin,
+        out_orig: MutOrigin,
+        t_orig: MutOrigin,
+    ](
+        task_ptr: Pointer[Self.elements[i], task_orig],
+        in_ptr: Pointer[Self.I, in_orig],
+        out_ptr: Pointer[Self.O.Ts[i], out_orig],
+        start_ptr: Pointer[Int, t_orig],
+        end_ptr: Pointer[Int, t_orig],
+    ):
+        comptime to = downcast[Self.O.Ts[i], Movable]
+        ref in_value = rebind[Self.elements[i].I](in_ptr[])
+        start_ptr[] = perf_counter_ns()
+        out_ptr[] = rebind_var[to](task_ptr[](in_value))
+        end_ptr[] = perf_counter_ns()
+
     def __call__(self, v: Self.I) -> Self.O:
         """Execute all owned stages concurrently on `v`.
 
@@ -711,6 +904,78 @@ struct OwnedParallel[*elements: _MovableStage](Stage, Movable):
 
         tg.wait()
         return _out_tp^
+
+    def run_with[E: Executor](self, mut exec: E, v: Self.I) -> Self.O:
+        """Execute all owned stages according to executor `exec`.
+
+        Parameters:
+            E: Executor strategy type.
+
+        Args:
+            exec: Executor controlling concurrency and tracing.
+            v: Input argument broadcast to all branches.
+
+        Returns:
+            Flat tuple of branch outputs.
+        """
+        var _out_tp = uninitialized_storage[Self.O]()
+        comptime if not E.IS_PARALLEL:
+            comptime for i in range(Self.elements.length):
+                comptime to = downcast[Self.O.Ts[i], Movable]
+                ref in_value = rebind[Self.elements[i].I](v)
+                _out_tp[i] = rebind_var[to](
+                    self.tasks[i].run_with(exec, in_value)
+                )
+            return _out_tp^
+        else:
+            var limit = exec.concurrency_limit()
+            if limit == 1:
+                comptime for i in range(Self.elements.length):
+                    comptime to = downcast[Self.O.Ts[i], Movable]
+                    ref in_value = rebind[Self.elements[i].I](v)
+                    _out_tp[i] = rebind_var[to](
+                        self.tasks[i].run_with(exec, in_value)
+                    )
+                return _out_tp^
+
+            var in_ptr = Pointer(to=v)
+            var tracing = exec.is_tracing()
+            var starts = List[Int](length=Self.elements.length, fill=0)
+            var ends = List[Int](length=Self.elements.length, fill=0)
+            var wave_size = limit if limit > 0 else Self.elements.length
+            var wave_start = 0
+            while wave_start < Self.elements.length:
+                var wave_end = min(wave_start + wave_size, Self.elements.length)
+                var tg = TaskGroup()
+                comptime for i in range(Self.elements.length):
+                    if i >= wave_start and i < wave_end:
+                        var task_ptr = Pointer(to=self.tasks[i])
+                        var out_ptr = Pointer(to=_out_tp[i])
+                        if tracing:
+                            var s_ptr = Pointer(
+                                to=starts[i]
+                            ).unsafe_origin_cast[MutUntrackedOrigin]()
+                            var e_ptr = Pointer(
+                                to=ends[i]
+                            ).unsafe_origin_cast[MutUntrackedOrigin]()
+                            tg.create_task(
+                                Self._run_elem_traced[i](
+                                    task_ptr, in_ptr, out_ptr, s_ptr, e_ptr
+                                )
+                            )
+                        else:
+                            tg.create_task(
+                                Self._run_elem[i](task_ptr, in_ptr, out_ptr)
+                            )
+                tg.wait()
+                wave_start = wave_end
+
+            if tracing:
+                comptime for i in range(Self.elements.length):
+                    exec.record_span(
+                        reflect[Self.elements[i]].name(), starts[i], ends[i]
+                    )
+            return _out_tp^
 
     def __or__[
         Other: _MovableStage
@@ -810,6 +1075,21 @@ struct OwnedGroup[Inner: _MovableStage](Stage, Movable):
             Wrapped stage output.
         """
         return self.inner(arg)
+
+    def run_with[E: Executor](self, mut exec: E, arg: Self.I) -> Self.O:
+        """Execute the wrapped owned stage using `exec`.
+
+        Parameters:
+            E: Executor strategy type.
+
+        Args:
+            exec: Executor controlling concurrency and tracing.
+            arg: Input argument.
+
+        Returns:
+            Wrapped stage output.
+        """
+        return self.inner.run_with(exec, arg)
 
     def __or__[
         Other: _MovableStage
@@ -915,6 +1195,21 @@ struct Owned[Inner: _MovableStage](Stage, Movable):
         """
         return self.inner(arg)
 
+    def run_with[E: Executor](self, mut exec: E, arg: Self.I) -> Self.O:
+        """Execute the owned pipeline using `exec`.
+
+        Parameters:
+            E: Executor strategy type.
+
+        Args:
+            exec: Executor controlling concurrency and tracing.
+            arg: Input argument.
+
+        Returns:
+            Pipeline output.
+        """
+        return self.inner.run_with(exec, arg)
+
     def __or__[
         Other: _MovableStage
     ](deinit self, var other: Other) -> OwnedSequence[
@@ -1013,3 +1308,23 @@ def owned_group[T: _MovableStage](var stage: T) -> OwnedGroup[T]:
         Opaque `OwnedGroup[T]` handle.
     """
     return OwnedGroup(stage^)
+
+
+def run_with[
+    E: Executor, S: Stage
+](mut exec: E, stage: S, arg: S.I) -> S.O:
+    """Execute any `Stage` pipeline using a pluggable `Executor`.
+
+    Parameters:
+        E: Executor strategy type.
+        S: Pipeline stage type.
+
+    Args:
+        exec: Executor controlling concurrency and tracing.
+        stage: Stage or composite pipeline to execute.
+        arg: Input argument.
+
+    Returns:
+        Computed pipeline result.
+    """
+    return stage.run_with(exec, arg)
