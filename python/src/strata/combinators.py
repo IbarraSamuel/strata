@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import atexit
 import math
+import os
+import threading
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
+from itertools import starmap
 from time import sleep
 from typing import (
     TYPE_CHECKING,
@@ -18,20 +22,49 @@ from typing import (
     override,
 )
 
-from strata import mojo_strata
 from strata.graph import (
     Combinable,
     GroupMode,
     Task,
-    TaskGroup,
+    _build_task_group,
     _invoke_stage,
     _Stage,
+    _try_native_map_list,
 )
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from strata import mojo_strata
+
 _MAX_RETRY_DELAY: float = 86_400.0
+_TIMEOUT_POOL_LOCK = threading.Lock()
+_timeout_pool: ThreadPoolExecutor | None = None
+
+
+def _shutdown_timeout_pool() -> None:
+    global _timeout_pool  # ruff: ignore[global-statement]
+    pool = _timeout_pool
+    _timeout_pool = None
+    if pool is not None:
+        pool.shutdown(wait=False, cancel_futures=True)
+
+
+def _get_timeout_pool() -> ThreadPoolExecutor:
+    global _timeout_pool  # ruff: ignore[global-statement]
+    pool = _timeout_pool
+    if pool is None:
+        with _TIMEOUT_POOL_LOCK:
+            pool = _timeout_pool
+            if pool is None:
+                workers = min(64, max(8, (os.cpu_count() or 1) * 4))
+                pool = ThreadPoolExecutor(
+                    max_workers=workers,
+                    thread_name_prefix="strata-timeout",
+                )
+                _timeout_pool = pool
+                atexit.register(_shutdown_timeout_pool)
+    return pool
 
 
 def _call_stage[I, O](stage: _Stage[I, O], msg: I) -> O:
@@ -77,20 +110,13 @@ def _run_with_timeout[I, O](
     msg: I,
     seconds: float,
 ) -> O:
-    pool = ThreadPoolExecutor(max_workers=1)
-    future = pool.submit(fn, msg)
-    timed_out = False
+    future = _get_timeout_pool().submit(fn, msg)
     try:
         return future.result(timeout=seconds)
     except FuturesTimeoutError as err:
-        timed_out = True
         future.cancel()
-        pool.shutdown(wait=False, cancel_futures=True)
         timeout_msg = f"Stage timed out after {seconds}s"
         raise TimeoutError(timeout_msg) from err
-    finally:
-        if not timed_out:
-            pool.shutdown(wait=True)
 
 
 class IdTask[T](Combinable, Task[T, T]):
@@ -247,14 +273,8 @@ class ZipTask[I, O](Combinable, Task[I, O]):
             msg = "ZipTask requires at least one stage"
             raise ValueError(msg)
         self.stages = stages
-        first_branch: Task[Any, Any] = _ZipBranch(0, stages[0])
-        group_inner: mojo_strata.TaskGroup[Any, Any] = mojo_strata.TaskGroup(
-            task=first_branch
-        )
-        for idx in range(1, len(stages)):
-            branch_stage: Task[Any, Any] = _ZipBranch(idx, stages[idx])
-            group_inner = group_inner.with_task(branch_stage, GroupMode.PARALLEL.value)
-        self._runner = group_inner
+        branches: list[Any] = list(starmap(_ZipBranch, enumerate(stages)))
+        self._runner = _build_task_group(branches, GroupMode.PARALLEL.value)
 
     @override
     def __call__(self, msg: I, /) -> O:
@@ -342,6 +362,10 @@ class MapTask[I, O](Combinable, Task[Sequence[I], list[O]]):
         if total == 1 or self.max_concurrency == 1:
             return [_call_stage(self.stage, item) for item in items]
 
+        native_out = _try_native_map_list(self.stage, items, self.max_concurrency)
+        if native_out is not None:
+            return cast("list[O]", native_out)
+
         wave_size = self.max_concurrency if self.max_concurrency > 0 else total
         results: list[O] = []
         for wave_start in range(0, total, wave_size):
@@ -350,11 +374,10 @@ class MapTask[I, O](Combinable, Task[Sequence[I], list[O]]):
             if wave_len == 1:
                 results.append(_call_stage(self.stage, items[wave_start]))
                 continue
-            first_slot: Task[Sequence[I], O] = _MapSlotTask(self.stage, wave_start)
-            tg: mojo_strata.TaskGroup[Sequence[I], Any] = TaskGroup(first_slot).inner
-            for idx in range(wave_start + 1, wave_end):
-                slot_task: Task[Sequence[I], O] = _MapSlotTask(self.stage, idx)
-                tg = tg.with_task(slot_task, GroupMode.PARALLEL.value)
+            slot_tasks: list[Any] = [
+                _MapSlotTask(self.stage, idx) for idx in range(wave_start, wave_end)
+            ]
+            tg = _build_task_group(slot_tasks, GroupMode.PARALLEL.value)
             wave_out = cast("tuple[O, ...]", tg.call(items))
             results.extend(wave_out)
         return results

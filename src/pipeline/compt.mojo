@@ -352,17 +352,33 @@ def par_exec[
     Returns:
         Flat tuple containing each stage's result in stage order.
     """
-    var tg = TaskGroup()
     var o = uninitialized_storage[Tuple[*fns.map[FnToOut]()]]()
+    comptime N = fns.length
+    comptime if N == 1:
+        comptime to = downcast[Tuple[*fns.map[FnToOut]()].Ts[0], Movable]
+        ref inp = rebind[fns[0].I](val)
+        Pointer(to=o[0]).unsafe_bitcast[to]().unsafe_write(
+            rebind_var[to](fns[0].run(inp))
+        )
+        return o^
 
+    comptime last = N - 1
+    var tg = TaskGroup()
     var in_ptr = Pointer(to=val)
-    comptime for ci in range(fns.length):
+    comptime for ci in range(last):
         var out_ptr = Pointer(to=o[ci])
         tg.create_task(_run_fn_task[ci, *fns](in_ptr, out_ptr))
+
+    comptime to_last = downcast[Tuple[*fns.map[FnToOut]()].Ts[last], Movable]
+    ref inp_last = rebind[fns[last].I](val)
+    Pointer(to=o[last]).unsafe_bitcast[to_last]().unsafe_write(
+        rebind_var[to_last](fns[last].run(inp_last))
+    )
     tg.wait()
     return o^
 
 
+@always_inline
 def par_exec_sequential[
     *fns: FnTrait
 ](val: fns[0].I) -> Tuple[*fns.map[FnToOut]()] where AllSameInput[fns]:
@@ -409,8 +425,9 @@ def par_exec_with[
         Flat tuple containing each stage's result in stage order.
     """
     var o = uninitialized_storage[Tuple[*fns.map[FnToOut]()]]()
+    comptime N = fns.length
     comptime if not E.IS_PARALLEL:
-        comptime for ci in range(fns.length):
+        comptime for ci in range(N):
             comptime to = downcast[Tuple[*fns.map[FnToOut]()].Ts[ci], Movable]
             ref inp = rebind[fns[ci].I](val)
             Pointer(to=o[ci]).unsafe_bitcast[to]().unsafe_write(
@@ -418,55 +435,169 @@ def par_exec_with[
             )
         return o^
     else:
-        var limit = exec.concurrency_limit()
-        if limit == 1:
-            comptime for ci in range(fns.length):
-                comptime to = downcast[
-                    Tuple[*fns.map[FnToOut]()].Ts[ci], Movable
-                ]
-                ref inp = rebind[fns[ci].I](val)
-                Pointer(to=o[ci]).unsafe_bitcast[to]().unsafe_write(
-                    rebind_var[to](fns[ci].run_with(exec, inp))
-                )
-            return o^
-
-        var in_ptr = Pointer(to=val)
-        var tracing = exec.is_tracing()
-        var starts = List[Int](length=fns.length, fill=0)
-        var ends = List[Int](length=fns.length, fill=0)
-        var wave_size = limit if limit > 0 else fns.length
-        var wave_start = 0
-        while wave_start < fns.length:
-            var wave_end = min(wave_start + wave_size, fns.length)
-            var tg = TaskGroup()
-            comptime for ci in range(fns.length):
-                if ci >= wave_start and ci < wave_end:
-                    var out_ptr = Pointer(to=o[ci])
-                    if tracing:
-                        var s_ptr = Pointer(
-                            to=starts[ci]
-                        ).unsafe_origin_cast[MutUntrackedOrigin]()
-                        var e_ptr = Pointer(
-                            to=ends[ci]
-                        ).unsafe_origin_cast[MutUntrackedOrigin]()
+        comptime if not E.IS_BOUNDED:
+            comptime last = N - 1
+            comptime if E.IS_TRACING:
+                var starts = Array[Int, N](fill=0)
+                var ends = Array[Int, N](fill=0)
+                comptime if N == 1:
+                    comptime to = downcast[
+                        Tuple[*fns.map[FnToOut]()].Ts[0], Movable
+                    ]
+                    ref inp = rebind[fns[0].I](val)
+                    starts[0] = perf_counter_ns()
+                    Pointer(to=o[0]).unsafe_bitcast[to]().unsafe_write(
+                        rebind_var[to](fns[0].run(inp))
+                    )
+                    ends[0] = perf_counter_ns()
+                else:
+                    var tg = TaskGroup()
+                    var in_ptr = Pointer(to=val)
+                    comptime for ci in range(last):
+                        var out_ptr = Pointer(to=o[ci])
+                        var s_ptr = Pointer(to=starts[ci]).unsafe_origin_cast[
+                            MutUntrackedOrigin
+                        ]()
+                        var e_ptr = Pointer(to=ends[ci]).unsafe_origin_cast[
+                            MutUntrackedOrigin
+                        ]()
                         tg.create_task(
                             _run_fn_task_traced[ci, *fns](
                                 in_ptr, out_ptr, s_ptr, e_ptr
                             )
                         )
+                    comptime to_last = downcast[
+                        Tuple[*fns.map[FnToOut]()].Ts[last], Movable
+                    ]
+                    ref inp_last = rebind[fns[last].I](val)
+                    starts[last] = perf_counter_ns()
+                    Pointer(to=o[last]).unsafe_bitcast[to_last]().unsafe_write(
+                        rebind_var[to_last](fns[last].run(inp_last))
+                    )
+                    ends[last] = perf_counter_ns()
+                    tg.wait()
+                comptime for ci in range(N):
+                    exec.record_span(
+                        reflect[fns[ci]].name(), starts[ci], ends[ci]
+                    )
+                return o^
+            else:
+                return par_exec[*fns](val)
+        else:
+            var limit = exec.concurrency_limit()
+            if limit == 1:
+                comptime for ci in range(N):
+                    comptime to = downcast[
+                        Tuple[*fns.map[FnToOut]()].Ts[ci], Movable
+                    ]
+                    ref inp = rebind[fns[ci].I](val)
+                    Pointer(to=o[ci]).unsafe_bitcast[to]().unsafe_write(
+                        rebind_var[to](fns[ci].run_with(exec, inp))
+                    )
+                return o^
+
+            var in_ptr = Pointer(to=val)
+            var wave_size = limit if limit > 0 else N
+            comptime if E.IS_TRACING:
+                var starts = Array[Int, N](fill=0)
+                var ends = Array[Int, N](fill=0)
+                var wave_start = 0
+                while wave_start < N:
+                    var wave_end = min(wave_start + wave_size, N)
+                    var last_in_wave = wave_end - 1
+                    if wave_end - wave_start == 1:
+                        comptime for ci in range(N):
+                            if ci == wave_start:
+                                comptime to = downcast[
+                                    Tuple[*fns.map[FnToOut]()].Ts[ci], Movable
+                                ]
+                                ref inp = rebind[fns[ci].I](val)
+                                starts[ci] = perf_counter_ns()
+                                Pointer(to=o[ci]).unsafe_bitcast[
+                                    to
+                                ]().unsafe_write(
+                                    rebind_var[to](fns[ci].run(inp))
+                                )
+                                ends[ci] = perf_counter_ns()
                     else:
-                        tg.create_task(
-                            _run_fn_task[ci, *fns](in_ptr, out_ptr)
-                        )
-            tg.wait()
-            wave_start = wave_end
+                        var tg = TaskGroup()
+                        comptime for ci in range(N):
+                            if ci >= wave_start and ci < last_in_wave:
+                                var out_ptr = Pointer(to=o[ci])
+                                var s_ptr = Pointer(
+                                    to=starts[ci]
+                                ).unsafe_origin_cast[MutUntrackedOrigin]()
+                                var e_ptr = Pointer(
+                                    to=ends[ci]
+                                ).unsafe_origin_cast[MutUntrackedOrigin]()
+                                tg.create_task(
+                                    _run_fn_task_traced[ci, *fns](
+                                        in_ptr, out_ptr, s_ptr, e_ptr
+                                    )
+                                )
+                        comptime for ci in range(N):
+                            if ci == last_in_wave:
+                                comptime to = downcast[
+                                    Tuple[*fns.map[FnToOut]()].Ts[ci], Movable
+                                ]
+                                ref inp = rebind[fns[ci].I](val)
+                                starts[ci] = perf_counter_ns()
+                                Pointer(to=o[ci]).unsafe_bitcast[
+                                    to
+                                ]().unsafe_write(
+                                    rebind_var[to](fns[ci].run(inp))
+                                )
+                                ends[ci] = perf_counter_ns()
+                        tg.wait()
+                    wave_start = wave_end
 
-        if tracing:
-            comptime for ci in range(fns.length):
-                exec.record_span(reflect[fns[ci]].name(), starts[ci], ends[ci])
-        return o^
+                comptime for ci in range(N):
+                    exec.record_span(
+                        reflect[fns[ci]].name(), starts[ci], ends[ci]
+                    )
+                return o^
+            else:
+                var wave_start = 0
+                while wave_start < N:
+                    var wave_end = min(wave_start + wave_size, N)
+                    var last_in_wave = wave_end - 1
+                    if wave_end - wave_start == 1:
+                        comptime for ci in range(N):
+                            if ci == wave_start:
+                                comptime to = downcast[
+                                    Tuple[*fns.map[FnToOut]()].Ts[ci], Movable
+                                ]
+                                ref inp = rebind[fns[ci].I](val)
+                                Pointer(to=o[ci]).unsafe_bitcast[
+                                    to
+                                ]().unsafe_write(
+                                    rebind_var[to](fns[ci].run(inp))
+                                )
+                    else:
+                        var tg = TaskGroup()
+                        comptime for ci in range(N):
+                            if ci >= wave_start and ci < last_in_wave:
+                                var out_ptr = Pointer(to=o[ci])
+                                tg.create_task(
+                                    _run_fn_task[ci, *fns](in_ptr, out_ptr)
+                                )
+                        comptime for ci in range(N):
+                            if ci == last_in_wave:
+                                comptime to = downcast[
+                                    Tuple[*fns.map[FnToOut]()].Ts[ci], Movable
+                                ]
+                                ref inp = rebind[fns[ci].I](val)
+                                Pointer(to=o[ci]).unsafe_bitcast[
+                                    to
+                                ]().unsafe_write(
+                                    rebind_var[to](fns[ci].run(inp))
+                                )
+                        tg.wait()
+                    wave_start = wave_end
+                return o^
 
 
+@always_inline
 def _seq_exec_tail[
     ci: Int,
     *fns: FnTrait,
@@ -479,6 +610,7 @@ def _seq_exec_tail[
         return _seq_exec_tail[ci + 1, *fns](out^)
 
 
+@always_inline
 def seq_exec[
     *fns: FnTrait
 ](val: fns[0].I) -> fns[fns.length - 1].O where AllPipeable[fns]:
@@ -500,6 +632,7 @@ def seq_exec[
         return _seq_exec_tail[1, *fns](first^)
 
 
+@always_inline
 def _seq_exec_sequential_tail[
     ci: Int,
     *fns: FnTrait,
@@ -512,6 +645,7 @@ def _seq_exec_sequential_tail[
         return _seq_exec_sequential_tail[ci + 1, *fns](out^)
 
 
+@always_inline
 def seq_exec_sequential[
     *fns: FnTrait
 ](val: fns[0].I) -> fns[fns.length - 1].O where AllPipeable[fns]:
@@ -533,6 +667,7 @@ def seq_exec_sequential[
         return _seq_exec_sequential_tail[1, *fns](first^)
 
 
+@always_inline
 def _seq_exec_with_tail[
     E: Executor,
     ci: Int,
@@ -548,6 +683,7 @@ def _seq_exec_with_tail[
         return _seq_exec_with_tail[E, ci + 1, *fns](exec, out^)
 
 
+@always_inline
 def seq_exec_with[
     E: Executor, *fns: FnTrait
 ](mut exec: E, val: fns[0].I) -> fns[fns.length - 1].O where AllPipeable[fns]:
@@ -571,15 +707,18 @@ def seq_exec_with[
         return _seq_exec_with_tail[E, 1, *fns](exec, first^)
 
 
+@always_inline
 def _call_unit[Func: def() thin](val: NoneType) -> NoneType:
     Func()
     return None
 
 
+@always_inline
 def _identity_fn[T: Copyable & Deinitable](val: T) -> T:
     return val.copy()
 
 
+@always_inline
 def _spread2_fn[
     A: Movable & Deinitable,
     B: Movable & Deinitable,
@@ -590,6 +729,7 @@ def _spread2_fn[
     return Func(val[0], val[1])
 
 
+@always_inline
 def _spread3_fn[
     A: Movable & Deinitable,
     B: Movable & Deinitable,
@@ -601,6 +741,7 @@ def _spread3_fn[
     return Func(val[0], val[1], val[2])
 
 
+@always_inline
 def _spread4_fn[
     A: Movable & Deinitable,
     B: Movable & Deinitable,
@@ -746,6 +887,7 @@ struct Function[
     """
 
     @staticmethod
+    @always_inline
     def run(inp: Self.I) -> Self.O:
         """Run the wrapped function at runtime.
 
@@ -758,6 +900,7 @@ struct Function[
         return Self.Func(inp)
 
     @staticmethod
+    @always_inline
     def run_sequential(inp: Self.I) -> Self.O:
         """Run the wrapped function sequentially.
 
@@ -801,6 +944,7 @@ struct Function[
         var nid = builder.add_node(label, entries)
         return [nid]
 
+    @always_inline("nodebug")
     def __call__(self, inp: Self.I) -> Self.O:
         """Invoke this stage at runtime.
 
@@ -812,6 +956,7 @@ struct Function[
         """
         return Self.run(inp)
 
+    @always_inline("nodebug")
     def __and__[
         Other: FnTrait, //
     ](self, other: Other) -> Parallel[Self, Other] where (
@@ -830,6 +975,7 @@ struct Function[
         """
         return {}
 
+    @always_inline("nodebug")
     def __and__[
         *other_fns: FnTrait
     ](self, other: Parallel[*other_fns]) -> Parallel[
@@ -850,6 +996,7 @@ struct Function[
         """
         return {}
 
+    @always_inline("nodebug")
     def __or__[
         Other: FnTrait, //
     ](self, other: Other) -> Sequence[Self, Other] where Self.Out == Other.I:
@@ -942,6 +1089,7 @@ struct Group[Inner: FnTrait](FnTrait, TrivialRegisterPassable):
         builder.end_group()
         return exits^
 
+    @always_inline("nodebug")
     def __call__(self, inp: Self.I) -> Self.O:
         """Invoke this grouped stage at runtime.
 
@@ -953,6 +1101,7 @@ struct Group[Inner: FnTrait](FnTrait, TrivialRegisterPassable):
         """
         return Self.run(inp)
 
+    @always_inline("nodebug")
     def __and__[
         Other: FnTrait, //
     ](self, other: Other) -> Parallel[Self, Other] where (
@@ -971,6 +1120,7 @@ struct Group[Inner: FnTrait](FnTrait, TrivialRegisterPassable):
         """
         return {}
 
+    @always_inline("nodebug")
     def __and__[
         *other_fns: FnTrait
     ](self, other: Parallel[*other_fns]) -> Parallel[
@@ -991,6 +1141,7 @@ struct Group[Inner: FnTrait](FnTrait, TrivialRegisterPassable):
         """
         return {}
 
+    @always_inline("nodebug")
     def __or__[
         Other: FnTrait, //
     ](self, other: Other) -> Sequence[Self, Other] where Self.O == Other.I:
@@ -1089,6 +1240,7 @@ struct Parallel[*fns: FnTrait](FnTrait, TrivialRegisterPassable) where AllSameIn
                 exits.append(ex)
         return exits^
 
+    @always_inline("nodebug")
     def __call__(self, val: Self.I) -> Self.O:
         """Invoke all branches concurrently at runtime.
 
@@ -1100,6 +1252,7 @@ struct Parallel[*fns: FnTrait](FnTrait, TrivialRegisterPassable) where AllSameIn
         """
         return Self.run(val)
 
+    @always_inline("nodebug")
     def __and__[
         Other: FnTrait, //
     ](self, other: Other) -> Parallel[
@@ -1120,6 +1273,7 @@ struct Parallel[*fns: FnTrait](FnTrait, TrivialRegisterPassable) where AllSameIn
         """
         return {}
 
+    @always_inline("nodebug")
     def __and__[
         *other_fns: FnTrait
     ](self, other: Parallel[*other_fns]) -> Parallel[
@@ -1140,6 +1294,7 @@ struct Parallel[*fns: FnTrait](FnTrait, TrivialRegisterPassable) where AllSameIn
         """
         return {}
 
+    @always_inline("nodebug")
     def __or__[
         Other: FnTrait, //
     ](self, other: Other) -> Sequence[Self, Other] where Self.O == Other.I:
@@ -1188,6 +1343,7 @@ struct Sequence[*fns: FnTrait](FnTrait, TrivialRegisterPassable) where AllPipeab
     """
 
     @staticmethod
+    @always_inline
     def run(val: Self.I) -> Self.O:
         """Run the sequential pipeline at runtime.
 
@@ -1200,6 +1356,7 @@ struct Sequence[*fns: FnTrait](FnTrait, TrivialRegisterPassable) where AllPipeab
         return seq_exec[*Self.fns](val)
 
     @staticmethod
+    @always_inline
     def run_sequential(val: Self.I) -> Self.O:
         """Run the sequential pipeline without async runtime calls.
 
@@ -1234,6 +1391,7 @@ struct Sequence[*fns: FnTrait](FnTrait, TrivialRegisterPassable) where AllPipeab
             current = Self.fns[ci]._emit_graph(builder, current)
         return current^
 
+    @always_inline("nodebug")
     def __call__(self, val: Self.I) -> Self.O:
         """Invoke the sequential pipeline at runtime.
 
@@ -1245,6 +1403,7 @@ struct Sequence[*fns: FnTrait](FnTrait, TrivialRegisterPassable) where AllPipeab
         """
         return Self.run(val)
 
+    @always_inline("nodebug")
     def __and__[
         Other: FnTrait, //
     ](self, other: Other) -> Parallel[Self, Other] where (
@@ -1263,6 +1422,7 @@ struct Sequence[*fns: FnTrait](FnTrait, TrivialRegisterPassable) where AllPipeab
         """
         return {}
 
+    @always_inline("nodebug")
     def __and__[
         *other_fns: FnTrait
     ](self, other: Parallel[*other_fns]) -> Parallel[
@@ -1283,6 +1443,7 @@ struct Sequence[*fns: FnTrait](FnTrait, TrivialRegisterPassable) where AllPipeab
         """
         return {}
 
+    @always_inline("nodebug")
     def __or__[
         Other: FnTrait, //
     ](self, other: Other) -> Sequence[

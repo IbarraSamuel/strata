@@ -10,9 +10,11 @@ Provides composable building blocks that plug directly into `|` and `&`:
 - `Branch` / `branch`: Predicate-driven conditional routing (`on_true` vs `on_false`).
 """
 
+from std.atomic import Atomic
 from std.benchmark import keep
 from std.builtin.rebind import downcast
 from std.reflection import reflect
+from std.sys.info import num_logical_cores
 from std.time import perf_counter_ns
 
 from .._internal.runtime import TaskGroup, uninitialized_storage
@@ -40,6 +42,7 @@ struct Id[T: _CopyMovStageVal](ComposableStage, Copyable, Movable):
     comptime O = Self.T
     """Output type."""
 
+    @always_inline
     def __call__(self, arg: Self.I) -> Self.O:
         """Return a copy of `arg`.
 
@@ -85,6 +88,7 @@ struct Select[Idx: Int, *Ts: _CopyMovStageVal](
     comptime O = Self.Ts[Self.Idx]
     """Projected element type."""
 
+    @always_inline
     def __call__(self, arg: Self.I) -> Self.O:
         """Return a copy of `arg[Idx]`.
 
@@ -139,6 +143,7 @@ struct Spread2[
     var func: def(Self.A, Self.B) thin -> Self.Out
     """Wrapped two-argument function."""
 
+    @always_inline
     def __call__(self, arg: Self.I) -> Self.O:
         """Call `self.func(arg[0], arg[1])`.
 
@@ -175,6 +180,7 @@ struct Spread3[
     var func: def(Self.A, Self.B, Self.C) thin -> Self.Out
     """Wrapped three-argument function."""
 
+    @always_inline
     def __call__(self, arg: Self.I) -> Self.O:
         """Call `self.func(arg[0], arg[1], arg[2])`.
 
@@ -213,6 +219,7 @@ struct Spread4[
     var func: def(Self.A, Self.B, Self.C, Self.D) thin -> Self.Out
     """Wrapped four-argument function."""
 
+    @always_inline
     def __call__(self, arg: Self.I) -> Self.O:
         """Call `self.func(arg[0], arg[1], arg[2], arg[3])`.
 
@@ -391,9 +398,10 @@ struct Zip2[
         var out = uninitialized_storage[Self.O]()
         var tg = TaskGroup()
         var p0 = Pointer(to=rebind[Self.S1.I](arg[0]))
-        var p1 = Pointer(to=rebind[Self.S2.I](arg[1]))
         tg.create_task(_run_zip_branch(self.s1, p0, Pointer(to=out[0])))
-        tg.create_task(_run_zip_branch(self.s2, p1, Pointer(to=out[1])))
+        Pointer(to=out[1]).unsafe_write(
+            self.s2[](rebind[Self.S2.I](arg[1]))
+        )
         tg.wait()
         return out^
 
@@ -415,18 +423,21 @@ struct Zip2[
             var r1 = self.s2[].run_with(exec, rebind[Self.S2.I](arg[1]))
             return (r0^, r1^)
         else:
-            var limit = exec.concurrency_limit()
-            if limit == 1:
-                var r0 = self.s1[].run_with(exec, rebind[Self.S1.I](arg[0]))
-                var r1 = self.s2[].run_with(exec, rebind[Self.S2.I](arg[1]))
-                return (r0^, r1^)
+            comptime if E.IS_BOUNDED:
+                if exec.concurrency_limit() == 1:
+                    var r0 = self.s1[].run_with(
+                        exec, rebind[Self.S1.I](arg[0])
+                    )
+                    var r1 = self.s2[].run_with(
+                        exec, rebind[Self.S2.I](arg[1])
+                    )
+                    return (r0^, r1^)
 
-            var out = uninitialized_storage[Self.O]()
-            var p0 = Pointer(to=rebind[Self.S1.I](arg[0]))
-            var p1 = Pointer(to=rebind[Self.S2.I](arg[1]))
-            if exec.is_tracing():
-                var starts = List[Int](length=2, fill=0)
-                var ends = List[Int](length=2, fill=0)
+            comptime if E.IS_TRACING:
+                var out = uninitialized_storage[Self.O]()
+                var p0 = Pointer(to=rebind[Self.S1.I](arg[0]))
+                var starts = Array[Int, 2](fill=0)
+                var ends = Array[Int, 2](fill=0)
                 var tg = TaskGroup()
                 tg.create_task(
                     _run_zip_branch_traced(
@@ -441,29 +452,17 @@ struct Zip2[
                         ](),
                     )
                 )
-                tg.create_task(
-                    _run_zip_branch_traced(
-                        self.s2,
-                        p1,
-                        Pointer(to=out[1]),
-                        Pointer(to=starts[1]).unsafe_origin_cast[
-                            MutUntrackedOrigin
-                        ](),
-                        Pointer(to=ends[1]).unsafe_origin_cast[
-                            MutUntrackedOrigin
-                        ](),
-                    )
+                starts[1] = perf_counter_ns()
+                Pointer(to=out[1]).unsafe_write(
+                    self.s2[](rebind[Self.S2.I](arg[1]))
                 )
+                ends[1] = perf_counter_ns()
                 tg.wait()
                 exec.record_span(reflect[Self.S1].name(), starts[0], ends[0])
                 exec.record_span(reflect[Self.S2].name(), starts[1], ends[1])
                 return out^
-
-            var tg = TaskGroup()
-            tg.create_task(_run_zip_branch(self.s1, p0, Pointer(to=out[0])))
-            tg.create_task(_run_zip_branch(self.s2, p1, Pointer(to=out[1])))
-            tg.wait()
-            return out^
+            else:
+                return self(arg)
 
 
 struct Zip3[
@@ -538,10 +537,11 @@ struct Zip3[
         var tg = TaskGroup()
         var p0 = Pointer(to=rebind[Self.S1.I](arg[0]))
         var p1 = Pointer(to=rebind[Self.S2.I](arg[1]))
-        var p2 = Pointer(to=rebind[Self.S3.I](arg[2]))
         tg.create_task(_run_zip_branch(self.s1, p0, Pointer(to=out[0])))
         tg.create_task(_run_zip_branch(self.s2, p1, Pointer(to=out[1])))
-        tg.create_task(_run_zip_branch(self.s3, p2, Pointer(to=out[2])))
+        Pointer(to=out[2]).unsafe_write(
+            self.s3[](rebind[Self.S3.I](arg[2]))
+        )
         tg.wait()
         return out^
 
@@ -564,27 +564,81 @@ struct Zip3[
             var r2 = self.s3[].run_with(exec, rebind[Self.S3.I](arg[2]))
             return (r0^, r1^, r2^)
         else:
-            var limit = exec.concurrency_limit()
-            if limit == 1:
-                var r0 = self.s1[].run_with(exec, rebind[Self.S1.I](arg[0]))
-                var r1 = self.s2[].run_with(exec, rebind[Self.S2.I](arg[1]))
-                var r2 = self.s3[].run_with(exec, rebind[Self.S3.I](arg[2]))
-                return (r0^, r1^, r2^)
+            comptime if not E.IS_BOUNDED:
+                comptime if E.IS_TRACING:
+                    var out = uninitialized_storage[Self.O]()
+                    var p0 = Pointer(to=rebind[Self.S1.I](arg[0]))
+                    var p1 = Pointer(to=rebind[Self.S2.I](arg[1]))
+                    var starts = Array[Int, 3](fill=0)
+                    var ends = Array[Int, 3](fill=0)
+                    var tg = TaskGroup()
+                    tg.create_task(
+                        _run_zip_branch_traced(
+                            self.s1,
+                            p0,
+                            Pointer(to=out[0]),
+                            Pointer(to=starts[0]).unsafe_origin_cast[
+                                MutUntrackedOrigin
+                            ](),
+                            Pointer(to=ends[0]).unsafe_origin_cast[
+                                MutUntrackedOrigin
+                            ](),
+                        )
+                    )
+                    tg.create_task(
+                        _run_zip_branch_traced(
+                            self.s2,
+                            p1,
+                            Pointer(to=out[1]),
+                            Pointer(to=starts[1]).unsafe_origin_cast[
+                                MutUntrackedOrigin
+                            ](),
+                            Pointer(to=ends[1]).unsafe_origin_cast[
+                                MutUntrackedOrigin
+                            ](),
+                        )
+                    )
+                    starts[2] = perf_counter_ns()
+                    Pointer(to=out[2]).unsafe_write(
+                        self.s3[](rebind[Self.S3.I](arg[2]))
+                    )
+                    ends[2] = perf_counter_ns()
+                    tg.wait()
+                    exec.record_span(
+                        reflect[Self.S1].name(), starts[0], ends[0]
+                    )
+                    exec.record_span(
+                        reflect[Self.S2].name(), starts[1], ends[1]
+                    )
+                    exec.record_span(
+                        reflect[Self.S3].name(), starts[2], ends[2]
+                    )
+                    return out^
+                else:
+                    return self(arg)
+            else:
+                var limit = exec.concurrency_limit()
+                if limit == 1:
+                    var r0 = self.s1[].run_with(
+                        exec, rebind[Self.S1.I](arg[0])
+                    )
+                    var r1 = self.s2[].run_with(
+                        exec, rebind[Self.S2.I](arg[1])
+                    )
+                    var r2 = self.s3[].run_with(
+                        exec, rebind[Self.S3.I](arg[2])
+                    )
+                    return (r0^, r1^, r2^)
 
-            var out = uninitialized_storage[Self.O]()
-            var p0 = Pointer(to=rebind[Self.S1.I](arg[0]))
-            var p1 = Pointer(to=rebind[Self.S2.I](arg[1]))
-            var p2 = Pointer(to=rebind[Self.S3.I](arg[2]))
-            var tracing = exec.is_tracing()
-            var starts = List[Int](length=3, fill=0)
-            var ends = List[Int](length=3, fill=0)
-            var wave_size = min(limit, 3) if limit > 0 else 3
-            var wave_start = 0
-            while wave_start < 3:
-                var wave_end = min(wave_start + wave_size, 3)
-                var tg = TaskGroup()
-                if 0 >= wave_start and 0 < wave_end:
-                    if tracing:
+                var out = uninitialized_storage[Self.O]()
+                var p0 = Pointer(to=rebind[Self.S1.I](arg[0]))
+                var p1 = Pointer(to=rebind[Self.S2.I](arg[1]))
+                comptime if E.IS_TRACING:
+                    var starts = Array[Int, 3](fill=0)
+                    var ends = Array[Int, 3](fill=0)
+                    if limit == 2:
+                        # Wave 1: branch 0 on worker + branch 1 inline
+                        var tg = TaskGroup()
                         tg.create_task(
                             _run_zip_branch_traced(
                                 self.s1,
@@ -598,12 +652,33 @@ struct Zip3[
                                 ](),
                             )
                         )
-                    else:
-                        tg.create_task(
-                            _run_zip_branch(self.s1, p0, Pointer(to=out[0]))
+                        starts[1] = perf_counter_ns()
+                        Pointer(to=out[1]).unsafe_write(
+                            self.s2[](rebind[Self.S2.I](arg[1]))
                         )
-                if 1 >= wave_start and 1 < wave_end:
-                    if tracing:
+                        ends[1] = perf_counter_ns()
+                        tg.wait()
+                        # Wave 2: branch 2 inline (no TaskGroup needed)
+                        starts[2] = perf_counter_ns()
+                        Pointer(to=out[2]).unsafe_write(
+                            self.s3[](rebind[Self.S3.I](arg[2]))
+                        )
+                        ends[2] = perf_counter_ns()
+                    else:
+                        var tg = TaskGroup()
+                        tg.create_task(
+                            _run_zip_branch_traced(
+                                self.s1,
+                                p0,
+                                Pointer(to=out[0]),
+                                Pointer(to=starts[0]).unsafe_origin_cast[
+                                    MutUntrackedOrigin
+                                ](),
+                                Pointer(to=ends[0]).unsafe_origin_cast[
+                                    MutUntrackedOrigin
+                                ](),
+                            )
+                        )
                         tg.create_task(
                             _run_zip_branch_traced(
                                 self.s2,
@@ -617,37 +692,37 @@ struct Zip3[
                                 ](),
                             )
                         )
-                    else:
-                        tg.create_task(
-                            _run_zip_branch(self.s2, p1, Pointer(to=out[1]))
+                        starts[2] = perf_counter_ns()
+                        Pointer(to=out[2]).unsafe_write(
+                            self.s3[](rebind[Self.S3.I](arg[2]))
                         )
-                if 2 >= wave_start and 2 < wave_end:
-                    if tracing:
+                        ends[2] = perf_counter_ns()
+                        tg.wait()
+                    exec.record_span(
+                        reflect[Self.S1].name(), starts[0], ends[0]
+                    )
+                    exec.record_span(
+                        reflect[Self.S2].name(), starts[1], ends[1]
+                    )
+                    exec.record_span(
+                        reflect[Self.S3].name(), starts[2], ends[2]
+                    )
+                    return out^
+                else:
+                    if limit == 2:
+                        var tg = TaskGroup()
                         tg.create_task(
-                            _run_zip_branch_traced(
-                                self.s3,
-                                p2,
-                                Pointer(to=out[2]),
-                                Pointer(to=starts[2]).unsafe_origin_cast[
-                                    MutUntrackedOrigin
-                                ](),
-                                Pointer(to=ends[2]).unsafe_origin_cast[
-                                    MutUntrackedOrigin
-                                ](),
-                            )
+                            _run_zip_branch(self.s1, p0, Pointer(to=out[0]))
                         )
-                    else:
-                        tg.create_task(
-                            _run_zip_branch(self.s3, p2, Pointer(to=out[2]))
+                        Pointer(to=out[1]).unsafe_write(
+                            self.s2[](rebind[Self.S2.I](arg[1]))
                         )
-                tg.wait()
-                wave_start = wave_end
-
-            if tracing:
-                exec.record_span(reflect[Self.S1].name(), starts[0], ends[0])
-                exec.record_span(reflect[Self.S2].name(), starts[1], ends[1])
-                exec.record_span(reflect[Self.S3].name(), starts[2], ends[2])
-            return out^
+                        tg.wait()
+                        Pointer(to=out[2]).unsafe_write(
+                            self.s3[](rebind[Self.S3.I](arg[2]))
+                        )
+                        return out^
+                    return self(arg)
 
 
 def zip_stages[
@@ -722,23 +797,24 @@ def zip_stages[
 # ===----------------------------------------------------------------------=== #
 
 
-@always_inline
-__async def _run_map_item[
+__async def _run_map_worker[
     S: Stage,
-    InT: AnyType,
+    InT: _CopyMovStageVal,
+    OutT: _CopyMovStageVal,
     s_orig: ImmOrigin,
-    in_orig: ImmOrigin,
-    out_orig: MutOrigin,
 ](
     stage_ptr: Pointer[S, s_orig],
-    in_ptr: Pointer[InT, in_orig],
-    out_ptr: Pointer[Optional[downcast[S.O, _CopyMovStageVal]], out_orig],
-) where (
-    conforms_to(S.O, Copyable)
-    and conforms_to(S.O, Deinitable)
+    in_base: Pointer[InT, ImmUntrackedOrigin],
+    out_base: Pointer[OutT, MutUntrackedOrigin],
+    next_ptr: Pointer[Atomic[Int64], MutUntrackedOrigin],
+    n: Int,
 ):
-    comptime OutT = downcast[S.O, _CopyMovStageVal]
-    out_ptr[] = rebind_var[OutT](stage_ptr[](rebind[S.I](in_ptr[])))
+    while True:
+        var idx = Int(next_ptr[].fetch_add(1))
+        if idx >= n:
+            break
+        var res = stage_ptr[](rebind[S.I](in_base[unsafe_offset=idx]))
+        out_base.unsafe_offset(idx).unsafe_write(rebind_var[OutT](res^))
 
 
 struct Map[origin: ImmOrigin, //, Inner: Stage](ComposableStage) where (
@@ -790,36 +866,52 @@ struct Map[origin: ImmOrigin, //, Inner: Stage](ComposableStage) where (
         if n == 0:
             return Self.O()
 
-        if limit == 1:
+        var workers = min(limit, n) if limit > 0 else min(
+            max(num_logical_cores(), 1), n
+        )
+        if workers <= 1 or n == 1:
             var out = Self.O(capacity=n)
             for i in range(n):
                 var r = self.inner[](rebind[Self.Inner.I](arg[i]))
                 out.append(rebind_var[Self._ElemOut](r^))
             return out^
 
-        var slots = List[Optional[Self._ElemOut]](length=n, fill=None)
-        var wave_size = limit if limit > 0 else n
-        var wave_start = 0
-        while wave_start < n:
-            var wave_end = min(wave_start + wave_size, n)
-            var tg = TaskGroup()
-            for i in range(wave_start, wave_end):
-                var in_ptr = Pointer(
-                    to=rebind[Self.Inner.I](arg[i])
-                ).unsafe_origin_cast[ImmUntrackedOrigin]()
-                var out_ptr = Pointer(to=slots[i]).unsafe_origin_cast[
-                    MutUntrackedOrigin
-                ]()
-                tg.create_task(_run_map_item(self.inner, in_ptr, out_ptr))
-            tg.wait()
-            keep(arg)
-            keep(self)
-            wave_start = wave_end
+        # Zero-copy uninitialized output buffer with single-TaskGroup atomic work-stealing.
+        var results = Self.O(unsafe_uninit_length=n)
+        var in_base = arg.unsafe_ptr().as_imm().unsafe_origin_cast[
+            ImmUntrackedOrigin
+        ]()
+        var out_base = results.unsafe_ptr().unsafe_origin_cast[
+            MutUntrackedOrigin
+        ]()
+        var next_idx = Atomic[Int64](0)
+        var next_ptr = Pointer(to=next_idx).unsafe_origin_cast[
+            MutUntrackedOrigin
+        ]()
 
-        var results = Self.O(capacity=n)
-        for i in range(n):
-            if case .Some(val) = slots[i]:
-                results.append(val.copy())
+        var tg = TaskGroup()
+        for _ in range(workers - 1):
+            tg.create_task(
+                _run_map_worker[Self.Inner, Self._ElemIn, Self._ElemOut](
+                    self.inner, in_base, out_base, next_ptr, n
+                )
+            )
+
+        # Caller thread participates in work-stealing directly until all items are claimed.
+        while True:
+            var idx = Int(next_idx.fetch_add(1))
+            if idx >= n:
+                break
+            var r = self.inner[](rebind[Self.Inner.I](arg[idx]))
+            out_base.unsafe_offset(idx).unsafe_write(
+                rebind_var[Self._ElemOut](r^)
+            )
+
+        tg.wait()
+        keep(results)
+        keep(arg)
+        keep(self)
+        keep(next_idx)
         return results^
 
     def __call__(self, arg: Self.I) -> Self.O:
@@ -1098,12 +1190,18 @@ def stream_map[
 
     var window = min(max_in_flight, n)
     var stage_ptr = Pointer(to=stage)
+    var slots = List[Optional[OutElem]](length=window, fill=None)
     var offset = 0
     while offset < n:
         var count = min(window, n - offset)
-        var slots = List[Optional[OutElem]](length=count, fill=None)
+        if count == 1:
+            var r = stage(rebind[S.I](items[offset]))
+            sink.on_item(rebind_var[Sink.Item](r^))
+            offset += 1
+            continue
+        var last = count - 1
         var tg = TaskGroup()
-        for j in range(count):
+        for j in range(last):
             var in_ptr = Pointer(to=items[offset + j]).unsafe_origin_cast[
                 ImmUntrackedOrigin
             ]()
@@ -1111,12 +1209,15 @@ def stream_map[
                 MutUntrackedOrigin
             ]()
             tg.create_task(_run_stream_item(stage_ptr, in_ptr, out_ptr))
+        var r_last = stage(rebind[S.I](items[offset + last]))
+        slots[last] = rebind_var[OutElem](r_last^)
         tg.wait()
         keep(items)
         keep(stage)
+        keep(slots)
         for j in range(count):
-            if case .Some(val) = slots[j]:
-                var item = val.copy()
+            if slots[j]:
+                var item = slots[j].unsafe_take()
                 sink.on_item(rebind_var[Sink.Item](item^))
         offset += count
 

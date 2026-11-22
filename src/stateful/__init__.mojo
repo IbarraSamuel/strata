@@ -311,9 +311,15 @@ struct Parallel[*Ts: _MovableMut](_MutCall, Movable):
 
     def __call__(mut self):
         """Execute all mutable stages concurrently in one `TaskGroup`."""
+        comptime N = Self.Ts.length
+        comptime if N == 1:
+            self.tasks[0].__call__()
+            return
+        comptime last = N - 1
         var tg = TaskGroup()
-        comptime for i in range(Self.Ts.length):
+        comptime for i in range(last):
             tg.create_task(Self._run_task(Pointer(to=self.tasks[i])))
+        self.tasks[last].__call__()
         tg.wait()
 
     def __and__[

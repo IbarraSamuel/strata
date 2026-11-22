@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import os
 from collections import deque
+from collections.abc import Sized
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from typing import TYPE_CHECKING, Any, cast
 
 from strata.async_support import arun
-from strata.graph import _invoke_stage
+from strata.graph import _invoke_stage, _try_native_map_list
 
 if TYPE_CHECKING:
     from collections.abc import (
@@ -46,6 +46,18 @@ async def _apull_next[I](
         return (False, None, None)
     except Exception as exc:  # ruff: ignore[blind-except]
         return (False, None, exc)
+
+
+def _close_sync_iter(iterator: object) -> None:
+    close_fn = getattr(iterator, "close", None)
+    if callable(close_fn):
+        close_fn()
+
+
+async def _close_async_iter(async_iter: object) -> None:
+    aclose_fn = getattr(async_iter, "aclose", None)
+    if callable(aclose_fn):
+        await cast("Any", aclose_fn)()
 
 
 def _stream_ordered[I, O](
@@ -164,20 +176,24 @@ def stream_stage[I, O](
     if max_in_flight < 1:
         msg = "max_in_flight must be >= 1"
         raise ValueError(msg)
+    effective_in_flight = max_in_flight
+    if isinstance(items, Sized):
+        n = len(items)
+        if n == 0:
+            return
+        effective_in_flight = min(max_in_flight, n)
     iterator = iter(items)
     try:
-        if max_in_flight == 1:
+        if effective_in_flight == 1:
             for item in iterator:
                 yield _invoke_stage(stage, item)
             return
         if ordered:
-            yield from _stream_ordered(stage, iterator, max_in_flight)
+            yield from _stream_ordered(stage, iterator, effective_in_flight)
         else:
-            yield from _stream_unordered(stage, iterator, max_in_flight)
+            yield from _stream_unordered(stage, iterator, effective_in_flight)
     finally:
-        close_fn = getattr(iterator, "close", None)
-        if callable(close_fn):
-            close_fn()
+        _close_sync_iter(iterator)
 
 
 def map_stage[I, O](
@@ -210,31 +226,17 @@ def map_stage[I, O](
     if max_in_flight < 0:
         msg = "max_in_flight must be >= 0"
         raise ValueError(msg)
+    sized_items: Iterable[I] = items if isinstance(items, Sized) else list(items)
+    n = len(cast("Sized", sized_items))
+    if n == 0:
+        return []
+    if n == 1:
+        return [_invoke_stage(stage, next(iter(sized_items)))]
+    native_out = _try_native_map_list(stage, sized_items, max_in_flight)
+    if native_out is not None:
+        return cast("list[O]", native_out)
     limit = max_in_flight if max_in_flight > 0 else _default_in_flight()
-    return list(stream_stage(stage, items, max_in_flight=limit, ordered=True))
-
-
-async def _anext_item[I](
-    source: Iterable[I] | AsyncIterable[I],
-) -> AsyncGenerator[I]:
-    if hasattr(source, "__aiter__"):
-        ait = aiter(cast("AsyncIterable[I]", source))
-        try:
-            async for item in ait:
-                yield item
-        finally:
-            aclose_fn = getattr(ait, "aclose", None)
-            if callable(aclose_fn):
-                await cast("Any", aclose_fn)()
-    else:
-        it = iter(cast("Iterable[I]", source))
-        try:
-            for item in it:
-                yield item
-        finally:
-            close_fn = getattr(it, "close", None)
-            if callable(close_fn):
-                close_fn()
+    return list(stream_stage(stage, sized_items, max_in_flight=limit, ordered=True))
 
 
 async def _cancel_tasks(tasks: Iterable[asyncio.Task[object]]) -> None:
@@ -246,17 +248,44 @@ async def _cancel_tasks(tasks: Iterable[asyncio.Task[object]]) -> None:
         await asyncio.gather(*pending, return_exceptions=True)
 
 
+async def _astream_serial[I, O](
+    stage: object,
+    items: Iterable[I] | AsyncIterable[I],
+) -> AsyncGenerator[O]:
+    if hasattr(items, "__aiter__"):
+        ait = aiter(cast("AsyncIterable[I]", items))
+        try:
+            async for item in ait:
+                yield await arun(stage, item)
+        finally:
+            await _close_async_iter(ait)
+    else:
+        sit = iter(cast("Iterable[I]", items))
+        try:
+            for item in sit:
+                yield await arun(stage, item)
+        finally:
+            _close_sync_iter(sit)
+
+
 async def _astream_ordered[I, O](
     stage: object,
-    async_iter: AsyncIterator[I],
+    items: Iterable[I] | AsyncIterable[I],
     max_in_flight: int,
 ) -> AsyncGenerator[O]:
+    is_async = hasattr(items, "__aiter__")
+    ait = aiter(cast("AsyncIterable[I]", items)) if is_async else None
+    sit = None if is_async else iter(cast("Iterable[I]", items))
     pending: deque[asyncio.Task[object]] = deque()
     exhausted = False
     upstream_error: Exception | None = None
     try:
         while len(pending) < max_in_flight:
-            has_item, item, err = await _apull_next(async_iter)
+            has_item, item, err = (
+                await _apull_next(ait)
+                if ait is not None
+                else _pull_next(cast("Iterator[I]", sit))
+            )
             if not has_item:
                 exhausted = True
                 upstream_error = err
@@ -267,7 +296,11 @@ async def _astream_ordered[I, O](
             task_obj = pending.popleft()
             yield cast("O", await task_obj)
             if not exhausted:
-                has_item, nxt, err = await _apull_next(async_iter)
+                has_item, nxt, err = (
+                    await _apull_next(ait)
+                    if ait is not None
+                    else _pull_next(cast("Iterator[I]", sit))
+                )
                 if not has_item:
                     exhausted = True
                     upstream_error = err
@@ -278,20 +311,31 @@ async def _astream_ordered[I, O](
             raise upstream_error
     finally:
         await _cancel_tasks(pending)
+        if ait is not None:
+            await _close_async_iter(ait)
+        elif sit is not None:
+            _close_sync_iter(sit)
 
 
 async def _astream_unordered[I, O](
     stage: object,
-    async_iter: AsyncIterator[I],
+    items: Iterable[I] | AsyncIterable[I],
     max_in_flight: int,
 ) -> AsyncGenerator[O]:
+    is_async = hasattr(items, "__aiter__")
+    ait = aiter(cast("AsyncIterable[I]", items)) if is_async else None
+    sit = None if is_async else iter(cast("Iterable[I]", items))
     pending: set[asyncio.Task[object]] = set()
     done: set[asyncio.Task[object]] = set()
     exhausted = False
     upstream_error: Exception | None = None
     try:
         while len(pending) < max_in_flight:
-            has_item, item, err = await _apull_next(async_iter)
+            has_item, item, err = (
+                await _apull_next(ait)
+                if ait is not None
+                else _pull_next(cast("Iterator[I]", sit))
+            )
             if not has_item:
                 exhausted = True
                 upstream_error = err
@@ -306,7 +350,11 @@ async def _astream_unordered[I, O](
                 task_obj = done.pop()
                 yield cast("O", await task_obj)
                 if not exhausted:
-                    has_item, nxt, err = await _apull_next(async_iter)
+                    has_item, nxt, err = (
+                        await _apull_next(ait)
+                        if ait is not None
+                        else _pull_next(cast("Iterator[I]", sit))
+                    )
                     if not has_item:
                         exhausted = True
                         upstream_error = err
@@ -317,15 +365,19 @@ async def _astream_unordered[I, O](
             raise upstream_error
     finally:
         await _cancel_tasks(pending | done)
+        if ait is not None:
+            await _close_async_iter(ait)
+        elif sit is not None:
+            _close_sync_iter(sit)
 
 
-async def astream_stage[I, O](
+def astream_stage[I, O](
     stage: Any,  # ruff: ignore[any-type]
     items: Iterable[I] | AsyncIterable[I],
     *,
     max_in_flight: int = 8,
     ordered: bool = True,
-) -> AsyncIterator[O]:
+) -> AsyncGenerator[O]:
     """Asynchronously stream `items` through `stage` with bounded backpressure.
 
     Accepts either a regular synchronous `Iterable[I]` or an `AsyncIterable[I]`.
@@ -342,10 +394,10 @@ async def astream_stage[I, O](
         If `True` (default), yields outputs in input order; otherwise yields in
         completion order.
 
-    Yields
-    ------
-    O
-        Transformed pipeline outputs.
+    Returns
+    -------
+    AsyncGenerator[O]
+        Async generator yielding transformed pipeline outputs.
 
     Raises
     ------
@@ -355,16 +407,8 @@ async def astream_stage[I, O](
     if max_in_flight < 1:
         msg = "max_in_flight must be >= 1"
         raise ValueError(msg)
-    async with contextlib.aclosing(_anext_item(items)) as async_iter:
-        if max_in_flight == 1:
-            async for item in async_iter:
-                yield await arun(stage, item)  # ruff: ignore[yield-in-context-manager-in-async-generator]
-            return
-        inner_stream = (
-            _astream_ordered(stage, async_iter, max_in_flight)
-            if ordered
-            else _astream_unordered(stage, async_iter, max_in_flight)
-        )
-        async with contextlib.aclosing(inner_stream) as stream:
-            async for out in stream:
-                yield cast("O", out)  # ruff: ignore[yield-in-context-manager-in-async-generator]
+    if max_in_flight == 1:
+        return _astream_serial(stage, items)
+    if ordered:
+        return _astream_ordered(stage, items, max_in_flight)
+    return _astream_unordered(stage, items, max_in_flight)

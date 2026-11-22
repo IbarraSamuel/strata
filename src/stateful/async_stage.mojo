@@ -4,7 +4,7 @@ Consolidates legacy `strata.void.async_mutable` and `strata.void.async_immutable
 into a unified API where `&` fan-outs flatten into one `TaskGroup`.
 """
 
-from .._internal.runtime import TaskGroup
+from .._internal.runtime import TaskGroup, run_coro
 
 comptime _MovableAsyncMut = _AsyncMutCall & Movable & Deinitable
 
@@ -180,10 +180,8 @@ struct AsyncSeries[T1: _MovableAsyncMut, T2: _MovableAsyncMut](
         __await self.t2()
 
     def run(mut self):
-        """Execute this async sequential pipeline synchronously via a `TaskGroup`."""
-        var tg = TaskGroup()
-        tg.create_task(self())
-        tg.wait()
+        """Execute this async sequential pipeline synchronously on the async runtime."""
+        run_coro(self())
 
     def __or__[
         o: MutOrigin, //
@@ -306,17 +304,20 @@ struct AsyncParallel[*Ts: _MovableAsyncMut](_AsyncMutCall, Movable):
 
     __async def __call__(mut self):
         """Asynchronously execute all stages concurrently in one `TaskGroup`."""
+        comptime N = Self.Ts.length
+        comptime if N == 1:
+            __await self.tasks[0]()
+            return
+        comptime last = N - 1
         var tg = TaskGroup()
-        comptime for i in range(Self.Ts.length):
+        comptime for i in range(last):
             tg.create_task(self.tasks[i]())
+        __await self.tasks[last]()
         __await tg
 
     def run(mut self):
-        """Execute this async parallel pipeline synchronously via a `TaskGroup`."""
-        var tg = TaskGroup()
-        comptime for i in range(Self.Ts.length):
-            tg.create_task(self.tasks[i]())
-        tg.wait()
+        """Execute this async parallel pipeline synchronously on the async runtime."""
+        run_coro(self())
 
     def __and__[
         o: MutOrigin, //

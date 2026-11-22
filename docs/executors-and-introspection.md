@@ -232,6 +232,6 @@ Explicit `group(...)` wrappers render as visual `subgraph` (Mermaid) and `subgra
   - `MAX_PARALLEL_WIDTH` sums across `&`, takes `max` across `|`, and is transparent through `group(...)` (including double-nested `group(group(...))`).
   - `CRITICAL_DEPTH` sums across `|` and takes `max` across `&`.
 - **Diagram Rendering (`to_mermaid` / `to_dot`)**:
-  - Double quotes (`"`) in stage labels are automatically sanitized to single quotes (`'`) to keep Mermaid and Graphviz DOT output syntactically valid.
+  - Special characters (`"`, `\`, newlines, and `]`) in stage labels are automatically escaped (single quotes in Mojo `compt.mojo`; `&quot;` for Mermaid and `\"` for DOT in Python `introspect.py`) to keep rendered diagrams syntactically valid.
   - Explicit `group(...)`, double-nested `group(group(...))`, and `zip_tasks(...)` render as nested `subgraph` (Mermaid) / `subgraph cluster_*` (DOT) blocks.
 

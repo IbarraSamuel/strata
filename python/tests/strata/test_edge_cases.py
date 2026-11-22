@@ -1195,3 +1195,144 @@ def test_m2_select_typing_and_l2_diagram_escaping() -> None:
         to_dot(_inc, direction="LR; evil")
     with pytest.raises(ValueError, match="non-empty"):
         to_dot(_inc, name="   ")
+
+
+# ===----------------------------------------------------------------------=== #
+# 9. Wave 2 Performance & Safety Invariant Tests
+# ===----------------------------------------------------------------------=== #
+
+
+def test_wave2_arun_subtree_batching_preserves_nested_async_loop() -> None:
+    async def _run() -> None:
+        main_loop = asyncio.get_running_loop()
+        observed_loops: list[asyncio.AbstractEventLoop] = []
+
+        @async_task
+        async def _a_check_loop(x: int) -> int:
+            observed_loops.append(asyncio.get_running_loop())
+            await asyncio.sleep(0)
+            return x + 1
+
+        # Pure-sync/native TaskGroup subtree runs cleanly in arun
+        native_chain = native_int_linear(scale=2, bias=1) | native_int_linear(
+            scale=3, bias=-2
+        )
+        expected_native = 31
+        assert await arun(native_chain, 5) == expected_native
+
+        # Nested AsyncTask inside branch/fallback/retry/timeout/group inside a
+        # TaskGroup MUST still execute on the caller's exact event loop!
+        nested_branch = _inc | branch(lambda x: x > 0, _a_check_loop, _double)
+        nested_fallback = _inc | fallback(_a_check_loop, _double)
+        nested_retry = _inc | retry(_a_check_loop, max_attempts=2)
+        nested_timeout = _inc | timeout(_a_check_loop, seconds=1.0)
+        nested_group = _inc | group(_a_check_loop & _double)
+
+        expected_seven = 7
+        assert await arun(nested_branch, 5) == expected_seven
+        assert await arun(nested_fallback, 5) == expected_seven
+        assert await arun(nested_retry, 5) == expected_seven
+        assert await arun(nested_timeout, 5) == expected_seven
+        assert await arun(nested_group, 5) == (7, 12)
+        assert observed_loops
+        assert all(lp is main_loop for lp in observed_loops)
+
+    asyncio.run(_run())
+
+
+def test_wave2_tracing_executor_per_instance_cache_isolation() -> None:
+    pipe = _inc | (_double & _triple) | zip_tasks(_inc, _add_ten)
+    t1 = TracingExecutor(sequential=False)
+    t2 = TracingExecutor(sequential=False)
+
+    assert t1.run(pipe, 4) == (11, 25)
+    assert t2.run(pipe, 5) == (13, 28)
+
+    expected_spans = 5
+    assert len(t1.spans) == expected_spans
+    assert len(t2.spans) == expected_spans
+
+    # Repeated cached runs only append to the invoking executor
+    assert t1.run(pipe, 6) == (15, 31)
+    assert len(t1.spans) == expected_spans * 2
+    assert len(t2.spans) == expected_spans
+
+    t1.clear()
+    assert t1.spans == []
+    assert t1.run(pipe, 2) == (7, 19)
+    assert len(t1.spans) == expected_spans
+
+
+def test_wave2_timeout_pool_reuse_and_no_deadlock_in_stream_and_map() -> None:
+    guarded = timeout(_double, seconds=1.0)
+    nested_guarded = timeout(timeout(_inc, seconds=1.0), seconds=2.0)
+
+    expected_nested = 11
+    assert nested_guarded(10) == expected_nested
+
+    # Running TimeoutTask concurrently inside stream/map must never deadlock
+    items = list(range(16))
+    assert guarded.map(items, max_in_flight=8) == [x * 2 for x in items]
+    assert list(guarded.stream(items, max_in_flight=8)) == [x * 2 for x in items]
+    assert map_stage(nested_guarded, [5], max_in_flight=4) == [6]
+    assert map_stage(nested_guarded, [], max_in_flight=4) == []
+
+
+def test_wave2_from_tasks_is_pure_native_and_map_list() -> None:
+    n1 = native_int_linear(scale=2, bias=1, name="n1")
+    n2 = native_int_linear(scale=3, bias=-2, name="n2")
+    n_chain = n1 | n2
+    n_par = n1 & n2
+    py_chain = _inc | _double
+    hybrid_chain = n1 | _inc
+
+    # is_pure_native checks
+    assert n_chain.inner.is_pure_native() is True
+    assert n_par.inner.is_pure_native() is False
+    assert py_chain.inner.is_pure_native() is False
+    assert hybrid_chain.inner.is_pure_native() is False
+
+    # TaskGroup.from_tasks serial & parallel + validation
+    tg_ser = mojo_strata.TaskGroup.from_tasks([_inc, _double, _triple], 0)
+    expected_ser = 36
+    assert tg_ser.call(5) == expected_ser
+    tg_par = mojo_strata.TaskGroup.from_tasks([_inc, _double, _triple], 1)
+    assert tg_par.call(5) == (6, 10, 15)
+
+    flag_true = True
+    with pytest.raises(ValueError, match="at least one task"):
+        mojo_strata.TaskGroup.from_tasks([], 0)
+    with pytest.raises(ValueError, match="mode"):
+        mojo_strata.TaskGroup.from_tasks([_inc], 99)
+    with pytest.raises(TypeError):
+        mojo_strata.TaskGroup.from_tasks([_inc], flag_true)
+
+    # GIL-free NativeStage.map_list and TaskGroup.map_list
+    xs = list(range(32))
+    expected_n1 = [x * 2 + 1 for x in xs]
+    expected_chain = [(x * 2 + 1) * 3 - 2 for x in xs]
+
+    raw_ns = mojo_strata.native_int_linear(2, 1, "raw_n1")
+    assert raw_ns.map_list(xs, 0) == expected_n1
+    assert raw_ns.map_list(xs, 1) == expected_n1
+    assert raw_ns.map_list(xs, 4) == expected_n1
+    assert raw_ns.map_list([], 4) == []
+
+    assert n_chain.inner.map_list(xs, 0) == expected_chain
+    assert n_chain.inner.map_list(xs, 4) == expected_chain
+    assert map_task(n_chain, max_concurrency=4)(xs) == expected_chain
+    assert map_stage(n_chain, xs, max_in_flight=4) == expected_chain
+    assert map_task(n1, max_concurrency=4)(xs) == expected_n1
+    assert map_stage(n1, xs, max_in_flight=4) == expected_n1
+
+    # map_list validation errors
+    with pytest.raises(ValueError, match="max_concurrency"):
+        raw_ns.map_list(xs, -1)
+    with pytest.raises(TypeError):
+        raw_ns.map_list(xs, flag_true)
+    with pytest.raises(TypeError):
+        py_chain.inner.map_list(xs, 4)
+    with pytest.raises(TypeError):
+        n_par.inner.map_list(xs, 4)
+    with pytest.raises(TypeError):
+        raw_ns.map_list(cast("Any", [1, "bad", 3]), 4)

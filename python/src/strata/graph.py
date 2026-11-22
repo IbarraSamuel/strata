@@ -80,6 +80,108 @@ def _invoke_stage[I, O](stage: Any, msg: I) -> O:  # ruff: ignore[any-type]
     return cast("O", stage(msg))
 
 
+def _try_native_map_list(
+    stage: object,
+    items: Iterable[Any],
+    max_concurrency: int,
+) -> list[Any] | None:
+    native = _resolve_native(stage)
+    if native is not None:
+        return native.map_list(items, max_concurrency)
+    tg: mojo_strata.TaskGroup[Any, Any] | None = None
+    if isinstance(stage, _BaseTaskGroup):
+        tg = cast("mojo_strata.TaskGroup[Any, Any]", stage.inner)
+    elif isinstance(stage, mojo_strata.TaskGroup):
+        tg = stage
+    if tg is not None and tg.is_pure_native():
+        return tg.map_list(items, max_concurrency)
+    return None
+
+
+def _build_task_group(
+    tasks: list[Any],
+    mode: int,
+) -> mojo_strata.TaskGroup[Any, Any]:
+    return mojo_strata.TaskGroup.from_tasks(tasks, mode)
+
+
+class _RuntimeHelpers:
+    graph_stats: Callable[[object], GraphStats] | None = None
+    to_mermaid: Callable[..., str] | None = None
+    to_dot: Callable[..., str] | None = None
+    map_stage: Callable[..., list[Any]] | None = None
+    stream_stage: Callable[..., Iterator[Any]] | None = None
+    arun: Callable[..., Any] | None = None
+    astream_stage: Callable[..., AsyncIterator[Any]] | None = None
+
+
+_HELPERS = _RuntimeHelpers()
+
+
+def _get_graph_stats_fn() -> Callable[[object], GraphStats]:
+    if _HELPERS.graph_stats is None:
+        from strata.introspect import (  # ruff: ignore[import-outside-top-level]
+            graph_stats,
+        )
+
+        _HELPERS.graph_stats = graph_stats
+    return _HELPERS.graph_stats
+
+
+def _get_to_mermaid_fn() -> Callable[..., str]:
+    if _HELPERS.to_mermaid is None:
+        from strata.introspect import (  # ruff: ignore[import-outside-top-level]
+            to_mermaid,
+        )
+
+        _HELPERS.to_mermaid = to_mermaid
+    return _HELPERS.to_mermaid
+
+
+def _get_to_dot_fn() -> Callable[..., str]:
+    if _HELPERS.to_dot is None:
+        from strata.introspect import to_dot  # ruff: ignore[import-outside-top-level]
+
+        _HELPERS.to_dot = to_dot
+    return _HELPERS.to_dot
+
+
+def _get_map_stage_fn() -> Callable[..., list[Any]]:
+    if _HELPERS.map_stage is None:
+        from strata.streaming import map_stage  # ruff: ignore[import-outside-top-level]
+
+        _HELPERS.map_stage = map_stage
+    return _HELPERS.map_stage
+
+
+def _get_stream_stage_fn() -> Callable[..., Iterator[Any]]:
+    if _HELPERS.stream_stage is None:
+        from strata.streaming import (  # ruff: ignore[import-outside-top-level]
+            stream_stage,
+        )
+
+        _HELPERS.stream_stage = stream_stage
+    return _HELPERS.stream_stage
+
+
+def _get_arun_fn() -> Callable[..., Any]:
+    if _HELPERS.arun is None:
+        from strata.async_support import arun  # ruff: ignore[import-outside-top-level]
+
+        _HELPERS.arun = arun
+    return _HELPERS.arun
+
+
+def _get_astream_stage_fn() -> Callable[..., AsyncIterator[Any]]:
+    if _HELPERS.astream_stage is None:
+        from strata.streaming import (  # ruff: ignore[import-outside-top-level]
+            astream_stage,
+        )
+
+        _HELPERS.astream_stage = astream_stage
+    return _HELPERS.astream_stage
+
+
 def _unwrap_target[I, O](
     other: _Stage[I, O],
 ) -> Task[I, O] | mojo_strata.TaskGroup[I, O] | mojo_strata.NativeStage[I, O]:
@@ -124,11 +226,7 @@ class _BaseTaskGroup[I, O]:
         GraphStats
             Stage count, maximum parallel width, and critical path depth.
         """
-        from strata.introspect import (  # ruff: ignore[import-outside-top-level]
-            graph_stats,
-        )
-
-        return graph_stats(self)
+        return _get_graph_stats_fn()(self)
 
     def to_mermaid(self, *, direction: str = "LR") -> str:
         """Render this pipeline topology as a Mermaid flowchart.
@@ -143,11 +241,7 @@ class _BaseTaskGroup[I, O]:
         str
             Mermaid flowchart source string.
         """
-        from strata.introspect import (  # ruff: ignore[import-outside-top-level]
-            to_mermaid,
-        )
-
-        return to_mermaid(self, direction=direction)
+        return _get_to_mermaid_fn()(self, direction=direction)
 
     def to_dot(self, *, name: str = "Strata", direction: str = "LR") -> str:
         """Render this pipeline topology as Graphviz DOT.
@@ -164,9 +258,7 @@ class _BaseTaskGroup[I, O]:
         str
             Graphviz DOT source string.
         """
-        from strata.introspect import to_dot  # ruff: ignore[import-outside-top-level]
-
-        return to_dot(self, name=name, direction=direction)
+        return _get_to_dot_fn()(self, name=name, direction=direction)
 
     def map(self, items: Iterable[I], *, max_in_flight: int = 0) -> list[O]:
         """Run this pipeline concurrently across `items` and return ordered results.
@@ -183,9 +275,9 @@ class _BaseTaskGroup[I, O]:
         list[O]
             Ordered list of pipeline outputs.
         """
-        from strata.streaming import map_stage  # ruff: ignore[import-outside-top-level]
-
-        return map_stage(self, items, max_in_flight=max_in_flight)
+        return cast(
+            "list[O]", _get_map_stage_fn()(self, items, max_in_flight=max_in_flight)
+        )
 
     def stream(
         self,
@@ -210,15 +302,14 @@ class _BaseTaskGroup[I, O]:
         Iterator[O]
             Lazy iterator yielding pipeline outputs.
         """
-        from strata.streaming import (  # ruff: ignore[import-outside-top-level]
-            stream_stage,
-        )
-
-        return stream_stage(
-            self,
-            items,
-            max_in_flight=max_in_flight,
-            ordered=ordered,
+        return cast(
+            "Iterator[O]",
+            _get_stream_stage_fn()(
+                self,
+                items,
+                max_in_flight=max_in_flight,
+                ordered=ordered,
+            ),
         )
 
     async def arun(self, msg: I, /) -> O:
@@ -234,9 +325,7 @@ class _BaseTaskGroup[I, O]:
         O
             Pipeline output value.
         """
-        from strata.async_support import arun  # ruff: ignore[import-outside-top-level]
-
-        return await arun(self, msg)
+        return cast("O", await _get_arun_fn()(self, msg))
 
     def astream(
         self,
@@ -261,11 +350,7 @@ class _BaseTaskGroup[I, O]:
         AsyncIterator[O]
             Async iterator yielding pipeline outputs.
         """
-        from strata.streaming import (  # ruff: ignore[import-outside-top-level]
-            astream_stage,
-        )
-
-        return astream_stage(
+        return _get_astream_stage_fn()(
             self,
             items,
             max_in_flight=max_in_flight,
@@ -432,9 +517,9 @@ class Combinable(Protocol):
         list[O]
             Ordered list of outputs.
         """
-        from strata.streaming import map_stage  # ruff: ignore[import-outside-top-level]
-
-        return map_stage(self, items, max_in_flight=max_in_flight)
+        return cast(
+            "list[O]", _get_map_stage_fn()(self, items, max_in_flight=max_in_flight)
+        )
 
     def stream[I, O](
         self: Task[I, O],
@@ -459,15 +544,14 @@ class Combinable(Protocol):
         Iterator[O]
             Lazy iterator yielding outputs.
         """
-        from strata.streaming import (  # ruff: ignore[import-outside-top-level]
-            stream_stage,
-        )
-
-        return stream_stage(
-            self,
-            items,
-            max_in_flight=max_in_flight,
-            ordered=ordered,
+        return cast(
+            "Iterator[O]",
+            _get_stream_stage_fn()(
+                self,
+                items,
+                max_in_flight=max_in_flight,
+                ordered=ordered,
+            ),
         )
 
     async def arun[I, O](self: Task[I, O], msg: I, /) -> O:
@@ -483,9 +567,7 @@ class Combinable(Protocol):
         O
             Task output value.
         """
-        from strata.async_support import arun  # ruff: ignore[import-outside-top-level]
-
-        return await arun(self, msg)
+        return cast("O", await _get_arun_fn()(self, msg))
 
     def astream[I, O](
         self: Task[I, O],
@@ -510,11 +592,7 @@ class Combinable(Protocol):
         AsyncIterator[O]
             Async iterator yielding outputs.
         """
-        from strata.streaming import (  # ruff: ignore[import-outside-top-level]
-            astream_stage,
-        )
-
-        return astream_stage(
+        return _get_astream_stage_fn()(
             self,
             items,
             max_in_flight=max_in_flight,

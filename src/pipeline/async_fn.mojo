@@ -1,7 +1,5 @@
 """Asynchronous compile-time function composition and parallel execution."""
 
-from std.builtin.rebind import downcast
-
 from .._internal.runtime import TaskGroup, run_coro, uninitialized_storage
 
 comptime AsyncFnToOut[f: AsyncFnTrait] = f.O
@@ -48,6 +46,29 @@ trait AsyncFnTrait(Movable, TrivialRegisterPassable):
     """Internal marker distinguishing flat `AsyncParallel` stages."""
 
     @staticmethod
+    __async def exec_async[
+        in_orig: ImmOrigin, out_orig: MutOrigin
+    ](
+        in_ptr: Pointer[Self.I, in_orig],
+        out_ptr: Pointer[Self.O, out_orig],
+    ):
+        """Asynchronously execute this stage on `in_ptr[]` and write output into `out_ptr`.
+
+        Uses pointer arguments so non-trivial input/output types (`String`, `List`,
+        `Tuple`) can compose cleanly across coroutine suspension points without
+        blocking worker threads in nested `run_coro` calls.
+
+        Parameters:
+            in_orig: Origin of the input pointer.
+            out_orig: Origin of the output storage pointer.
+
+        Args:
+            in_ptr: Pointer to input value.
+            out_ptr: Pointer to uninitialized output slot initialized via `unsafe_write`.
+        """
+        ...
+
+    @staticmethod
     def exec(val: Self.I) -> Self.O:
         """Execute this stage on `val` using the async runtime.
 
@@ -60,7 +81,6 @@ trait AsyncFnTrait(Movable, TrivialRegisterPassable):
         ...
 
 
-@always_inline
 __async def _run_async_fn_task[
     ci: Int,
     *fns: AsyncFnTrait,
@@ -70,11 +90,38 @@ __async def _run_async_fn_task[
     in_ptr: Pointer[fns[0].I, in_origin],
     out_ptr: Pointer[Tuple[*fns.map[AsyncFnToOut]()].Ts[ci], out_origin],
 ):
-    comptime to = downcast[Tuple[*fns.map[AsyncFnToOut]()].Ts[ci], Movable]
-    ref inp = rebind[fns[ci].I](in_ptr[])
-    out_ptr.unsafe_bitcast[to]().unsafe_write(
-        rebind_var[to](fns[ci].exec(inp))
-    )
+    var rebound_in = Pointer(to=rebind[fns[ci].I](in_ptr[]))
+    var rebound_out = out_ptr.unsafe_bitcast[fns[ci].O]()
+    __await fns[ci].exec_async(rebound_in, rebound_out)
+
+
+__async def _par_fns_into[
+    *fns: AsyncFnTrait,
+    in_orig: ImmOrigin,
+    out_orig: MutOrigin,
+](
+    in_ptr: Pointer[fns[0].I, in_orig],
+    out_ptr: Pointer[Tuple[*fns.map[AsyncFnToOut]()], out_orig],
+) where AllSameAsyncInput[fns]:
+    comptime N = fns.length
+    comptime if N == 1:
+        var rebound_in = Pointer(to=rebind[fns[0].I](in_ptr[]))
+        var rebound_out = Pointer(to=out_ptr[][0]).unsafe_bitcast[fns[0].O]()
+        __await fns[0].exec_async(rebound_in, rebound_out)
+        return
+
+    comptime last = N - 1
+    var tg = TaskGroup()
+    comptime for ci in range(last):
+        var slot_ptr = Pointer(to=out_ptr[][ci])
+        tg.create_task(_run_async_fn_task[ci, *fns](in_ptr, slot_ptr))
+
+    var rebound_in_last = Pointer(to=rebind[fns[last].I](in_ptr[]))
+    var rebound_out_last = Pointer(to=out_ptr[][last]).unsafe_bitcast[
+        fns[last].O
+    ]()
+    __await fns[last].exec_async(rebound_in_last, rebound_out_last)
+    __await tg
 
 
 def par_fns[
@@ -93,14 +140,8 @@ def par_fns[
     Returns:
         Flat tuple containing each stage's result in stage order.
     """
-    var tg = TaskGroup()
     var o = uninitialized_storage[Tuple[*fns.map[AsyncFnToOut]()]]()
-
-    var in_ptr = Pointer(to=val)
-    comptime for ci in range(fns.length):
-        var out_ptr = Pointer(to=o[ci])
-        tg.create_task(_run_async_fn_task[ci, *fns](in_ptr, out_ptr))
-    tg.wait()
+    run_coro(_par_fns_into[*fns](Pointer(to=val), Pointer(to=o)))
     return o^
 
 
@@ -194,6 +235,29 @@ struct AsyncFn[
     """Input type."""
     comptime O = Self.o
     """Output type."""
+
+    @staticmethod
+    __async def exec_async[
+        in_orig: ImmOrigin, out_orig: MutOrigin
+    ](
+        in_ptr: Pointer[Self.I, in_orig],
+        out_ptr: Pointer[Self.O, out_orig],
+    ):
+        """Asynchronously execute the wrapped coroutine directly into `out_ptr`.
+
+        Parameters:
+            in_orig: Origin of the input pointer.
+            out_orig: Origin of the output storage pointer.
+
+        Args:
+            in_ptr: Pointer to input value.
+            out_ptr: Pointer to uninitialized output slot.
+        """
+        comptime if conforms_to(Self.O, TrivialRegisterPassable):
+            var r = __await Self.F(in_ptr[])
+            out_ptr.unsafe_write(rebind_var[Self.O](r))
+        else:
+            out_ptr.unsafe_write(run_coro(Self.F(in_ptr[])))
 
     @staticmethod
     def exec(val: Self.I) -> Self.O:
@@ -315,6 +379,25 @@ struct SyncAdapter[
     """Output type."""
 
     @staticmethod
+    __async def exec_async[
+        in_orig: ImmOrigin, out_orig: MutOrigin
+    ](
+        in_ptr: Pointer[Self.I, in_orig],
+        out_ptr: Pointer[Self.O, out_orig],
+    ):
+        """Execute the synchronous function directly inside a coroutine into `out_ptr`.
+
+        Parameters:
+            in_orig: Origin of the input pointer.
+            out_orig: Origin of the output storage pointer.
+
+        Args:
+            in_ptr: Pointer to input value.
+            out_ptr: Pointer to uninitialized output slot.
+        """
+        out_ptr.unsafe_write(Self.F(in_ptr[]))
+
+    @staticmethod
     def exec(val: Self.I) -> Self.O:
         """Execute the synchronous function.
 
@@ -422,6 +505,25 @@ struct AsyncGroup[Inner: AsyncFnTrait](AsyncFnTrait, TrivialRegisterPassable):
     """Input type."""
     comptime O = Self.Inner.O
     """Output type."""
+
+    @staticmethod
+    __async def exec_async[
+        in_orig: ImmOrigin, out_orig: MutOrigin
+    ](
+        in_ptr: Pointer[Self.I, in_orig],
+        out_ptr: Pointer[Self.O, out_orig],
+    ):
+        """Asynchronously execute the wrapped stage into `out_ptr`.
+
+        Parameters:
+            in_orig: Origin of the input pointer.
+            out_orig: Origin of the output storage pointer.
+
+        Args:
+            in_ptr: Pointer to input value.
+            out_ptr: Pointer to uninitialized output slot.
+        """
+        __await Self.Inner.exec_async(in_ptr, out_ptr)
 
     @staticmethod
     def exec(val: Self.I) -> Self.O:
@@ -534,6 +636,28 @@ struct AsyncSequence[T1: AsyncFnTrait, T2: AsyncFnTrait](
     """Input type of the first stage."""
     comptime O = Self.T2.O
     """Output type of the second stage."""
+
+    @staticmethod
+    __async def exec_async[
+        in_orig: ImmOrigin, out_orig: MutOrigin
+    ](
+        in_ptr: Pointer[Self.I, in_orig],
+        out_ptr: Pointer[Self.O, out_orig],
+    ):
+        """Asynchronously execute `T1` followed by `T2` into `out_ptr`.
+
+        Parameters:
+            in_orig: Origin of the input pointer.
+            out_orig: Origin of the output storage pointer.
+
+        Args:
+            in_ptr: Pointer to input value.
+            out_ptr: Pointer to uninitialized output slot.
+        """
+        var mid = uninitialized_storage[Self.T1.O]()
+        __await Self.T1.exec_async(in_ptr, Pointer(to=mid))
+        var mid_in = Pointer(to=rebind[Self.T2.I](mid))
+        __await Self.T2.exec_async(mid_in, out_ptr)
 
     @staticmethod
     def exec(val: Self.I) -> Self.O:
@@ -651,6 +775,25 @@ struct AsyncParallel[*fns: AsyncFnTrait](
     """Flat tuple output type."""
     comptime _IS_PARALLEL: Bool = True
     """Marks `AsyncParallel` for associative flattening."""
+
+    @staticmethod
+    __async def exec_async[
+        in_orig: ImmOrigin, out_orig: MutOrigin
+    ](
+        in_ptr: Pointer[Self.I, in_orig],
+        out_ptr: Pointer[Self.O, out_orig],
+    ):
+        """Asynchronously execute all parallel branches concurrently into `out_ptr`.
+
+        Parameters:
+            in_orig: Origin of the input pointer.
+            out_orig: Origin of the output storage pointer.
+
+        Args:
+            in_ptr: Pointer to input value broadcast to every branch.
+            out_ptr: Pointer to uninitialized output tuple slot.
+        """
+        __await _par_fns_into[*Self.fns](in_ptr, out_ptr)
 
     @staticmethod
     def exec(val: Self.I) -> Self.O:

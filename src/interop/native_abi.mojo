@@ -52,7 +52,7 @@ comptime NativeCtxDeleter = def(
 
 
 @fieldwise_init
-struct NativeValue(Copyable, Defaultable, Movable):
+struct NativeValue(Copyable, Defaultable, Movable, TrivialRegisterPassable):
     """C-ABI tagged scalar value exchanged between GIL-free native stages."""
 
     var kind: Int32

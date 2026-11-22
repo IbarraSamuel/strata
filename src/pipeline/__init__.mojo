@@ -249,6 +249,7 @@ struct Sequence[
         self.t1 = Pointer(to=t1)
         self.t2 = Pointer(to=t2)
 
+    @always_inline
     def __call__(self, arg: Self.I) -> Self.O:
         """Execute both stages in sequence.
 
@@ -301,6 +302,7 @@ struct Group[origin: ImmOrigin, //, Inner: Stage](ComposableStage):
         """
         self.inner = Pointer(to=inner)
 
+    @always_inline
     def __call__(self, arg: Self.I) -> Self.O:
         """Execute the wrapped stage.
 
@@ -439,16 +441,37 @@ struct Parallel[
         Returns:
             Flat tuple of branch outputs.
         """
-        var tg = TaskGroup()
         var _out_tp = uninitialized_storage[Self.O]()
+        comptime last = Self.elements.length - 1
+        comptime if Self.elements.length == 1:
+            comptime to = downcast[Self.O.Ts[0], Movable]
+            ref task_0 = rebind[Pointer[Self.elements[0], origin=Self.origin]](
+                self.tasks[0]
+            )
+            ref in_val = rebind[Self.elements[0].I](v)
+            Pointer(to=_out_tp[0]).unsafe_bitcast[to]().unsafe_write(
+                rebind_var[to](task_0[](in_val))
+            )
+            return _out_tp^
 
+        var tg = TaskGroup()
         var in_ptr = Pointer(to=v)
-        comptime for i in range(Self.elements.length):
+        comptime for i in range(last):
             ref task_i = rebind[Pointer[Self.elements[i], origin=Self.origin]](
                 self.tasks[i]
             )
             var out_ptr = Pointer(to=_out_tp[i])
             tg.create_task(Self._run_elem[i](task_i, in_ptr, out_ptr))
+
+        # Execute the final branch inline on the caller thread while workers run.
+        comptime to_last = downcast[Self.O.Ts[last], Movable]
+        ref task_last = rebind[
+            Pointer[Self.elements[last], origin=Self.origin]
+        ](self.tasks[last])
+        ref in_last = rebind[Self.elements[last].I](v)
+        Pointer(to=_out_tp[last]).unsafe_bitcast[to_last]().unsafe_write(
+            rebind_var[to_last](task_last[](in_last))
+        )
 
         tg.wait()
         return _out_tp^
@@ -471,8 +494,9 @@ struct Parallel[
             Flat tuple of branch outputs.
         """
         var _out_tp = uninitialized_storage[Self.O]()
+        comptime N = Self.elements.length
         comptime if not E.IS_PARALLEL:
-            comptime for i in range(Self.elements.length):
+            comptime for i in range(N):
                 comptime to = downcast[Self.O.Ts[i], Movable]
                 ref task_i = rebind[
                     Pointer[Self.elements[i], origin=Self.origin]
@@ -483,35 +507,30 @@ struct Parallel[
                 )
             return _out_tp^
         else:
-            var limit = exec.concurrency_limit()
-            if limit == 1:
-                comptime for i in range(Self.elements.length):
-                    comptime to = downcast[Self.O.Ts[i], Movable]
-                    ref task_i = rebind[
-                        Pointer[Self.elements[i], origin=Self.origin]
-                    ](self.tasks[i])
-                    ref in_value = rebind[Self.elements[i].I](v)
-                    Pointer(to=_out_tp[i]).unsafe_bitcast[to]().unsafe_write(
-                        rebind_var[to](task_i[].run_with(exec, in_value))
-                    )
-                return _out_tp^
-
-            var in_ptr = Pointer(to=v)
-            var tracing = exec.is_tracing()
-            var starts = List[Int](length=Self.elements.length, fill=0)
-            var ends = List[Int](length=Self.elements.length, fill=0)
-            var wave_size = limit if limit > 0 else Self.elements.length
-            var wave_start = 0
-            while wave_start < Self.elements.length:
-                var wave_end = min(wave_start + wave_size, Self.elements.length)
-                var tg = TaskGroup()
-                comptime for i in range(Self.elements.length):
-                    if i >= wave_start and i < wave_end:
-                        ref task_i = rebind[
-                            Pointer[Self.elements[i], origin=Self.origin]
-                        ](self.tasks[i])
-                        var out_ptr = Pointer(to=_out_tp[i])
-                        if tracing:
+            comptime if not E.IS_BOUNDED:
+                comptime last = N - 1
+                comptime if E.IS_TRACING:
+                    var starts = Array[Int, N](fill=0)
+                    var ends = Array[Int, N](fill=0)
+                    comptime if N == 1:
+                        comptime to = downcast[Self.O.Ts[0], Movable]
+                        ref task_0 = rebind[
+                            Pointer[Self.elements[0], origin=Self.origin]
+                        ](self.tasks[0])
+                        ref in_val = rebind[Self.elements[0].I](v)
+                        starts[0] = perf_counter_ns()
+                        Pointer(to=_out_tp[0]).unsafe_bitcast[to]().unsafe_write(
+                            rebind_var[to](task_0[](in_val))
+                        )
+                        ends[0] = perf_counter_ns()
+                    else:
+                        var tg = TaskGroup()
+                        var in_ptr = Pointer(to=v)
+                        comptime for i in range(last):
+                            ref task_i = rebind[
+                                Pointer[Self.elements[i], origin=Self.origin]
+                            ](self.tasks[i])
+                            var out_ptr = Pointer(to=_out_tp[i])
                             var s_ptr = Pointer(
                                 to=starts[i]
                             ).unsafe_origin_cast[MutUntrackedOrigin]()
@@ -523,19 +542,171 @@ struct Parallel[
                                     task_i, in_ptr, out_ptr, s_ptr, e_ptr
                                 )
                             )
-                        else:
-                            tg.create_task(
-                                Self._run_elem[i](task_i, in_ptr, out_ptr)
-                            )
-                tg.wait()
-                wave_start = wave_end
+                        comptime to_last = downcast[Self.O.Ts[last], Movable]
+                        ref task_last = rebind[
+                            Pointer[Self.elements[last], origin=Self.origin]
+                        ](self.tasks[last])
+                        ref in_last = rebind[Self.elements[last].I](v)
+                        starts[last] = perf_counter_ns()
+                        Pointer(to=_out_tp[last]).unsafe_bitcast[
+                            to_last
+                        ]().unsafe_write(
+                            rebind_var[to_last](task_last[](in_last))
+                        )
+                        ends[last] = perf_counter_ns()
+                        tg.wait()
+                    comptime for i in range(N):
+                        exec.record_span(
+                            reflect[Self.elements[i]].name(),
+                            starts[i],
+                            ends[i],
+                        )
+                    return _out_tp^
+                else:
+                    return self(v)
+            else:
+                var limit = exec.concurrency_limit()
+                if limit == 1:
+                    comptime for i in range(N):
+                        comptime to = downcast[Self.O.Ts[i], Movable]
+                        ref task_i = rebind[
+                            Pointer[Self.elements[i], origin=Self.origin]
+                        ](self.tasks[i])
+                        ref in_value = rebind[Self.elements[i].I](v)
+                        Pointer(to=_out_tp[i]).unsafe_bitcast[to]().unsafe_write(
+                            rebind_var[to](task_i[].run_with(exec, in_value))
+                        )
+                    return _out_tp^
 
-            if tracing:
-                comptime for i in range(Self.elements.length):
-                    exec.record_span(
-                        reflect[Self.elements[i]].name(), starts[i], ends[i]
-                    )
-            return _out_tp^
+                var in_ptr = Pointer(to=v)
+                var wave_size = limit if limit > 0 else N
+                comptime if E.IS_TRACING:
+                    var starts = Array[Int, N](fill=0)
+                    var ends = Array[Int, N](fill=0)
+                    var wave_start = 0
+                    while wave_start < N:
+                        var wave_end = min(wave_start + wave_size, N)
+                        var last_in_wave = wave_end - 1
+                        if wave_end - wave_start == 1:
+                            comptime for i in range(N):
+                                if i == wave_start:
+                                    comptime to = downcast[Self.O.Ts[i], Movable]
+                                    ref task_i = rebind[
+                                        Pointer[
+                                            Self.elements[i], origin=Self.origin
+                                        ]
+                                    ](self.tasks[i])
+                                    ref in_val = rebind[Self.elements[i].I](v)
+                                    starts[i] = perf_counter_ns()
+                                    Pointer(to=_out_tp[i]).unsafe_bitcast[
+                                        to
+                                    ]().unsafe_write(
+                                        rebind_var[to](task_i[](in_val))
+                                    )
+                                    ends[i] = perf_counter_ns()
+                        else:
+                            var tg = TaskGroup()
+                            comptime for i in range(N):
+                                if i >= wave_start and i < last_in_wave:
+                                    ref task_i = rebind[
+                                        Pointer[
+                                            Self.elements[i], origin=Self.origin
+                                        ]
+                                    ](self.tasks[i])
+                                    var out_ptr = Pointer(to=_out_tp[i])
+                                    var s_ptr = Pointer(
+                                        to=starts[i]
+                                    ).unsafe_origin_cast[MutUntrackedOrigin]()
+                                    var e_ptr = Pointer(
+                                        to=ends[i]
+                                    ).unsafe_origin_cast[MutUntrackedOrigin]()
+                                    tg.create_task(
+                                        Self._run_elem_traced[i](
+                                            task_i,
+                                            in_ptr,
+                                            out_ptr,
+                                            s_ptr,
+                                            e_ptr,
+                                        )
+                                    )
+                            comptime for i in range(N):
+                                if i == last_in_wave:
+                                    comptime to = downcast[Self.O.Ts[i], Movable]
+                                    ref task_i = rebind[
+                                        Pointer[
+                                            Self.elements[i], origin=Self.origin
+                                        ]
+                                    ](self.tasks[i])
+                                    ref in_val = rebind[Self.elements[i].I](v)
+                                    starts[i] = perf_counter_ns()
+                                    Pointer(to=_out_tp[i]).unsafe_bitcast[
+                                        to
+                                    ]().unsafe_write(
+                                        rebind_var[to](task_i[](in_val))
+                                    )
+                                    ends[i] = perf_counter_ns()
+                            tg.wait()
+                        wave_start = wave_end
+
+                    comptime for i in range(N):
+                        exec.record_span(
+                            reflect[Self.elements[i]].name(),
+                            starts[i],
+                            ends[i],
+                        )
+                    return _out_tp^
+                else:
+                    var wave_start = 0
+                    while wave_start < N:
+                        var wave_end = min(wave_start + wave_size, N)
+                        var last_in_wave = wave_end - 1
+                        if wave_end - wave_start == 1:
+                            comptime for i in range(N):
+                                if i == wave_start:
+                                    comptime to = downcast[Self.O.Ts[i], Movable]
+                                    ref task_i = rebind[
+                                        Pointer[
+                                            Self.elements[i], origin=Self.origin
+                                        ]
+                                    ](self.tasks[i])
+                                    ref in_val = rebind[Self.elements[i].I](v)
+                                    Pointer(to=_out_tp[i]).unsafe_bitcast[
+                                        to
+                                    ]().unsafe_write(
+                                        rebind_var[to](task_i[](in_val))
+                                    )
+                        else:
+                            var tg = TaskGroup()
+                            comptime for i in range(N):
+                                if i >= wave_start and i < last_in_wave:
+                                    ref task_i = rebind[
+                                        Pointer[
+                                            Self.elements[i], origin=Self.origin
+                                        ]
+                                    ](self.tasks[i])
+                                    var out_ptr = Pointer(to=_out_tp[i])
+                                    tg.create_task(
+                                        Self._run_elem[i](
+                                            task_i, in_ptr, out_ptr
+                                        )
+                                    )
+                            comptime for i in range(N):
+                                if i == last_in_wave:
+                                    comptime to = downcast[Self.O.Ts[i], Movable]
+                                    ref task_i = rebind[
+                                        Pointer[
+                                            Self.elements[i], origin=Self.origin
+                                        ]
+                                    ](self.tasks[i])
+                                    ref in_val = rebind[Self.elements[i].I](v)
+                                    Pointer(to=_out_tp[i]).unsafe_bitcast[
+                                        to
+                                    ]().unsafe_write(
+                                        rebind_var[to](task_i[](in_val))
+                                    )
+                            tg.wait()
+                        wave_start = wave_end
+                    return _out_tp^
 
     def __or__[
         so: ImmOrigin,
@@ -651,6 +822,7 @@ struct Fn[In: AnyType, Out: Movable & Deinitable](
     var func: def(Self.In) thin -> Self.Out
     """Wrapped function pointer."""
 
+    @always_inline
     def __call__(self, arg: Self.I) -> Self.O:
         """Call the wrapped function with `arg`.
 
@@ -678,6 +850,7 @@ struct UnitFn(ComposableStage, Movable, Copyable):
     var func: def() thin
     """Wrapped zero-argument function pointer."""
 
+    @always_inline
     def __call__(self, arg: Self.I) -> Self.O:
         """Invoke the wrapped zero-argument function.
 
@@ -729,6 +902,7 @@ struct OwnedSequence[T1: _MovableStage, T2: _MovableStage](Stage, Movable):
         self.t1 = t1^
         self.t2 = t2^
 
+    @always_inline
     def __call__(self, arg: Self.I) -> Self.O:
         """Execute both owned stages sequentially.
 
@@ -909,14 +1083,29 @@ struct OwnedParallel[*elements: _MovableStage](Stage, Movable):
         Returns:
             Flat tuple of branch outputs.
         """
-        var tg = TaskGroup()
         var _out_tp = uninitialized_storage[Self.O]()
+        comptime last = Self.elements.length - 1
+        comptime if Self.elements.length == 1:
+            comptime to = downcast[Self.O.Ts[0], Movable]
+            ref in_val = rebind[Self.elements[0].I](v)
+            Pointer(to=_out_tp[0]).unsafe_bitcast[to]().unsafe_write(
+                rebind_var[to](self.tasks[0](in_val))
+            )
+            return _out_tp^
 
+        var tg = TaskGroup()
         var in_ptr = Pointer(to=v)
-        comptime for i in range(Self.elements.length):
+        comptime for i in range(last):
             var task_ptr = Pointer(to=self.tasks[i])
             var out_ptr = Pointer(to=_out_tp[i])
             tg.create_task(Self._run_elem[i](task_ptr, in_ptr, out_ptr))
+
+        # Execute the final branch inline on the caller thread while workers run.
+        comptime to_last = downcast[Self.O.Ts[last], Movable]
+        ref in_last = rebind[Self.elements[last].I](v)
+        Pointer(to=_out_tp[last]).unsafe_bitcast[to_last]().unsafe_write(
+            rebind_var[to_last](self.tasks[last](in_last))
+        )
 
         tg.wait()
         return _out_tp^
@@ -935,8 +1124,9 @@ struct OwnedParallel[*elements: _MovableStage](Stage, Movable):
             Flat tuple of branch outputs.
         """
         var _out_tp = uninitialized_storage[Self.O]()
+        comptime N = Self.elements.length
         comptime if not E.IS_PARALLEL:
-            comptime for i in range(Self.elements.length):
+            comptime for i in range(N):
                 comptime to = downcast[Self.O.Ts[i], Movable]
                 ref in_value = rebind[Self.elements[i].I](v)
                 Pointer(to=_out_tp[i]).unsafe_bitcast[to]().unsafe_write(
@@ -944,30 +1134,25 @@ struct OwnedParallel[*elements: _MovableStage](Stage, Movable):
                 )
             return _out_tp^
         else:
-            var limit = exec.concurrency_limit()
-            if limit == 1:
-                comptime for i in range(Self.elements.length):
-                    comptime to = downcast[Self.O.Ts[i], Movable]
-                    ref in_value = rebind[Self.elements[i].I](v)
-                    Pointer(to=_out_tp[i]).unsafe_bitcast[to]().unsafe_write(
-                        rebind_var[to](self.tasks[i].run_with(exec, in_value))
-                    )
-                return _out_tp^
-
-            var in_ptr = Pointer(to=v)
-            var tracing = exec.is_tracing()
-            var starts = List[Int](length=Self.elements.length, fill=0)
-            var ends = List[Int](length=Self.elements.length, fill=0)
-            var wave_size = limit if limit > 0 else Self.elements.length
-            var wave_start = 0
-            while wave_start < Self.elements.length:
-                var wave_end = min(wave_start + wave_size, Self.elements.length)
-                var tg = TaskGroup()
-                comptime for i in range(Self.elements.length):
-                    if i >= wave_start and i < wave_end:
-                        var task_ptr = Pointer(to=self.tasks[i])
-                        var out_ptr = Pointer(to=_out_tp[i])
-                        if tracing:
+            comptime if not E.IS_BOUNDED:
+                comptime last = N - 1
+                comptime if E.IS_TRACING:
+                    var starts = Array[Int, N](fill=0)
+                    var ends = Array[Int, N](fill=0)
+                    comptime if N == 1:
+                        comptime to = downcast[Self.O.Ts[0], Movable]
+                        ref in_val = rebind[Self.elements[0].I](v)
+                        starts[0] = perf_counter_ns()
+                        Pointer(to=_out_tp[0]).unsafe_bitcast[to]().unsafe_write(
+                            rebind_var[to](self.tasks[0](in_val))
+                        )
+                        ends[0] = perf_counter_ns()
+                    else:
+                        var tg = TaskGroup()
+                        var in_ptr = Pointer(to=v)
+                        comptime for i in range(last):
+                            var task_ptr = Pointer(to=self.tasks[i])
+                            var out_ptr = Pointer(to=_out_tp[i])
                             var s_ptr = Pointer(
                                 to=starts[i]
                             ).unsafe_origin_cast[MutUntrackedOrigin]()
@@ -979,19 +1164,139 @@ struct OwnedParallel[*elements: _MovableStage](Stage, Movable):
                                     task_ptr, in_ptr, out_ptr, s_ptr, e_ptr
                                 )
                             )
-                        else:
-                            tg.create_task(
-                                Self._run_elem[i](task_ptr, in_ptr, out_ptr)
+                        comptime to_last = downcast[Self.O.Ts[last], Movable]
+                        ref in_last = rebind[Self.elements[last].I](v)
+                        starts[last] = perf_counter_ns()
+                        Pointer(to=_out_tp[last]).unsafe_bitcast[
+                            to_last
+                        ]().unsafe_write(
+                            rebind_var[to_last](self.tasks[last](in_last))
+                        )
+                        ends[last] = perf_counter_ns()
+                        tg.wait()
+                    comptime for i in range(N):
+                        exec.record_span(
+                            reflect[Self.elements[i]].name(),
+                            starts[i],
+                            ends[i],
+                        )
+                    return _out_tp^
+                else:
+                    return self(v)
+            else:
+                var limit = exec.concurrency_limit()
+                if limit == 1:
+                    comptime for i in range(N):
+                        comptime to = downcast[Self.O.Ts[i], Movable]
+                        ref in_value = rebind[Self.elements[i].I](v)
+                        Pointer(to=_out_tp[i]).unsafe_bitcast[to]().unsafe_write(
+                            rebind_var[to](
+                                self.tasks[i].run_with(exec, in_value)
                             )
-                tg.wait()
-                wave_start = wave_end
+                        )
+                    return _out_tp^
 
-            if tracing:
-                comptime for i in range(Self.elements.length):
-                    exec.record_span(
-                        reflect[Self.elements[i]].name(), starts[i], ends[i]
-                    )
-            return _out_tp^
+                var in_ptr = Pointer(to=v)
+                var wave_size = limit if limit > 0 else N
+                comptime if E.IS_TRACING:
+                    var starts = Array[Int, N](fill=0)
+                    var ends = Array[Int, N](fill=0)
+                    var wave_start = 0
+                    while wave_start < N:
+                        var wave_end = min(wave_start + wave_size, N)
+                        var last_in_wave = wave_end - 1
+                        if wave_end - wave_start == 1:
+                            comptime for i in range(N):
+                                if i == wave_start:
+                                    comptime to = downcast[Self.O.Ts[i], Movable]
+                                    ref in_val = rebind[Self.elements[i].I](v)
+                                    starts[i] = perf_counter_ns()
+                                    Pointer(to=_out_tp[i]).unsafe_bitcast[
+                                        to
+                                    ]().unsafe_write(
+                                        rebind_var[to](self.tasks[i](in_val))
+                                    )
+                                    ends[i] = perf_counter_ns()
+                        else:
+                            var tg = TaskGroup()
+                            comptime for i in range(N):
+                                if i >= wave_start and i < last_in_wave:
+                                    var task_ptr = Pointer(to=self.tasks[i])
+                                    var out_ptr = Pointer(to=_out_tp[i])
+                                    var s_ptr = Pointer(
+                                        to=starts[i]
+                                    ).unsafe_origin_cast[MutUntrackedOrigin]()
+                                    var e_ptr = Pointer(
+                                        to=ends[i]
+                                    ).unsafe_origin_cast[MutUntrackedOrigin]()
+                                    tg.create_task(
+                                        Self._run_elem_traced[i](
+                                            task_ptr,
+                                            in_ptr,
+                                            out_ptr,
+                                            s_ptr,
+                                            e_ptr,
+                                        )
+                                    )
+                            comptime for i in range(N):
+                                if i == last_in_wave:
+                                    comptime to = downcast[Self.O.Ts[i], Movable]
+                                    ref in_val = rebind[Self.elements[i].I](v)
+                                    starts[i] = perf_counter_ns()
+                                    Pointer(to=_out_tp[i]).unsafe_bitcast[
+                                        to
+                                    ]().unsafe_write(
+                                        rebind_var[to](self.tasks[i](in_val))
+                                    )
+                                    ends[i] = perf_counter_ns()
+                            tg.wait()
+                        wave_start = wave_end
+
+                    comptime for i in range(N):
+                        exec.record_span(
+                            reflect[Self.elements[i]].name(),
+                            starts[i],
+                            ends[i],
+                        )
+                    return _out_tp^
+                else:
+                    var wave_start = 0
+                    while wave_start < N:
+                        var wave_end = min(wave_start + wave_size, N)
+                        var last_in_wave = wave_end - 1
+                        if wave_end - wave_start == 1:
+                            comptime for i in range(N):
+                                if i == wave_start:
+                                    comptime to = downcast[Self.O.Ts[i], Movable]
+                                    ref in_val = rebind[Self.elements[i].I](v)
+                                    Pointer(to=_out_tp[i]).unsafe_bitcast[
+                                        to
+                                    ]().unsafe_write(
+                                        rebind_var[to](self.tasks[i](in_val))
+                                    )
+                        else:
+                            var tg = TaskGroup()
+                            comptime for i in range(N):
+                                if i >= wave_start and i < last_in_wave:
+                                    var task_ptr = Pointer(to=self.tasks[i])
+                                    var out_ptr = Pointer(to=_out_tp[i])
+                                    tg.create_task(
+                                        Self._run_elem[i](
+                                            task_ptr, in_ptr, out_ptr
+                                        )
+                                    )
+                            comptime for i in range(N):
+                                if i == last_in_wave:
+                                    comptime to = downcast[Self.O.Ts[i], Movable]
+                                    ref in_val = rebind[Self.elements[i].I](v)
+                                    Pointer(to=_out_tp[i]).unsafe_bitcast[
+                                        to
+                                    ]().unsafe_write(
+                                        rebind_var[to](self.tasks[i](in_val))
+                                    )
+                            tg.wait()
+                        wave_start = wave_end
+                    return _out_tp^
 
     def __or__[
         Other: _MovableStage
@@ -1081,6 +1386,7 @@ struct OwnedGroup[Inner: _MovableStage](Stage, Movable):
         """
         self.inner = inner^
 
+    @always_inline
     def __call__(self, arg: Self.I) -> Self.O:
         """Execute the wrapped owned stage.
 
@@ -1200,6 +1506,7 @@ struct Owned[Inner: _MovableStage](Stage, Movable):
         """
         self.inner = inner^
 
+    @always_inline
     def __call__(self, arg: Self.I) -> Self.O:
         """Execute the owned pipeline.
 

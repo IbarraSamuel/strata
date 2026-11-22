@@ -13,10 +13,10 @@ from std.time import perf_counter_ns
 
 
 @fieldwise_init
-struct TraceSpan(Copyable, Movable, Writable):
+struct TraceSpan(Copyable, Movable, TrivialRegisterPassable, Writable):
     """Timing span recorded for a single stage execution."""
 
-    var stage: String
+    var stage: StaticString
     """Human-readable name of the executed stage."""
     var start_ns: Int
     """Monotonic start timestamp in nanoseconds."""
@@ -45,6 +45,10 @@ trait Executor:
 
     comptime IS_PARALLEL: Bool
     """Whether this executor may spawn concurrent `TaskGroup` tasks."""
+    comptime IS_TRACING: Bool = False
+    """Whether this executor collects per-stage timing spans (enables compile-time DCE)."""
+    comptime IS_BOUNDED: Bool = False
+    """Whether this executor enforces a finite per-wave concurrency bound."""
 
     def concurrency_limit(self) -> Int:
         """Return the maximum number of concurrent tasks (`0` means unbounded).
@@ -100,6 +104,10 @@ struct AsyncRTExecutor(Executor, Copyable, Movable, TrivialRegisterPassable):
 
     comptime IS_PARALLEL: Bool = True
     """Executes parallel branches concurrently."""
+    comptime IS_TRACING: Bool = False
+    """Disables tracing code paths at compile time."""
+    comptime IS_BOUNDED: Bool = False
+    """Unbounded concurrency (skips wave-splitting loops at compile time)."""
 
     def concurrency_limit(self) -> Int:
         """Return `0` (unbounded concurrency).
@@ -115,7 +123,7 @@ struct AsyncRTExecutor(Executor, Copyable, Movable, TrivialRegisterPassable):
         Returns:
             `False`.
         """
-        return False
+        return Self.IS_TRACING
 
     def on_stage_start(mut self, name: StaticString) -> Int:
         """No-op start hook.
@@ -158,6 +166,10 @@ struct SequentialExecutor(Executor, Copyable, Movable, TrivialRegisterPassable):
 
     comptime IS_PARALLEL: Bool = False
     """Forces all parallel stages to run sequentially."""
+    comptime IS_TRACING: Bool = False
+    """Disables tracing code paths at compile time."""
+    comptime IS_BOUNDED: Bool = False
+    """Sequential execution does not use bounded parallel waves."""
 
     def concurrency_limit(self) -> Int:
         """Return `1` (strictly sequential).
@@ -173,7 +185,7 @@ struct SequentialExecutor(Executor, Copyable, Movable, TrivialRegisterPassable):
         Returns:
             `False`.
         """
-        return False
+        return Self.IS_TRACING
 
     def on_stage_start(mut self, name: StaticString) -> Int:
         """No-op start hook.
@@ -211,6 +223,10 @@ struct BoundedExecutor(Executor, Copyable, Movable, TrivialRegisterPassable):
 
     comptime IS_PARALLEL: Bool = True
     """Executes waves concurrently via `TaskGroup`."""
+    comptime IS_TRACING: Bool = False
+    """Disables tracing code paths at compile time."""
+    comptime IS_BOUNDED: Bool = True
+    """Enforces wave-bounded concurrency limits."""
 
     var max_workers: Int
     """Maximum number of tasks allowed in flight per parallel wave."""
@@ -237,7 +253,7 @@ struct BoundedExecutor(Executor, Copyable, Movable, TrivialRegisterPassable):
         Returns:
             `False`.
         """
-        return False
+        return Self.IS_TRACING
 
     def on_stage_start(mut self, name: StaticString) -> Int:
         """No-op start hook.
@@ -281,6 +297,10 @@ struct TracingExecutor[Inner: Executor & Movable & Deinitable = AsyncRTExecutor]
 
     comptime IS_PARALLEL: Bool = Self.Inner.IS_PARALLEL
     """Inherits parallel capability from `Inner`."""
+    comptime IS_TRACING: Bool = True
+    """Enables per-stage tracing at compile time."""
+    comptime IS_BOUNDED: Bool = Self.Inner.IS_BOUNDED
+    """Inherits bounded wave behavior from `Inner`."""
 
     var inner: Self.Inner
     """Wrapped executor defining concurrency limits."""
@@ -319,7 +339,7 @@ struct TracingExecutor[Inner: Executor & Movable & Deinitable = AsyncRTExecutor]
         Returns:
             `True`.
         """
-        return True
+        return Self.IS_TRACING
 
     def on_stage_start(mut self, name: StaticString) -> Int:
         """Capture start timestamp before stage execution.
@@ -345,7 +365,7 @@ struct TracingExecutor[Inner: Executor & Movable & Deinitable = AsyncRTExecutor]
             self._inner_tokens.pop() if len(self._inner_tokens) > 0 else 0
         )
         self.inner.on_stage_end(name, inner_token)
-        self.spans.append(TraceSpan(String(name), token, end_ns))
+        self.spans.append(TraceSpan(name, token, end_ns))
 
     def record_span(mut self, name: StaticString, start_ns: Int, end_ns: Int):
         """Append a pre-measured span from a parallel branch.
@@ -356,11 +376,12 @@ struct TracingExecutor[Inner: Executor & Movable & Deinitable = AsyncRTExecutor]
             end_ns: Branch end timestamp in nanoseconds.
         """
         self.inner.record_span(name, start_ns, end_ns)
-        self.spans.append(TraceSpan(String(name), start_ns, end_ns))
+        self.spans.append(TraceSpan(name, start_ns, end_ns))
 
     def clear(mut self):
-        """Clear all previously recorded spans."""
+        """Clear all previously recorded spans and internal token state."""
         self.spans.clear()
+        self._inner_tokens.clear()
 
     def total_duration_ns(self) -> Int:
         """Return the sum of durations across all recorded spans.

@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import atexit
+import os
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING, Any, cast, override
 
@@ -29,6 +32,34 @@ from strata.graph import (
 if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine, Sequence
 
+_ASYNC_FALLBACK_POOL_LOCK = threading.Lock()
+_async_fallback_pool: ThreadPoolExecutor | None = None
+
+
+def _shutdown_async_fallback_pool() -> None:
+    global _async_fallback_pool  # ruff: ignore[global-statement]
+    pool = _async_fallback_pool
+    _async_fallback_pool = None
+    if pool is not None:
+        pool.shutdown(wait=False, cancel_futures=True)
+
+
+def _get_async_fallback_pool() -> ThreadPoolExecutor:
+    global _async_fallback_pool  # ruff: ignore[global-statement]
+    pool = _async_fallback_pool
+    if pool is None:
+        with _ASYNC_FALLBACK_POOL_LOCK:
+            pool = _async_fallback_pool
+            if pool is None:
+                workers = min(32, max(4, (os.cpu_count() or 1) * 2))
+                pool = ThreadPoolExecutor(
+                    max_workers=workers,
+                    thread_name_prefix="strata-async-sync",
+                )
+                _async_fallback_pool = pool
+                atexit.register(_shutdown_async_fallback_pool)
+    return pool
+
 
 class AsyncTask[I, O](Combinable, Task[I, O]):
     """Composable stage wrapping an `async def` coroutine function.
@@ -50,8 +81,11 @@ class AsyncTask[I, O](Combinable, Task[I, O]):
             asyncio.get_running_loop()
         except RuntimeError:
             return asyncio.run(self.inner_fn(msg))
-        with ThreadPoolExecutor(max_workers=1) as pool:
-            return pool.submit(lambda: asyncio.run(self.inner_fn(msg))).result()
+        return (
+            _get_async_fallback_pool()
+            .submit(lambda: asyncio.run(self.inner_fn(msg)))
+            .result()
+        )
 
     async def arun_direct(self, msg: I, /) -> O:
         """Await the underlying coroutine directly on the active event loop.
@@ -95,6 +129,31 @@ def _unwrap_group(obj: object) -> mojo_strata.TaskGroup[Any, Any] | None:
     return None
 
 
+def _contains_async_task(obj: object) -> bool:
+    has_async = False
+    if isinstance(obj, AsyncTask):
+        has_async = True
+    else:
+        tg = _unwrap_group(obj)
+        if tg is not None:
+            has_async = any(_contains_async_task(c) for c in tg.get_tasks())
+        elif isinstance(obj, GroupedTask):
+            has_async = _contains_async_task(obj.inner_stage)
+        elif isinstance(obj, ZipTask):
+            has_async = any(_contains_async_task(c) for c in obj.stages)
+        elif isinstance(obj, (MapTask, RetryTask, TimeoutTask)):
+            has_async = _contains_async_task(obj.stage)
+        elif isinstance(obj, BranchTask):
+            has_async = _contains_async_task(obj.on_true) or _contains_async_task(
+                obj.on_false
+            )
+        elif isinstance(obj, FallbackTask):
+            has_async = _contains_async_task(obj.primary) or _contains_async_task(
+                obj.secondary
+            )
+    return has_async
+
+
 async def _gather_parallel(
     coros: Sequence[Coroutine[Any, Any, object]],
 ) -> tuple[object, ...]:
@@ -112,6 +171,8 @@ async def _arun_group(
     tg: mojo_strata.TaskGroup[Any, Any],
     msg: object,
 ) -> object:
+    if not _contains_async_task(tg):
+        return await asyncio.to_thread(tg.call, msg)
     mode = tg.get_mode()
     children = tg.get_tasks()
     if not children:
@@ -196,12 +257,12 @@ async def _arun_combinator(obj: object, msg: object) -> tuple[bool, object]:
 
 
 async def _arun_node(obj: object, msg: object) -> object:
+    if isinstance(obj, AsyncTask):
+        return await obj.arun_direct(msg)
+
     tg = _unwrap_group(obj)
     if tg is not None:
         return await _arun_group(tg, msg)
-
-    if isinstance(obj, AsyncTask):
-        return await obj.arun_direct(msg)
 
     handled, result = await _arun_combinator(obj, msg)
     if handled:
@@ -219,7 +280,9 @@ async def arun[I, O](stage: Any, msg: I) -> O:  # ruff: ignore[any-type]
 
     `AsyncTask` branches await cooperatively on the active event loop, while
     synchronous Python tasks and GIL-free `NativeTask` stages execute off the
-    event loop via `asyncio.to_thread(...)`.
+    event loop via `asyncio.to_thread(...)`. Pure-sync and native `TaskGroup`
+    subtrees are dispatched as a single off-loop call to preserve Mojo fusion
+    and GIL-free parallelism.
 
     Parameters
     ----------

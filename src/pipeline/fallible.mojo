@@ -367,14 +367,32 @@ struct RaisingParallel[
             Error: The error from a single failed branch, or a combined summary
                 if multiple branches fail.
         """
-        var tg = TaskGroup()
+        comptime N = Self.elements.length
         var _out_tp = uninitialized_storage[Self.O]()
-        var errors = List[Optional[String]](
-            length=Self.elements.length, fill=None
-        )
+
+        comptime if N == 1:
+            comptime to = downcast[Self.O.Ts[0], Movable]
+            ref task_0 = rebind[Pointer[Self.elements[0], origin=Self.origin]](
+                self.tasks[0]
+            )
+            ref in_val = rebind[Self.elements[0].I](v)
+            try:
+                Pointer(to=_out_tp[0]).unsafe_bitcast[to]().unsafe_write(
+                    rebind_var[to](task_0[](in_val))
+                )
+            except e:
+                __mlir_op.`lit.ownership.mark_destroyed`(
+                    __get_mvalue_as_litref(_out_tp)
+                )
+                raise e^
+            return _out_tp^
+
+        var tg = TaskGroup()
+        var errors = Array[Optional[String], N](fill=None)
+        comptime last = N - 1
 
         var in_ptr = Pointer(to=v)
-        comptime for i in range(Self.elements.length):
+        comptime for i in range(last):
             ref task_i = rebind[Pointer[Self.elements[i], origin=Self.origin]](
                 self.tasks[i]
             )
@@ -384,16 +402,34 @@ struct RaisingParallel[
             ]()
             tg.create_task(Self._run_elem[i](task_i, in_ptr, out_ptr, err_ptr))
 
+        # Execute branch N-1 inline on caller thread; MUST catch before tg.wait()
+        # so spawned tasks always join before _out_tp/errors go out of scope.
+        comptime to_last = downcast[Self.O.Ts[last], Movable]
+        ref task_last = rebind[
+            Pointer[Self.elements[last], origin=Self.origin]
+        ](self.tasks[last])
+        ref in_last = rebind[Self.elements[last].I](v)
+        try:
+            Pointer(to=_out_tp[last]).unsafe_bitcast[to_last]().unsafe_write(
+                rebind_var[to_last](task_last[](in_last))
+            )
+        except e:
+            errors[last] = String(e)
+
         tg.wait()
 
-        var messages = List[String]()
-        for i in range(Self.elements.length):
-            if case .Some(msg) = errors[i]:
-                messages.append(msg)
+        var error_count = 0
+        for i in range(N):
+            if errors[i]:
+                error_count += 1
 
-        if len(messages) > 0:
+        if error_count > 0:
+            var messages = List[String](capacity=error_count)
+            for i in range(N):
+                if case .Some(msg) = errors[i]:
+                    messages.append(msg)
             # Destroy only slots that succeeded; skip uninitialized slots from failed branches.
-            comptime for i in range(Self.elements.length):
+            comptime for i in range(N):
                 if not errors[i]:
                     comptime td = downcast[Self.O.Ts[i], Deinitable]
                     Pointer(to=_out_tp[i]).unsafe_bitcast[

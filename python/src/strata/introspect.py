@@ -28,6 +28,7 @@ from strata.graph import (
     GroupedTask,
     GroupMode,
     _BaseTaskGroup,
+    _build_task_group,
     _invoke_stage,
     _resolve_native,
 )
@@ -38,6 +39,7 @@ if TYPE_CHECKING:
 _MERMAID_DIRECTIONS = frozenset({"LR", "RL", "TB", "TD", "BT"})
 _DOT_DIRECTIONS = frozenset({"LR", "RL", "TB", "BT"})
 _DOT_IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_MAX_TRACE_CACHE = 256
 
 
 @dataclass(frozen=True)
@@ -472,10 +474,14 @@ class TracingExecutor:
 
     sequential: bool = False
     spans: list[TraceSpan] = field(default_factory=list)
+    _instrument_cache: dict[int, tuple[object, Any]] = field(
+        default_factory=dict, init=False, repr=False, compare=False
+    )
 
     def clear(self) -> None:
-        """Clear all recorded spans."""
+        """Clear all recorded spans and cached instrumented pipelines."""
         self.spans.clear()
+        self._instrument_cache.clear()
 
     def total_duration_ns(self) -> int:
         """Return the sum of durations across all recorded spans.
@@ -514,8 +520,19 @@ class TracingExecutor:
         """
         if self.sequential:
             return cast("O", self._exec_sequential(stage, msg))
-        wrapped = self._instrument(stage)
+        wrapped = self._get_instrumented(stage)
         return _invoke_stage(wrapped, msg)
+
+    def _get_instrumented(self, stage: object) -> Any:  # ruff: ignore[any-type]
+        key = id(stage)
+        cached = self._instrument_cache.get(key)
+        if cached is not None and cached[0] is stage:
+            return cached[1]
+        wrapped = self._instrument(stage)
+        if len(self._instrument_cache) >= _MAX_TRACE_CACHE:
+            self._instrument_cache.clear()
+        self._instrument_cache[key] = (stage, wrapped)
+        return wrapped
 
     def _exec_sequential(self, obj: object, msg: object) -> object:
         tg = _unwrap_group(obj)
@@ -586,28 +603,24 @@ class TracingExecutor:
             instrumented = [self._instrument(c) for c in children]
             if len(instrumented) == 1:
                 return instrumented[0]
-            group_tg: mojo_strata.TaskGroup[Any, Any] = mojo_strata.TaskGroup(
-                task=instrumented[0]
+            target_mode = (
+                GroupMode.PARALLEL.value
+                if mode == GroupMode.PARALLEL.value
+                else GroupMode.SERIAL.value
             )
-            for child in instrumented[1:]:
-                if mode == GroupMode.PARALLEL.value:
-                    group_tg = group_tg.with_task(child, GroupMode.PARALLEL.value)
-                else:
-                    group_tg = group_tg.with_task(child, GroupMode.SERIAL.value)
-            return group_tg
+            return _build_task_group(instrumented, target_mode)
 
         comb = self._instrument_combinator(obj)
         if comb is not None:
             return comb
 
         label = _stage_label(obj)
-        spans = self.spans
 
         def _traced_call(val: object) -> object:
             start = perf_counter_ns()
             res = _invoke_stage(obj, val)
             end = perf_counter_ns()
-            spans.append(TraceSpan(stage=label, start_ns=start, end_ns=end))
+            self.spans.append(TraceSpan(stage=label, start_ns=start, end_ns=end))
             return res
 
         return _traced_call
