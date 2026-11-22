@@ -1,6 +1,6 @@
 [project]
 name = "strata"
-version = "1.2.0"
+version = "2.0.0"
 description = "Series/Parallel Runner on top of mojo asyncrt"
 readme = "README.md"
 authors = [{ name = "Samuel Ibarra", email = "Samuel.E.Ibarra@dell.com" }]

@@ -1,6 +1,6 @@
-"""Minimal end-to-end Strata generic pipeline example."""
+"""Minimal end-to-end Strata v2 pipeline example."""
 
-from strata import generic
+from strata import pipeline
 
 
 def parse_int(raw: String) -> Int:
@@ -23,10 +23,10 @@ def merge(pair: Tuple[Int, Float32]) -> String:
 
 
 def main():
-    var parse = generic.Fn(parse_int)
-    var dbl = generic.Fn(double_val)
-    var itof = generic.Fn(to_float)
-    var fmt = generic.Fn(merge)
+    var parse = pipeline.Fn(parse_int)
+    var dbl = pipeline.Fn(double_val)
+    var itof = pipeline.Fn(to_float)
+    var fmt = pipeline.Fn(merge)
 
-    var pipeline = parse | (dbl & itof) | fmt
-    print(pipeline("14"))  # 42.0
+    var graph = parse | (dbl & itof) | fmt
+    print(graph("14"))  # 42.0

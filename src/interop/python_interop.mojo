@@ -183,17 +183,28 @@ struct TaskGroup(Movable, Writable):
         )
         return String("TaskGroup(mode:", mode, ", objects:", objs, ")")
 
+    def _append_parallel_or_single(
+        mut self, t: PythonObject, mode: Int
+    ) raises:
+        if mode == Self.Parallel.mode:
+            if case .Some(rhs_ptr) = t._try_downcast_value[TaskGroup]():
+                if rhs_ptr[].mode == Self.Parallel.mode:
+                    for obj in rhs_ptr[].objects:
+                        self.objects.append(obj)
+                    return
+        self.objects.append(t)
+
     def _add_task(mut self, t: PythonObject, mode: Int) raises:
         if self.mode == Self.undefined.mode:
             self.mode = mode
 
         if self.mode == mode:
-            self.objects.append(t)
+            self._append_parallel_or_single(t, mode)
             return
 
         var new_group = TaskGroup(mode=mode)
         new_group.objects.append(PythonObject(alloc=self.copy()))
-        new_group.objects.append(t)
+        new_group._append_parallel_or_single(t, mode)
         self = new_group^
 
     def _with_task(self, t: PythonObject, mode: Int) raises -> Self:

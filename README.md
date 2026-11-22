@@ -2,35 +2,49 @@
 
 **Strata** is a high-performance, composable task graph execution framework for **Mojo** and **Python**, powered by Mojo's native asynchronous runtime (`TaskGroup` / `_asyncrt`).
 
-Strata provides an intuitive, operator-driven API for constructing complex dependency and workflow graphs:
-- **Dataflow Pipelines (`generic` / Python)**:
-  - **`|` (Stream / Pipe)**: Pipes the output of one task directly as the input to the next.
-  - **`&` (Parallel Fan-Out)**: Dispatches multiple tasks concurrently with the same input, collecting their outputs into a strongly-typed tuple.
-- **Orchestration Pipelines (`void`)**:
-  - **`>>` (Serial Execution)**: Runs void-returning tasks in sequence without data passing.
-  - **`+` (Parallel Execution)**: Runs void-returning tasks concurrently in a TaskGroup.
+Strata v2 provides a single, unified operator algebra across every Mojo and Python pipeline:
+- **`|` (Pipe / Sequence)**: Executes stages sequentially, passing each stage's output to the next.
+- **`&` (Parallel Fan-Out)**: Dispatches stages concurrently in **one flat `TaskGroup`** with full associative flattening (`a & (b & c)` and `(a & b) & (c & d)` both flatten into a single tuple).
+- **`group(...)` (Explicit Nesting)**: Wraps a parallel stage as an opaque unit whenever nested tuple output (`group(a & b) & group(c & d) -> ((O1, O2), (O3, O4))`) is desired.
 
 ---
 
-## Table of Contents
+## Features
 
-- [Installation](#installation)
-- [Features](#features)
-- [Project Architecture](#project-architecture)
-- [Using Strata from Mojo](#using-strata-from-mojo)
-  - [1. Function-Based Pipelines (`generic.Fn`)](#1-function-based-pipelines-genericfn)
-  - [2. Struct-Based Tasks (`generic.Callable`)](#2-struct-based-tasks-genericcallable)
-  - [3. Combining Sequential and Parallel Stages](#3-combining-sequential-and-parallel-stages)
-  - [4. In-Place Mutable Pipelines (`void.mutable`)](#4-in-place-mutable-pipelines-voidmutable)
-  - [5. Async Task Execution (`generic.async_fn`)](#5-async-task-execution-genericasync_fn)
-- [Using Strata from Python](#using-strata-from-python)
-  - [1. Building the Python Extension](#1-building-the-python-extension)
-  - [2. Defining Tasks (`Combinable`)](#2-defining-tasks-combinable)
-  - [3. Sequential Pipelines (`|`)](#3-sequential-pipelines-)
-  - [4. Parallel Pipelines (`&`)](#4-parallel-pipelines-)
-  - [5. Mixed Pipelines](#5-mixed-pipelines)
-- [Development and Testing](#development-and-testing)
-- [License](#license)
+- **Unified `|` and `&` Composition**: Consistent operators across runtime pipelines, zero-sized compile-time pipelines, async pipelines, fallible/raising pipelines, stateful in-place pipelines, and Python.
+- **Full Associative Flattening**: Merging parallel groups collapses into a single flat tuple and a single `TaskGroup` with zero nested `TaskGroup` overhead; opt into nested tuples cleanly with `group(...)`.
+- **Compile-Time Safety & Evaluation**: Mismatched stage types fail at compile time, and `strata.pipeline.compt` supports `comptime_run` even across parallel diamonds.
+- **Borrowed & Owned Pipelines**: Zero-allocation borrowed graphs (`Stage` / `ComposableStage`) plus value-owning `owned(...)` graphs that can be returned cleanly from factory functions.
+- **Native Error Propagation**: Raising Mojo stages (`strata.pipeline.fallible`) and exact Python exception preservation (raising PEP 654 `ExceptionGroup` on multi-branch parallel failures).
+- **Immutable Python Graphs**: Copy-on-write composition so sub-pipelines can be safely branched and reused without side effects.
+
+---
+
+## Project Architecture
+
+```text
+strata/
+├── src/                               # Mojo source modules (v2.0)
+│   ├── _internal/
+│   │   └── runtime.mojo               # Single facade over std.runtime._asyncrt & intrinsics
+│   ├── pipeline/                      # Value-passing & unit pipelines
+│   │   ├── __init__.mojo              # Stage, ComposableStage, Fn, UnitFn, Sequence, Parallel, Group, Owned*
+│   │   ├── compt.mojo                 # Zero-sized comptime F[fn], Unit[fn], Sequence, Parallel, Group, comptime_run
+│   │   ├── async_fn.mojo              # AF[fn], Sync[fn], AsyncSequence, AsyncParallel, AsyncGroup
+│   │   └── fallible.mojo              # FallibleStage, RaisingFn, RaisingSequence, RaisingParallel, raising_group
+│   ├── stateful/                      # In-place `mut self` pipelines (unified `|` and `&`)
+│   │   ├── __init__.mojo              # MutStage, Series, flat Parallel (1 TaskGroup)
+│   │   └── async_stage.mojo           # AsyncMutStage, AsyncSeries, flat AsyncParallel (1 TaskGroup)
+│   └── interop/
+│       └── python_interop.mojo        # CPython extension (mojo_strata.so)
+├── python/                            # Python bindings and package
+│   ├── src/strata/
+│   │   ├── graph.py                   # Combinable, Task, FnTask, task, GroupedTask, group, *TaskGroup
+│   │   └── mojo_strata.pyi            # PEP 695/646 type stubs
+│   └── tests/                         # pytest test suite
+├── examples/                          # Runnable pipeline examples
+└── tests/                             # Mojo test suites & docstring completeness check
+```
 
 ---
 
@@ -38,21 +52,13 @@ Strata provides an intuitive, operator-driven API for constructing complex depen
 
 ### Mojo
 
-Clone the repository and let Pixi install the Mojo compiler and build Strata's
-Mojo package into the project environment:
-
 ```bash
 git clone https://github.com/IbarraSamuel/strata.git
 cd strata
 pixi install
 ```
 
-Run Mojo commands from the repository with `pixi run mojo ...`. The Pixi package
-also declares `mojo-compiler` as a runtime dependency.
-
-To use Strata from another Pixi project, add this GitHub repository as a Pixi
-Git dependency. The consuming project needs the same channels and the
-`pixi-build` preview enabled so Pixi can build Strata:
+Or add Strata as a Pixi Git dependency:
 
 ```bash
 pixi workspace preview add pixi-build
@@ -61,92 +67,23 @@ pixi add strata --git https://github.com/IbarraSamuel/strata.git
 pixi install
 ```
 
-Then import Strata in Mojo code as usual:
-
-```mojo
-from strata import generic
-```
-
-By default, Pixi uses the repository's default branch. To pin a branch, tag, or
-commit, use `--branch <branch>`, `--tag <tag>`, or `--rev <commit>` with
-`pixi add`.
-
 ### Python
-
-Install directly from the `python/` subdirectory of this GitHub repository with
-either pip or uv:
 
 ```bash
 python -m pip install "git+https://github.com/IbarraSamuel/strata.git#subdirectory=python"
-uv pip install "git+https://github.com/IbarraSamuel/strata.git#subdirectory=python"
-```
-
-To add it as a dependency to a uv project instead:
-
-```bash
 uv add "strata @ git+https://github.com/IbarraSamuel/strata.git#subdirectory=python"
-```
-
-These Python install commands build the native Mojo extension during
-installation and install Mojo as a Python dependency. Mojo's Linux wheels
-require glibc 2.34 or newer.
-
----
-
-## Features
-
-- **Intuitive Operator Composition**: Chain dataflow stages with `|` and fan-out with `&` (or `>>` and `+` for void orchestration) for clean, expressive pipeline topologies.
-- **Native Mojo Performance**: Zero-overhead generic dispatch backed by compile-time trait conformance and Mojo's multithreaded async runtime.
-- **Automatic Tuple Expansion**: Combining parallel outputs flattens results into clean tuples (`Tuple[O1, O2, O3]`), avoiding nested tuple ergonomics.
-- **In-Place Mutation Support**: Dedicated `void` pipeline modules for high-throughput zero-copy buffer transformations.
-- **Full Python Interoperability**: Write immutable, reusable graphs in Python using `@task`, `@dataclass`, and `Combinable`, with exact exception propagation (`ExceptionGroup` on multi-branch parallel failures) and GIL-safe native Mojo task dispatch.
-
----
-
-## Project Architecture
-
-```text
-strata/
-├── src/                          # Mojo source modules
-│   ├── generic/                  # Generic, value-returning pipeline runners
-│   │   ├── __init__.mojo         # Core Call/Callable traits, Fn, Sequence (|), Parallel (&)
-│   │   ├── async_fn.mojo         # Async function execution via TaskGroup
-│   │   └── compt.mojo            # Compile-time task groups and execution
-│   ├── void/                     # Void-returning (in-place) pipeline runners
-│   │   ├── immutable.mojo        # Read-only void pipelines
-│   │   ├── mutable.mojo          # Mutable reference & pointer transformation pipelines
-│   │   ├── async_immutable.mojo  # Async immutable task execution
-│   │   ├── async_mutable.mojo    # Async mutable task execution
-│   │   └── type.mojo             # Type-based void pipelines
-│   └── interop/                  # CPython extension module builder
-│       └── python_interop.mojo   # Exports TaskGroup to Python (mojo_strata.so)
-├── python/                       # Python bindings and package
-│   ├── src/strata/               # strata Python package
-│   │   ├── graph.py              # Combinable, Task, FnTask, task, TaskGroup, SerTaskGroup, ParTaskGroup
-│   │   └── mojo_strata.so        # Compiled native extension
-│   └── tests/                    # pytest test suite
-├── examples/                     # Runnable pipeline examples
-└── tests/                        # Modular Mojo test suites
 ```
 
 ---
 
 ## Using Strata from Mojo
 
-Import `generic` from `strata` to access the core generic pipeline abstractions:
+### 1. Runtime Pipelines (`strata.pipeline`)
 
 ```mojo
-from strata import generic
-```
+from strata import pipeline
 
-### 1. Function-Based Pipelines (`generic.Fn`)
-
-Wrap standard Mojo functions with `generic.Fn` to enable operator composition:
-
-```mojo
-from strata import generic
-
-def string_to_int(s: String) -> Int:
+def parse_int(s: String) -> Int:
     try:
         return Int(s)
     except:
@@ -155,262 +92,133 @@ def string_to_int(s: String) -> Int:
 def double_val(x: Int) -> Int:
     return x * 2
 
-def to_string(x: Int) -> String:
-    return String(x)
+def to_float(x: Int) -> Float32:
+    return Float32(x)
+
+def merge(pair: Tuple[Int, Float32]) -> String:
+    return String(Float32(pair[0]) + pair[1])
+
+def main():
+    var parse = pipeline.Fn(parse_int)
+    var dbl = pipeline.Fn(double_val)
+    var itof = pipeline.Fn(to_float)
+    var fmt = pipeline.Fn(merge)
+
+    var graph = parse | (dbl & itof) | fmt
+    print(graph("14"))  # 42.0
+```
+
+Parallel stages flatten associatively (`(a & b) & (c & d) -> Tuple[O1, O2, O3, O4]`) and remain reusable. Wrap with `pipeline.group(...)` for explicit nesting, or use `pipeline.owned(...)` to build factory-returnable pipelines by value.
+
+### 2. Zero-Sized Compile-Time Pipelines (`strata.pipeline.compt`)
+
+```mojo
+from strata.pipeline.compt import F, group
+
+def add_one(x: Int) -> Int: return x + 1
+def mul_two(x: Int) -> Int: return x * 2
+def mul_three(x: Int) -> Int: return x * 3
+def sum_pair(v: Tuple[Int, Int]) -> Int: return v[0] + v[1]
+
+comptime diamond = F[add_one] | (F[mul_two] & F[mul_three]) | F[sum_pair]
+
+# Evaluate at compile time OR run concurrently at runtime:
+comptime ct_val = diamond.comptime_run[4]  # 25
+var rt_val = diamond.run(4)                # 25
+```
+
+### 3. Fallible / Raising Pipelines (`strata.pipeline.fallible`)
+
+```mojo
+from strata.pipeline.fallible import RaisingFn
+
+def parse_strict(s: String) raises -> Int:
+    return Int(s)
+
+def check_positive(x: Int) raises -> Int:
+    if x <= 0:
+        raise Error("must be positive")
+    return x
 
 def main() raises:
-    var stoi = generic.Fn(string_to_int)
-    var dbl = generic.Fn(double_val)
-    var tos = generic.Fn(to_string)
-
-    # Chain sequentially with |
-    var pipeline = stoi | dbl | tos
-
-    var result = pipeline("21")
-    print(result)  # "42"
+    var pipe = RaisingFn(parse_strict) | RaisingFn(check_positive)
+    print(pipe("42"))
 ```
 
-### 2. Struct-Based Tasks (`generic.Callable`)
-
-For stateful tasks or parameterized stages, define a struct conforming to `generic.Callable`:
+### 4. Async Pipelines (`strata.pipeline.async_fn`)
 
 ```mojo
-from strata import generic
+from strata.pipeline.async_fn import AF, Sync
 
-@fieldwise_init
-struct MultiplyTask[factor: Int](generic.Callable):
-    comptime I = Int
-    comptime O = Int
+__async def fetch_a(x: Int) -> Int: return x * 2
+__async def fetch_b(x: Int) -> Float32: return Float32(x)
+def combine(v: Tuple[Int, Float32]) -> Float32: return Float32(v[0]) + v[1]
 
-    def __call__(self, arg: Self.I) -> Self.O:
-        return arg * Self.factor
-
-@fieldwise_init
-struct AddOffsetTask(generic.Callable):
-    comptime I = Int
-    comptime O = Int
-
-    var offset: Int
-
-    def __call__(self, arg: Self.I) -> Self.O:
-        return arg + self.offset
+comptime graph = (AF[fetch_a] & AF[fetch_b]) | Sync[combine]
+var out = graph.run(10)  # 30.0
 ```
 
-### 3. Combining Sequential and Parallel Stages
-
-Use `&` to run multiple tasks concurrently across threads. When tasks execute in parallel, they receive identical input and their results are bundled into a tuple:
+### 5. Stateful In-Place Mutable Pipelines (`strata.stateful`)
 
 ```mojo
-from strata import generic
+from strata import stateful
 
-def int_to_float(v: Int) -> Float32:
-    return Float32(v)
-
-def int_triple(v: Int) -> Int:
-    return v * 3
-
-def sum_results(pair: Tuple[Float32, Int]) -> Float32:
-    return pair[0] + Float32(pair[1])
-
-def main() raises:
-    var itof = generic.Fn(int_to_float)
-    var trip = generic.Fn(int_triple)
-    var merge = generic.Fn(sum_results)
-
-    # Fan out in parallel (&), then pipe (into |)
-    var graph = (itof & trip) | merge
-
-    var out = graph(10)
-    print(out)  # 10.0 + 30 = 40.0
-```
-
-Pipelines can be arbitrarily chained:
-```mojo
-var complex_pipeline = (
-    StringToIntTask()
-    | (IntMulTask[2]() & IntToFloatTask() & IntMulTask[3]())
-    | SumTuple()
-    | FloatToStringTask()
-)
-```
-
-### 4. In-Place Mutable Pipelines (`void.mutable`)
-
-When operating on large data buffers in-place without copying, use `strata.void.mutable`:
-
-```mojo
-from strata.void.mutable import MutCallable, ParallelTask, SeriesTask
-
-# Compose mutable stateful tasks sequentially (>>) or in parallel (+)
-var pipeline = task1 >> (task2 + task3)
-pipeline()
-```
-
-### 5. Async Task Execution (`generic.async_fn`)
-
-For asynchronous functions executing concurrently within a Mojo runtime `TaskGroup`:
-
-```mojo
-from strata.generic.async_fn import par_fn
-
-__async def fetch_a(id: Int) -> Float32: ...
-__async def fetch_b(id: Int) -> Int: ...
-
-def main() raises:
-    var results = par_fn[fetch_a, fetch_b](42)
-    # results is Tuple[Float32, Int]
+# Compose mutable stateful stages with unified `|` (series) and `&` (flat parallel)
+var graph = init | ((branch1_a | branch1_b) & branch2) | finalize
+graph()
 ```
 
 ---
 
 ## Using Strata from Python
 
-Strata exposes a native Python interface via `mojo_strata.so`, allowing you to construct and execute task graphs directly in Python while leveraging the Mojo async runtime engine under the hood.
-
-### 1. Building the Python Extension
-
-Installing the Python package from the `python/` directory builds the native
-shared library automatically:
-
-```bash
-python -m pip install ./python
-```
-
-Mojo is installed as a Python dependency and compiles
-`src/interop/python_interop.mojo` to `python/src/strata/mojo_strata.so` during
-the package build.
-
-### 2. Defining Tasks (`Combinable`)
-
-Inherit from `Combinable` to give any callable task support for `|` and `&`:
-
 ```python
-from dataclasses import dataclass
-from strata.graph import Combinable
+from strata import group, task
 
-@dataclass
-class Multiply(Combinable):
-    factor: int
+@task
+def parse_int(raw: str) -> int:
+    return int(raw)
 
-    def __call__(self, value: int) -> int:
-        return value * self.factor
+@task
+def double(x: int) -> int:
+    return x * 2
 
-@dataclass
-class FormatMessage(Combinable):
-    prefix: str
+@task
+def add_ten(x: int) -> int:
+    return x + 10
 
-    def __call__(self, value: int) -> str:
-        return f"{self.prefix}: {value}"
-```
+@task
+def merge(pair: tuple[int, int]) -> str:
+    return f"sum={pair[0] + pair[1]}"
 
-### 3. Sequential Pipelines (`|`)
+# Immutable, directly callable pipeline
+pipeline = parse_int | (double & add_ten) | merge
+print(pipeline("5"))  # "sum=25"
 
-Pipes output from left to right. Pipelines are directly callable:
-
-```python
-step1 = Multiply(3)
-step2 = FormatMessage("Calculated")
-
-# Combine sequentially
-pipeline = step1 | step2
-
-result = pipeline(10)
-print(result)  # "Calculated: 30"
-```
-
-### 4. Parallel Pipelines (`&`)
-
-Dispatches tasks concurrently via native Mojo threads. Results are packed into a tuple:
-
-```python
-from time import sleep
-from dataclasses import dataclass
-from strata.graph import Combinable
-
-@dataclass
-class FetchPrice(Combinable):
-    def __call__(self, ticker: str) -> float:
-        sleep(0.1)  # Simulate I/O or work
-        return 150.0
-
-@dataclass
-class FetchVolume(Combinable):
-    def __call__(self, ticker: str) -> int:
-        sleep(0.1)
-        return 10_000
-
-# Both tasks run concurrently in Mojo's async runtime
-pipeline = FetchPrice() & FetchVolume()
-
-price, volume = pipeline("AAPL")
-print(f"Price: {price}, Volume: {volume}")
-```
-
-### 5. Mixed Pipelines
-
-Combine sequential and parallel stages seamlessly into a single directly callable pipeline:
-
-```python
-from dataclasses import dataclass
-from strata.graph import Combinable
-
-@dataclass
-class ParseInput(Combinable):
-    def __call__(self, raw: str) -> int:
-        return int(raw)
-
-@dataclass
-class ComputeBranchA(Combinable):
-    def __call__(self, x: int) -> int:
-        return x * 2
-
-@dataclass
-class ComputeBranchB(Combinable):
-    def __call__(self, x: int) -> int:
-        return x + 10
-
-@dataclass
-class Aggregate(Combinable):
-    def __call__(self, values: tuple[int, int]) -> str:
-        a, b = values
-        return f"Sum of branches: {a + b}"
-
-# Compose the pipeline: Parse -> [BranchA || BranchB] -> Aggregate
-pipeline = (
-    ParseInput()
-    | (ComputeBranchA() & ComputeBranchB())
-    | Aggregate()
-)
-
-print(pipeline("5"))  # "Sum of branches: 20"
+# Associative flattening by default, explicit nesting via `group(...)`:
+flat = (double & add_ten) & (double & add_ten)           # -> tuple[int, int, int, int]
+nested = group(double & add_ten) & group(double & add_ten)  # -> tuple[tuple[int, int], tuple[int, int]]
 ```
 
 ---
 
 ## Development and Testing
 
-The repository uses [Pixi](https://pixi.sh) to manage Mojo and Python development environments.
-
-### Available Tasks
-
 ```bash
-# Run the complete test suite (Mojo test runners, Python pytest, docs check)
+# Run the complete suite (all Mojo suites, Python pytest, docs check)
 pixi run tests
 
-# Run all Mojo test runners
-pixi run test_runners
+# Run individual Mojo suites
+pixi run test_pipeline
+pixi run test_pipeline_compt
+pixi run test_pipeline_async
+pixi run test_pipeline_fallible
+pixi run test_stateful
+pixi run test_stateful_async
 
-# Run specific Mojo module tests
-pixi run test_generic
-pixi run test_generic_compt
-pixi run test_generic_async
-pixi run test_void_mutable
-pixi run test_void_immutable
-
-# Run Python tests (rebuilds mojo_strata.so before pytest)
+# Run Python tests, example, and docstring validation
 pixi run python_test
-
-# Validate docstring completeness for all Mojo source files
+pixi run generic_pipeline_example
 pixi run test_docs
 ```
 

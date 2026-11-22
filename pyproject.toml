@@ -3,13 +3,13 @@ authors = ["Samuel Ibarra <ing.samuelibarra@gmail.com>"]
 channels = ["https://prefix.dev/max-nightly", "https://prefix.dev/conda-forge"]
 name = "strata"
 platforms = ["linux-64", "osx-arm64"]
-version = "1.2.0"
+version = "2.0.0"
 preview = ["pixi-build"]
 channel-priority = "disabled"
 
 [tool.pixi.package]
 name = "strata"
-version = "1.2.0"
+version = "2.0.0"
 description = "Series/Parallel Runner on top of mojo asyncrt"
 
 [tool.pixi.package.build]
@@ -37,40 +37,32 @@ generic_pipeline_example = { cmd = "mojo -I package examples/generic_pipeline.mo
 ] }
 
 compile-for-testing = "mojo precompile src/ -o tests/strata.mojoc"
-test_generic = { cmd = "mojo test_generic.mojo", cwd = "tests", depends-on = [
+test_pipeline = { cmd = "mojo test_pipeline.mojo", cwd = "tests", depends-on = [
     "compile-for-testing",
 ] }
-test_generic_compt = { cmd = "mojo test_generic_compt.mojo", cwd = "tests", depends-on = [
+test_pipeline_compt = { cmd = "mojo test_pipeline_compt.mojo", cwd = "tests", depends-on = [
     "compile-for-testing",
 ] }
-test_generic_async = { cmd = "mojo test_generic_async.mojo", cwd = "tests", depends-on = [
+test_pipeline_async = { cmd = "mojo test_pipeline_async.mojo", cwd = "tests", depends-on = [
     "compile-for-testing",
 ] }
-test_void_type = { cmd = "mojo test_void_type.mojo", cwd = "tests", depends-on = [
+test_pipeline_fallible = { cmd = "mojo test_pipeline_fallible.mojo", cwd = "tests", depends-on = [
     "compile-for-testing",
 ] }
-test_void_immutable = { cmd = "mojo test_void_immutable.mojo", cwd = "tests", depends-on = [
+test_stateful = { cmd = "mojo test_stateful.mojo", cwd = "tests", depends-on = [
     "compile-for-testing",
 ] }
-test_void_mutable = { cmd = "mojo test_void_mutable.mojo", cwd = "tests", depends-on = [
-    "compile-for-testing",
-] }
-test_void_async_immutable = { cmd = "mojo test_void_async_immutable.mojo", cwd = "tests", depends-on = [
-    "compile-for-testing",
-] }
-test_void_async_mutable = { cmd = "mojo test_void_async_mutable.mojo", cwd = "tests", depends-on = [
+test_stateful_async = { cmd = "mojo test_stateful_async.mojo", cwd = "tests", depends-on = [
     "compile-for-testing",
 ] }
 
 test_runners = { depends-on = [
-    "test_generic",
-    "test_generic_compt",
-    "test_generic_async",
-    "test_void_type",
-    "test_void_immutable",
-    "test_void_mutable",
-    "test_void_async_immutable",
-    "test_void_async_mutable",
+    "test_pipeline",
+    "test_pipeline_compt",
+    "test_pipeline_async",
+    "test_pipeline_fallible",
+    "test_stateful",
+    "test_stateful_async",
 ] }
 python_test = "cd python && uv sync --no-install-project --group dev --group test && uv run --no-build-isolation --reinstall-package strata --group dev --group test pytest"
 

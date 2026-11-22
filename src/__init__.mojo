@@ -1,1 +1,1 @@
-"""Strata: Series and parallel task execution pipeline."""
+"""Strata v2: Composable, type-checked task graph execution framework."""

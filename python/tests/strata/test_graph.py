@@ -3,7 +3,7 @@ from time import sleep, time_ns
 
 import pytest
 
-from strata.graph import Combinable, task
+from strata.graph import Combinable, group, task
 
 SLEEP_TIME = 0.1
 
@@ -331,41 +331,41 @@ def test_complex_diamond_of_diamonds():
 
 
 def test_nested_parallel_of_parallels():
-    """Verify right-nested and pairwise-nested parallel group shapes.
+    """Verify full associative flattening by default and explicit `group(...)` nesting.
 
     ```text
-    1) t1 & (t2 & t3):
-             +-> [t1] --------+
-      int ---+   +-> [t2] -+  +-> tuple[int, tuple[int, int]]
-             +---+-> [t3] -+--+
-
-    2) (p1 & p2) & (p3 & p4):
-             +-> [p1] --------+
-             +-> [p2] --------+
-      int ---+                +-> tuple[int, int, tuple[int, int]]
-             |   +-> [p3] -+  |
-             +---+-> [p4] -+--+
+    1) t1 & (t2 & t3) -> flat tuple[int, int, int] (1 TaskGroup)
+    2) (p1 & p2) & (p3 & p4) -> flat tuple[int, int, int, int] (1 TaskGroup)
+    3) t1 & group(t2 & t3) -> tuple[int, tuple[int, int]]
+    4) group(p1 & p2) & group(p3 & p4) -> tuple[tuple[int, int], tuple[int, int]]
     ```
     """
-    # Task & (Task & Task) -> nested right tuple (o1, (o2, o3))
+    # Task & (Task & Task) flattens associatively to (o1, o2, o3)
     t1 = TimedOpTask(delta=1)
     t2 = TimedOpTask(delta=2)
     t3 = TimedOpTask(delta=3)
-    right_nested = t1 & (t2 & t3)
-    assert right_nested(10) == (11, (12, 13))
+    right_flat = t1 & (t2 & t3)
+    assert right_flat(10) == (11, 12, 13)
     assert t1.end > t2.start
     assert t2.end > t3.start
     assert t3.end > t1.start
 
-    # (Task & Task) & (Task & Task) -> (o1, o2, (o3, o4))
+    # (Task & Task) & (Task & Task) flattens associatively to (o1, o2, o3, o4)
     p1 = TimedOpTask(scale=1)
     p2 = TimedOpTask(scale=2)
     p3 = TimedOpTask(scale=3)
     p4 = TimedOpTask(scale=4)
     par_of_pars = (p1 & p2) & (p3 & p4)
-    assert par_of_pars(2) == (2, 4, (6, 8))
+    assert par_of_pars(2) == (2, 4, 6, 8)
     assert p1.end > p3.start
     assert p3.end > p1.start
+
+    # Explicit group(...) preserves nested tuple structure symmetrically
+    right_grouped = t1 & group(t2 & t3)
+    assert right_grouped(10) == (11, (12, 13))
+
+    both_grouped = group(p1 & p2) & group(p3 & p4)
+    assert both_grouped(2) == ((2, 4), (6, 8))
 
 
 def test_six_way_parallel_fanout():
