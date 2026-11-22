@@ -81,6 +81,7 @@ def test_native_abi_value_and_descriptor() raises:
 
     var d = NativeStageDescriptor()
     assert_equal(d.kind, NATIVE_KIND_INT64)
+    assert_true(not d.ctx_deleter)
     assert_true(NATIVE_KIND_FLOAT64 != NATIVE_KIND_INT64)
     assert_equal(String(NATIVE_STAGE_CAPSULE_NAME), "strata.native_stage.v1")
 

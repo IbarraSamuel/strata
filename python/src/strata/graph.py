@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from enum import IntEnum
-from typing import TYPE_CHECKING, Protocol, cast, overload, override
+from typing import TYPE_CHECKING, Any, Protocol, cast, overload, override
 
 from strata import mojo_strata
 
@@ -40,6 +40,7 @@ type _Stage[I, O] = (
     | SerTaskGroup[I, O]
     | TaskGroup[I, O]
     | mojo_strata.TaskGroup[I, O]
+    | mojo_strata.NativeStage[I, O]
 )
 
 type _NonParStage[I, O] = (
@@ -47,7 +48,36 @@ type _NonParStage[I, O] = (
     | SerTaskGroup[I, O]
     | TaskGroup[I, O]
     | mojo_strata.TaskGroup[I, O]
+    | mojo_strata.NativeStage[I, O]
 )
+
+
+def _resolve_native(obj: object) -> mojo_strata.NativeStage[Any, Any] | None:
+    if isinstance(obj, mojo_strata.NativeStage):
+        return obj
+    inner_native = getattr(obj, "inner_native", None)
+    if isinstance(inner_native, mojo_strata.NativeStage):
+        return inner_native
+    as_capsule = getattr(obj, "as_native_capsule", None)
+    if callable(as_capsule):
+        cap = as_capsule()
+        stage_name = getattr(obj, "__name__", None) or type(obj).__name__
+        return mojo_strata.native_from_capsule(cap, str(stage_name))
+    if not callable(obj) and not isinstance(obj, mojo_strata.TaskGroup):
+        try:
+            return mojo_strata.native_from_capsule(obj, "native_capsule")
+        except TypeError:
+            return None
+    return None
+
+
+def _invoke_stage[I, O](stage: Any, msg: I) -> O:  # ruff: ignore[any-type]
+    if isinstance(stage, mojo_strata.TaskGroup):
+        return cast("O", stage.call(msg))
+    native = _resolve_native(stage)
+    if native is not None:
+        return cast("O", native.call(msg))
+    return cast("O", stage(msg))
 
 
 def _unwrap_target[I, O](
@@ -55,9 +85,19 @@ def _unwrap_target[I, O](
 ) -> Task[I, O] | mojo_strata.TaskGroup[I, O] | mojo_strata.NativeStage[I, O]:
     if isinstance(other, _BaseTaskGroup):
         return cast("mojo_strata.TaskGroup[I, O]", other.inner)
+    if isinstance(other, mojo_strata.NativeStage):
+        return other
     inner_native = getattr(other, "inner_native", None)
     if isinstance(inner_native, mojo_strata.NativeStage):
         return cast("mojo_strata.NativeStage[I, O]", inner_native)
+    as_capsule = getattr(other, "as_native_capsule", None)
+    if callable(as_capsule):
+        cap = as_capsule()
+        stage_name = getattr(other, "__name__", None) or type(other).__name__
+        return cast(
+            "mojo_strata.NativeStage[I, O]",
+            mojo_strata.native_from_capsule(cap, str(stage_name)),
+        )
     return other
 
 
@@ -74,9 +114,7 @@ class _BaseTaskGroup[I, O]:
 
     def __or__[T](self, other: _Stage[O, T]) -> SerTaskGroup[I, T]:
         target = _unwrap_target(other)
-        return SerTaskGroup[I, T](
-            self.inner.with_task(target, GroupMode.SERIAL.value)
-        )
+        return SerTaskGroup[I, T](self.inner.with_task(target, GroupMode.SERIAL.value))
 
     def stats(self) -> GraphStats:
         """Return static topology metrics for this pipeline.
@@ -251,9 +289,7 @@ class SerTaskGroup[I, O](_BaseTaskGroup[I, O]):
     @overload
     def __and__[T](self, other: _NonParStage[I, T]) -> ParTaskGroup[I, tuple[O, T]]: ...
 
-    def __and__(
-        self, other: _Stage[I, object]
-    ) -> ParTaskGroup[I, tuple[object, ...]]:
+    def __and__(self, other: _Stage[I, object]) -> ParTaskGroup[I, tuple[object, ...]]:
         target = _unwrap_target(other)
         next_inner = self.inner.with_task(target, GroupMode.PARALLEL.value)
         return ParTaskGroup(
@@ -303,9 +339,7 @@ class ParTaskGroup[I, O](_BaseTaskGroup[I, O]):
         other: _NonParStage[I, T],
     ) -> ParTaskGroup[I, tuple[*Os, T]]: ...
 
-    def __and__(
-        self, other: _Stage[I, object]
-    ) -> ParTaskGroup[I, tuple[object, ...]]:
+    def __and__(self, other: _Stage[I, object]) -> ParTaskGroup[I, tuple[object, ...]]:
         target = _unwrap_target(other)
         next_inner = self.inner.with_task(target, GroupMode.PARALLEL.value)
         return ParTaskGroup(
@@ -323,16 +357,9 @@ class TaskGroup[I, O](_BaseTaskGroup[I, O]):
     Pipelines are directly callable and immutable under further composition.
     """
 
-    def __init__(self, task: Task[I, O]) -> None:
-        inner_native = getattr(task, "inner_native", None)
-        if isinstance(inner_native, mojo_strata.NativeStage):
-            super().__init__(
-                mojo_strata.TaskGroup(
-                    task=cast("mojo_strata.NativeStage[I, O]", inner_native)
-                )
-            )
-        else:
-            super().__init__(mojo_strata.TaskGroup(task=task))
+    def __init__(self, task: _Stage[I, O]) -> None:
+        target = _unwrap_target(task)
+        super().__init__(mojo_strata.TaskGroup(task=target))
 
     @overload
     def __and__[*Os](
@@ -342,9 +369,7 @@ class TaskGroup[I, O](_BaseTaskGroup[I, O]):
     @overload
     def __and__[T](self, other: _NonParStage[I, T]) -> ParTaskGroup[I, tuple[O, T]]: ...
 
-    def __and__(
-        self, other: _Stage[I, object]
-    ) -> ParTaskGroup[I, tuple[object, ...]]:
+    def __and__(self, other: _Stage[I, object]) -> ParTaskGroup[I, tuple[object, ...]]:
         target = _unwrap_target(other)
         next_inner = self.inner.with_task(target, GroupMode.PARALLEL.value)
         return ParTaskGroup(
@@ -360,7 +385,7 @@ class Combinable(Protocol):
 
     def __or__[I, O, T](
         self: Task[I, O],
-        other: Task[O, T] | ParTaskGroup[O, T] | SerTaskGroup[O, T] | TaskGroup[O, T],
+        other: _Stage[O, T],
     ) -> SerTaskGroup[I, T]:
         group_stage = TaskGroup(self)
         return group_stage | other
@@ -374,15 +399,12 @@ class Combinable(Protocol):
     @overload
     def __and__[I, O, T](
         self: Task[I, O],
-        other: Task[I, T] | SerTaskGroup[I, T] | TaskGroup[I, T],
+        other: _NonParStage[I, T],
     ) -> ParTaskGroup[I, tuple[O, T]]: ...
 
     def __and__[I, O](
         self: Task[I, O],
-        other: Task[I, object]
-        | ParTaskGroup[I, object]
-        | SerTaskGroup[I, object]
-        | TaskGroup[I, object],
+        other: _Stage[I, object],
     ) -> ParTaskGroup[I, tuple[object, ...]]:
         group_stage = TaskGroup(self)
         return cast(
@@ -514,9 +536,7 @@ class GroupedTask[I, O](Combinable, Task[I, O]):
 
     @override
     def __call__(self, msg: I, /) -> O:
-        if isinstance(self.inner_stage, mojo_strata.TaskGroup):
-            return cast("O", self.inner_stage.call(msg))
-        return self.inner_stage(msg)
+        return _invoke_stage(self.inner_stage, msg)
 
 
 def group[I, O](stage: _Stage[I, O]) -> GroupedTask[I, O]:

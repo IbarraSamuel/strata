@@ -286,6 +286,8 @@ struct TracingExecutor[Inner: Executor & Movable & Deinitable = AsyncRTExecutor]
     """Wrapped executor defining concurrency limits."""
     var spans: List[TraceSpan]
     """Collected stage execution spans in completion/recording order."""
+    var _inner_tokens: List[Int]
+    """Stack of active start tokens returned by `self.inner.on_stage_start`."""
 
     def __init__(out self, var inner: Self.Inner):
         """Initialize tracing around an explicit inner executor.
@@ -295,11 +297,13 @@ struct TracingExecutor[Inner: Executor & Movable & Deinitable = AsyncRTExecutor]
         """
         self.inner = inner^
         self.spans = List[TraceSpan]()
+        self._inner_tokens = List[Int]()
 
     def __init__(out self) where Self.Inner == AsyncRTExecutor:
         """Initialize tracing using the default `AsyncRTExecutor`."""
         self.inner = rebind_var[Self.Inner](AsyncRTExecutor())
         self.spans = List[TraceSpan]()
+        self._inner_tokens = List[Int]()
 
     def concurrency_limit(self) -> Int:
         """Delegate concurrency limit to the inner executor.
@@ -326,7 +330,7 @@ struct TracingExecutor[Inner: Executor & Movable & Deinitable = AsyncRTExecutor]
         Returns:
             Start timestamp in nanoseconds from `perf_counter_ns()`.
         """
-        _ = self.inner.on_stage_start(name)
+        self._inner_tokens.append(self.inner.on_stage_start(name))
         return perf_counter_ns()
 
     def on_stage_end(mut self, name: StaticString, token: Int):
@@ -337,7 +341,10 @@ struct TracingExecutor[Inner: Executor & Movable & Deinitable = AsyncRTExecutor]
             token: Start timestamp returned by `on_stage_start`.
         """
         var end_ns = perf_counter_ns()
-        self.inner.on_stage_end(name, token)
+        var inner_token = (
+            self._inner_tokens.pop() if len(self._inner_tokens) > 0 else 0
+        )
+        self.inner.on_stage_end(name, inner_token)
         self.spans.append(TraceSpan(String(name), token, end_ns))
 
     def record_span(mut self, name: StaticString, start_ns: Int, end_ns: Int):

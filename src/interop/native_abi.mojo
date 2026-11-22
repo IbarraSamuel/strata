@@ -45,6 +45,11 @@ comptime NativeValueFn = def(
 ) thin abi("C") -> Int32
 """C-ABI function pointer signature for `NativeValue -> NativeValue` native stages."""
 
+comptime NativeCtxDeleter = def(
+    OpaquePointer[MutUntrackedOrigin]
+) thin abi("C") -> None
+"""C-ABI callback signature invoked on PyCapsule destruction to free heap `ctx`."""
+
 
 @fieldwise_init
 struct NativeValue(Copyable, Defaultable, Movable):
@@ -115,6 +120,8 @@ struct NativeStageDescriptor(Copyable, Defaultable, Movable):
     """Raw C-ABI function pointer matching `kind`."""
     var ctx: Optional[OpaquePointer[MutUntrackedOrigin]]
     """Optional opaque context pointer passed to `fn_ptr`."""
+    var ctx_deleter: Optional[NativeCtxDeleter]
+    """Optional C-ABI destructor invoked on `ctx` when the owning PyCapsule is freed."""
 
     def __init__(out self):
         """Construct an empty descriptor."""
@@ -122,21 +129,42 @@ struct NativeStageDescriptor(Copyable, Defaultable, Movable):
         self._pad = 0
         self.fn_ptr = None
         self.ctx = None
+        self.ctx_deleter = None
+
+
+def _restore_raised_exception(exc_ptr: PyObjectPtr):
+    ref cpython = Python().cpython()
+    if cpython.lib.check_symbol("PyErr_SetRaisedException"):
+        var set_exc = cpython.lib.borrow().get_function[
+            def(PyObjectPtr) thin abi("C") -> None
+        ]("PyErr_SetRaisedException")
+        set_exc(exc_ptr)
+    elif Bool(exc_ptr):
+        var exc_type = cpython.PyObject_Type(exc_ptr)
+        cpython.PyErr_Restore(exc_type, exc_ptr, PyObjectPtr())
+    else:
+        cpython.PyErr_Clear()
 
 
 def _destroy_descriptor_capsule(capsule: PyObjectPtr) abi("C"):
     ref cpython = Python().cpython()
+    var saved_exc = cpython.PyErr_GetRaisedException()
     try:
         var raw_ptr = cpython.PyCapsule_GetPointer(
             capsule, String(NATIVE_STAGE_CAPSULE_NAME)
         )
+        var desc_ptr = raw_ptr.unsafe_bitcast[NativeStageDescriptor]()
+        if case .Some(deleter) = desc_ptr[].ctx_deleter:
+            if case .Some(raw_ctx) = desc_ptr[].ctx:
+                deleter(raw_ctx)
         dealloc(
-            ThinAllocation(
-                unsafe_owned_ptr=raw_ptr.unsafe_bitcast[NativeStageDescriptor]()
-            ).unsafe_with_layout(Layout[NativeStageDescriptor].single())
+            ThinAllocation(unsafe_owned_ptr=desc_ptr).unsafe_with_layout(
+                Layout[NativeStageDescriptor].single()
+            )
         )
     except:
         pass
+    _restore_raised_exception(saved_exc)
 
 
 def _allocate_descriptor_capsule(
@@ -166,12 +194,14 @@ def _allocate_descriptor_capsule(
 def export_int_stage_capsule(
     func: NativeIntFn,
     ctx: Optional[OpaquePointer[MutUntrackedOrigin]] = None,
+    ctx_deleter: Optional[NativeCtxDeleter] = None,
 ) raises -> PythonObject:
     """Export a pure-Mojo `Int64 -> Int64` function as a `strata.native_stage.v1` PyCapsule.
 
     Args:
         func: C-ABI function pointer taking `(Int64, ctx)` and returning `Int64`.
         ctx: Optional opaque context pointer outliving the capsule.
+        ctx_deleter: Optional C-ABI destructor called with `ctx` on capsule teardown.
 
     Returns:
         A CPython `PyCapsule` runnable GIL-free in Python Strata graphs.
@@ -184,19 +214,21 @@ def export_int_stage_capsule(
         OpaquePointer[MutUntrackedOrigin]
     ]()[]
     return _allocate_descriptor_capsule(
-        NativeStageDescriptor(NATIVE_KIND_INT64, 0, fn_opaque, ctx)
+        NativeStageDescriptor(NATIVE_KIND_INT64, 0, fn_opaque, ctx, ctx_deleter)
     )
 
 
 def export_float_stage_capsule(
     func: NativeFloatFn,
     ctx: Optional[OpaquePointer[MutUntrackedOrigin]] = None,
+    ctx_deleter: Optional[NativeCtxDeleter] = None,
 ) raises -> PythonObject:
     """Export a pure-Mojo `Float64 -> Float64` function as a `strata.native_stage.v1` PyCapsule.
 
     Args:
         func: C-ABI function pointer taking `(Float64, ctx)` and returning `Float64`.
         ctx: Optional opaque context pointer outliving the capsule.
+        ctx_deleter: Optional C-ABI destructor called with `ctx` on capsule teardown.
 
     Returns:
         A CPython `PyCapsule` runnable GIL-free in Python Strata graphs.
@@ -209,19 +241,23 @@ def export_float_stage_capsule(
         OpaquePointer[MutUntrackedOrigin]
     ]()[]
     return _allocate_descriptor_capsule(
-        NativeStageDescriptor(NATIVE_KIND_FLOAT64, 0, fn_opaque, ctx)
+        NativeStageDescriptor(
+            NATIVE_KIND_FLOAT64, 0, fn_opaque, ctx, ctx_deleter
+        )
     )
 
 
 def export_value_stage_capsule(
     func: NativeValueFn,
     ctx: Optional[OpaquePointer[MutUntrackedOrigin]] = None,
+    ctx_deleter: Optional[NativeCtxDeleter] = None,
 ) raises -> PythonObject:
     """Export a general `NativeValue -> NativeValue` function as a `strata.native_stage.v1` PyCapsule.
 
     Args:
         func: C-ABI function pointer writing output `NativeValue` and returning status `0` on success.
         ctx: Optional opaque context pointer outliving the capsule.
+        ctx_deleter: Optional C-ABI destructor called with `ctx` on capsule teardown.
 
     Returns:
         A CPython `PyCapsule` runnable GIL-free in Python Strata graphs.
@@ -234,5 +270,5 @@ def export_value_stage_capsule(
         OpaquePointer[MutUntrackedOrigin]
     ]()[]
     return _allocate_descriptor_capsule(
-        NativeStageDescriptor(NATIVE_KIND_VALUE, 0, fn_opaque, ctx)
+        NativeStageDescriptor(NATIVE_KIND_VALUE, 0, fn_opaque, ctx, ctx_deleter)
     )

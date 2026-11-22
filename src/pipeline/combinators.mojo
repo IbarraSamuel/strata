@@ -5,11 +5,12 @@ Provides composable building blocks that plug directly into `|` and `&`:
 - `Id` / `identity`: Pass-through identity stage (`T -> T`).
 - `Select` / `select`: Extract element `Idx` from a `Tuple` (`Tuple[*Ts] -> Ts[Idx]`).
 - `Spread2` / `Spread3` / `Spread4` / `spread`: Unpack a `Tuple` into multi-argument functions.
-- `Zip2` / `Zip3` / `Zip4` / `zip_stages`: Parallel product (`(I1, I2, ...) -> (O1, O2, ...)`).
+- `Zip2` / `Zip3` / `zip_stages`: Parallel product (`(I1, I2, ...) -> (O1, O2, ...)`).
 - `Map` / `map_stage`: Dynamic parallel map over `List[I] -> List[O]`.
 - `Branch` / `branch`: Predicate-driven conditional routing (`on_true` vs `on_false`).
 """
 
+from std.benchmark import keep
 from std.builtin.rebind import downcast
 from std.reflection import reflect
 from std.time import perf_counter_ns
@@ -310,7 +311,7 @@ __async def _run_zip_branch[
     in_ptr: Pointer[InT, in_orig],
     out_ptr: Pointer[S.O, out_orig],
 ):
-    out_ptr[] = stage_ptr[](rebind[S.I](in_ptr[]))
+    out_ptr.unsafe_write(stage_ptr[](rebind[S.I](in_ptr[])))
 
 
 @always_inline
@@ -329,7 +330,7 @@ __async def _run_zip_branch_traced[
     end_ptr: Pointer[Int, t_orig],
 ):
     start_ptr[] = perf_counter_ns()
-    out_ptr[] = stage_ptr[](rebind[S.I](in_ptr[]))
+    out_ptr.unsafe_write(stage_ptr[](rebind[S.I](in_ptr[])))
     end_ptr[] = perf_counter_ns()
 
 
@@ -563,15 +564,90 @@ struct Zip3[
             var r2 = self.s3[].run_with(exec, rebind[Self.S3.I](arg[2]))
             return (r0^, r1^, r2^)
         else:
-            if exec.concurrency_limit() == 1:
+            var limit = exec.concurrency_limit()
+            if limit == 1:
                 var r0 = self.s1[].run_with(exec, rebind[Self.S1.I](arg[0]))
                 var r1 = self.s2[].run_with(exec, rebind[Self.S2.I](arg[1]))
                 var r2 = self.s3[].run_with(exec, rebind[Self.S3.I](arg[2]))
                 return (r0^, r1^, r2^)
-            var token = exec.on_stage_start("Zip3")
-            var res = self(arg)
-            exec.on_stage_end("Zip3", token)
-            return res^
+
+            var out = uninitialized_storage[Self.O]()
+            var p0 = Pointer(to=rebind[Self.S1.I](arg[0]))
+            var p1 = Pointer(to=rebind[Self.S2.I](arg[1]))
+            var p2 = Pointer(to=rebind[Self.S3.I](arg[2]))
+            var tracing = exec.is_tracing()
+            var starts = List[Int](length=3, fill=0)
+            var ends = List[Int](length=3, fill=0)
+            var wave_size = min(limit, 3) if limit > 0 else 3
+            var wave_start = 0
+            while wave_start < 3:
+                var wave_end = min(wave_start + wave_size, 3)
+                var tg = TaskGroup()
+                if 0 >= wave_start and 0 < wave_end:
+                    if tracing:
+                        tg.create_task(
+                            _run_zip_branch_traced(
+                                self.s1,
+                                p0,
+                                Pointer(to=out[0]),
+                                Pointer(to=starts[0]).unsafe_origin_cast[
+                                    MutUntrackedOrigin
+                                ](),
+                                Pointer(to=ends[0]).unsafe_origin_cast[
+                                    MutUntrackedOrigin
+                                ](),
+                            )
+                        )
+                    else:
+                        tg.create_task(
+                            _run_zip_branch(self.s1, p0, Pointer(to=out[0]))
+                        )
+                if 1 >= wave_start and 1 < wave_end:
+                    if tracing:
+                        tg.create_task(
+                            _run_zip_branch_traced(
+                                self.s2,
+                                p1,
+                                Pointer(to=out[1]),
+                                Pointer(to=starts[1]).unsafe_origin_cast[
+                                    MutUntrackedOrigin
+                                ](),
+                                Pointer(to=ends[1]).unsafe_origin_cast[
+                                    MutUntrackedOrigin
+                                ](),
+                            )
+                        )
+                    else:
+                        tg.create_task(
+                            _run_zip_branch(self.s2, p1, Pointer(to=out[1]))
+                        )
+                if 2 >= wave_start and 2 < wave_end:
+                    if tracing:
+                        tg.create_task(
+                            _run_zip_branch_traced(
+                                self.s3,
+                                p2,
+                                Pointer(to=out[2]),
+                                Pointer(to=starts[2]).unsafe_origin_cast[
+                                    MutUntrackedOrigin
+                                ](),
+                                Pointer(to=ends[2]).unsafe_origin_cast[
+                                    MutUntrackedOrigin
+                                ](),
+                            )
+                        )
+                    else:
+                        tg.create_task(
+                            _run_zip_branch(self.s3, p2, Pointer(to=out[2]))
+                        )
+                tg.wait()
+                wave_start = wave_end
+
+            if tracing:
+                exec.record_span(reflect[Self.S1].name(), starts[0], ends[0])
+                exec.record_span(reflect[Self.S2].name(), starts[1], ends[1])
+                exec.record_span(reflect[Self.S3].name(), starts[2], ends[2])
+            return out^
 
 
 def zip_stages[
@@ -736,6 +812,8 @@ struct Map[origin: ImmOrigin, //, Inner: Stage](ComposableStage) where (
                 ]()
                 tg.create_task(_run_map_item(self.inner, in_ptr, out_ptr))
             tg.wait()
+            keep(arg)
+            keep(self)
             wave_start = wave_end
 
         var results = Self.O(capacity=n)
@@ -1034,6 +1112,8 @@ def stream_map[
             ]()
             tg.create_task(_run_stream_item(stage_ptr, in_ptr, out_ptr))
         tg.wait()
+        keep(items)
+        keep(stage)
         for j in range(count):
             if case .Some(val) = slots[j]:
                 var item = val.copy()

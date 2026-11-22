@@ -3,28 +3,41 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import math
+import threading
 import time
 import traceback
+import warnings
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
 from strata import (
+    BranchTask,
+    MapTask,
+    RetryTask,
+    SelectTask,
+    SequentialExecutor,
     TaskGroup,
     TracingExecutor,
     ZipTask,
     arun,
     async_task,
+    branch,
     fallback,
+    graph_stats,
     group,
+    map_stage,
     map_task,
     mojo_strata,
     native_cpu_work,
     native_float_linear,
     native_float_poly,
     native_int_linear,
+    native_stage,
     retry,
+    select,
     task,
     timeout,
     to_dot,
@@ -710,8 +723,8 @@ def test_tracing_executor_reuse_and_diagrams_with_quotes_and_nesting() -> None:
 
     min_subgraphs = 3
     mmd = to_mermaid(complex_pipe)
-    assert "native(scale 'fast')" in mmd
-    assert "step 'A'" in mmd
+    assert "native(scale &quot;fast&quot;)" in mmd
+    assert "step &quot;A&quot;" in mmd
     assert 'scale "fast"' not in mmd
     assert 'step "A"' not in mmd
     assert 'subgraph g0["group 0"]' in mmd
@@ -719,10 +732,466 @@ def test_tracing_executor_reuse_and_diagrams_with_quotes_and_nesting() -> None:
     assert mmd.count("subgraph ") >= min_subgraphs
 
     dot = to_dot(complex_pipe)
-    assert "native(scale 'fast')" in dot
-    assert "step 'A'" in dot
+    assert r"native(scale \"fast\")" in dot
+    assert r"step \"A\"" in dot
     assert 'scale "fast"' not in dot
     assert 'step "A"' not in dot
     assert "subgraph cluster_0" in dot
     assert 'label="zip";' in dot
     assert dot.count("subgraph cluster_") >= min_subgraphs
+
+
+# ===----------------------------------------------------------------------=== #
+# 8. Wave 1 Safety Regression Tests (C3, C4, C5, H2, H3, H4, H5, M2, L2)
+# ===----------------------------------------------------------------------=== #
+
+
+def test_c3_task_group_init_argument_validation() -> None:
+    # Calling mojo_strata.TaskGroup() with no args must raise TypeError, not SIGSEGV
+    with pytest.raises(TypeError):
+        cast("Any", mojo_strata.TaskGroup)()
+
+    # Passing both positional and keyword task must raise TypeError
+    with pytest.raises(TypeError):
+        cast("Any", mojo_strata.TaskGroup)(_inc, task=_double)
+
+    # Extra positional arguments alongside keyword task must raise TypeError
+    with pytest.raises(TypeError):
+        cast("Any", mojo_strata.TaskGroup)(1, 2, task=_inc)
+
+    # Unknown keyword argument must raise TypeError
+    with pytest.raises(TypeError):
+        cast("Any", mojo_strata.TaskGroup)(wrong=_inc)
+
+    # Valid single positional or single keyword `task=` both work
+    expected = 6
+    assert mojo_strata.TaskGroup(_inc).call(5) == expected
+    assert mojo_strata.TaskGroup(task=_inc).call(5) == expected
+
+
+def test_c4_capsule_gc_during_active_exception_preserves_exception() -> None:
+    def _raise_with_local_capsule() -> None:
+        cap = mojo_strata.make_int_linear_capsule(3, 5)
+        assert cap is not None
+        msg = "active_exc_must_survive"
+        raise RuntimeError(msg)
+
+    with pytest.raises(RuntimeError, match="active_exc_must_survive"):
+        _raise_with_local_capsule()
+
+    # C-level error path decref'ing a temporary capsule while PyErr_Occurred() is set
+    with pytest.raises(TypeError):
+        int(cast("Any", mojo_strata.make_int_linear_capsule(2, 1)))
+
+
+def test_c5_timeout_and_retry_nan_inf_validation() -> None:
+    for bad_sec in (float("nan"), float("inf"), float("-inf"), 0.0, -0.5):
+        with pytest.raises(ValueError, match="positive"):
+            timeout(_inc, seconds=bad_sec)
+
+    for bad_val in (float("nan"), float("inf"), float("-inf")):
+        with pytest.raises(ValueError, match="backoff"):
+            retry(_inc, backoff=bad_val)
+        with pytest.raises(ValueError, match="backoff_multiplier"):
+            retry(_inc, backoff_multiplier=bad_val)
+
+
+def test_h2_stream_closes_generators_and_preserves_completed_items() -> None:
+    # map_stage rejects negative max_in_flight
+    with pytest.raises(ValueError, match="max_in_flight"):
+        map_stage(_double, [1, 2, 3], max_in_flight=-1)
+
+    # 1. Sync stream_stage closes upstream generator on early break/close
+    for limit, ordered in ((1, True), (3, True), (3, False)):
+        closed = False
+
+        def _sync_src() -> Iterator[int]:
+            nonlocal closed
+            try:
+                yield from range(100)
+            finally:
+                closed = True
+
+        gen = _double.stream(_sync_src(), max_in_flight=limit, ordered=ordered)
+        first = next(gen)
+        assert isinstance(first, int)
+        close_fn = getattr(gen, "close", None)
+        assert callable(close_fn)
+        close_fn()
+        assert closed is True
+
+    # 2. Sync stream_stage never drops completed items when upstream raises
+    for limit, ordered in ((1, True), (3, True), (5, True), (3, False)):
+
+        def _failing_src() -> Iterator[int]:
+            yield 10
+            yield 20
+            yield 30
+            msg = "upstream_sync_boom"
+            raise RuntimeError(msg)
+
+        collected: list[int] = []
+
+        def _drain_sync(
+            *,
+            lim: int = limit,
+            ord_flag: bool = ordered,
+            sink: list[int] = collected,
+        ) -> None:
+            sink.extend(
+                _double.stream(_failing_src(), max_in_flight=lim, ordered=ord_flag)
+            )
+
+        with pytest.raises(RuntimeError, match="upstream_sync_boom"):
+            _drain_sync()
+        assert sorted(collected) == [20, 40, 60]
+
+    # 3. Early close does not block on slow in-flight worker threads
+    @task
+    def _slow_after_first(x: int) -> int:
+        if x > 0:
+            time.sleep(0.4)
+        return x * 2
+
+    max_unwind_s = 0.25
+    gen_slow = _slow_after_first.stream(range(10), max_in_flight=3, ordered=True)
+    assert next(gen_slow) == 0
+    t0 = time.perf_counter()
+    cast("Any", gen_slow).close()
+    elapsed = time.perf_counter() - t0
+    assert elapsed < max_unwind_s
+
+
+def test_h2_astream_closes_upstream_generators() -> None:
+    @async_task
+    async def _a_double(x: int) -> int:
+        await asyncio.sleep(0.001)
+        return x * 2
+
+    async def _run() -> None:
+        for limit, ordered in ((1, True), (2, True), (2, False)):
+            aclosed = False
+
+            async def _async_src() -> AsyncIterator[int]:
+                nonlocal aclosed
+                try:
+                    for i in range(100):
+                        await asyncio.sleep(0.001)
+                        yield i
+                finally:
+                    aclosed = True
+
+            async with contextlib.aclosing(
+                cast(
+                    "Any",
+                    _a_double.astream(
+                        _async_src(), max_in_flight=limit, ordered=ordered
+                    ),
+                )
+            ) as stream:
+                async for _ in stream:
+                    break
+            assert aclosed is True
+
+        sync_closed = False
+
+        def _sync_src() -> Iterator[int]:
+            nonlocal sync_closed
+            try:
+                yield from range(100)
+            finally:
+                sync_closed = True
+
+        async with contextlib.aclosing(
+            cast("Any", _a_double.astream(_sync_src(), max_in_flight=3, ordered=True))
+        ) as stream:
+            async for _ in stream:
+                break
+        assert sync_closed is True
+
+    asyncio.run(_run())
+
+
+def test_h2_astream_preserves_completed_items_on_upstream_error() -> None:
+    @async_task
+    async def _a_double(x: int) -> int:
+        await asyncio.sleep(0.001)
+        return x * 2
+
+    async def _run() -> None:
+        for limit, ordered in ((1, True), (3, True), (5, True), (3, False)):
+
+            async def _failing_async_src() -> AsyncIterator[int]:
+                for val in (10, 20, 30):
+                    await asyncio.sleep(0)
+                    yield val
+                msg = "upstream_async_boom"
+                raise RuntimeError(msg)
+
+            collected: list[int] = []
+
+            async def _drain_async(
+                *,
+                lim: int = limit,
+                ord_flag: bool = ordered,
+                sink: list[int] = collected,
+            ) -> None:
+                async for out in _a_double.astream(
+                    _failing_async_src(), max_in_flight=lim, ordered=ord_flag
+                ):
+                    sink.append(out)  # ruff: ignore[manual-list-comprehension]
+
+            with pytest.raises(RuntimeError, match="upstream_async_boom"):
+                await _drain_async()
+            assert sorted(collected) == [20, 40, 60]
+
+    asyncio.run(_run())
+
+
+def test_h3_native_bool_rejection_int64_overflow_and_mode_validation() -> None:
+    lin = native_int_linear(scale=2, bias=1, name="strict_int")
+    flin = native_float_linear(scale=2.0, bias=1.0, name="strict_float")
+    flag_true = True
+    flag_false = False
+
+    # bool must be rejected as input to native int/float stages
+    with pytest.raises(TypeError):
+        lin(flag_true)
+    with pytest.raises(TypeError):
+        lin(flag_false)
+    with pytest.raises(TypeError):
+        flin(flag_true)
+
+    # bool must also be rejected when constructing native_int_linear / capsule
+    with pytest.raises(TypeError):
+        mojo_strata.native_int_linear(flag_true, 0, "bad")
+    with pytest.raises(TypeError):
+        mojo_strata.make_int_linear_capsule(flag_true, 0)
+
+    # Int64 arithmetic overflow must raise OverflowError, not silently wrap around
+    big_val = 1 << 62
+    with pytest.raises(OverflowError):
+        native_int_linear(scale=2, bias=0, name="ovf")(big_val)
+    with pytest.raises(OverflowError):
+        native_stage(mojo_strata.make_int_linear_capsule(2, 0))(big_val)
+
+    # TaskGroup.with_task must reject invalid _mode values and booleans
+    raw_tg = mojo_strata.TaskGroup(_inc)
+    with pytest.raises(ValueError, match="mode"):
+        raw_tg.with_task(_double, cast("Any", 99))
+    with pytest.raises((TypeError, ValueError)):
+        raw_tg.with_task(_double, cast("Any", flag_true))
+
+
+def test_h4_raw_native_stage_and_pycapsule_in_combinators_and_executors() -> None:
+    raw_ns = mojo_strata.native_int_linear(3, 1, "raw_ns")
+    raw_cap = mojo_strata.make_int_linear_capsule(4, 2)
+
+    class _Provider:
+        scale: int = 5
+        bias: int = 1
+
+        def as_native_capsule(self) -> object:
+            return mojo_strata.make_int_linear_capsule(self.scale, self.bias)
+
+    provider = _Provider()
+
+    expected_ns = 16
+    expected_cap = 22
+    expected_prov = 26
+
+    # Raw NativeStage is directly callable and works in all combinators & executors
+    assert raw_ns(5) == expected_ns
+    assert group(raw_ns)(5) == expected_ns
+    assert retry(raw_ns, max_attempts=2)(5) == expected_ns
+    assert fallback(raw_ns, _inc)(5) == expected_ns
+    assert timeout(raw_ns, seconds=1.0)(5) == expected_ns
+    assert branch(lambda x: x > 0, raw_ns, _inc)(5) == expected_ns
+    assert map_task(raw_ns)([1, 2, 3]) == [4, 7, 10]
+    assert zip_tasks(raw_ns, _double)((5, 3)) == (16, 6)
+    assert SequentialExecutor().run(raw_ns, 5) == expected_ns
+    assert TracingExecutor(sequential=True).run(raw_ns, 5) == expected_ns
+    assert TracingExecutor(sequential=False).run(raw_ns, 5) == expected_ns
+    assert asyncio.run(arun(raw_ns, 5)) == expected_ns
+
+    # Raw PyCapsule works in combinators, TaskGroup, Sequential/TracingExecutor, arun
+    cap_any = cast("Any", raw_cap)
+    assert group(cap_any)(5) == expected_cap
+    assert retry(cap_any)(5) == expected_cap
+    assert map_task(cap_any)([1, 2]) == [6, 10]
+    assert SequentialExecutor().run(TaskGroup(cap_any), 5) == expected_cap
+    assert TracingExecutor(sequential=True).run(TaskGroup(cap_any), 5) == expected_cap
+    assert TracingExecutor(sequential=False).run(TaskGroup(cap_any), 5) == expected_cap
+    assert asyncio.run(arun(cap_any, 5)) == expected_cap
+
+    # NativeCapsuleProvider works directly in executors & arun
+    prov_any = cast("Any", provider)
+    assert SequentialExecutor().run(prov_any, 5) == expected_prov
+    assert TracingExecutor(sequential=True).run(prov_any, 5) == expected_prov
+    assert asyncio.run(arun(prov_any, 5)) == expected_prov
+
+
+def test_h4_sequential_executor_traverses_map_and_branch() -> None:
+    caller_tid = threading.get_ident()
+    seen_tids: list[int] = []
+    intervals: list[tuple[int, int]] = []
+
+    @task
+    def _rec_a(x: int) -> int:
+        seen_tids.append(threading.get_ident())
+        s = time.perf_counter_ns()
+        time.sleep(0.01)
+        e = time.perf_counter_ns()
+        intervals.append((s, e))
+        return x + 1
+
+    @task
+    def _rec_b(x: int) -> int:
+        seen_tids.append(threading.get_ident())
+        s = time.perf_counter_ns()
+        time.sleep(0.01)
+        e = time.perf_counter_ns()
+        intervals.append((s, e))
+        return x * 2
+
+    # SequentialExecutor inside map_task(a & b) runs 100% on caller thread, no overlap
+    seq = SequentialExecutor()
+    m_pipe = map_task(_rec_a & _rec_b)
+    assert seq.run(m_pipe, [3, 4]) == [(4, 6), (5, 8)]
+    assert set(seen_tids) == {caller_tid}
+    for i in range(len(intervals) - 1):
+        assert intervals[i][1] <= intervals[i + 1][0]
+
+    # SequentialExecutor inside branch(p, a & b, c) also runs strictly sequentially
+    seen_tids.clear()
+    intervals.clear()
+    br_pipe = branch(lambda x: x > 0, _rec_a & _rec_b, _inc & _double)
+    assert seq.run(br_pipe, 5) == (6, 10)
+    assert set(seen_tids) == {caller_tid}
+    assert intervals[0][1] <= intervals[1][0]
+
+
+def test_h4_tracing_stats_and_diagrams_traverse_combinators() -> None:
+    # TracingExecutor traces leaf stages inside composite combinators (seq & par)
+    for is_seq in (True, False):
+        tracer = TracingExecutor(sequential=is_seq)
+        res = tracer.run(
+            retry(fallback(_inc & _double, _triple & _quad), max_attempts=2),
+            5,
+        )
+        assert res == (6, 10)
+        names = {s.stage for s in tracer.spans}
+        assert {"_inc", "_double"} <= names
+
+        tracer.clear()
+        assert tracer.run(map_task(_inc & _double), [1, 2]) == [(2, 2), (3, 4)]
+        expected_map_spans = 4
+        assert len(tracer.spans) == expected_map_spans
+
+    # graph_stats & diagrams traverse all composite combinators
+    composite = branch(
+        lambda x: x > 0,
+        retry(_inc | _double, max_attempts=2),
+        fallback(_triple, _quad),
+    )
+    stats = graph_stats(composite)
+    expected_stages = 4
+    expected_depth = 2
+    assert stats.stage_count == expected_stages
+    assert stats.max_parallel_width == 1
+    assert stats.critical_depth == expected_depth
+
+    mmd = to_mermaid(composite)
+    dot = to_dot(composite)
+    assert "branch" in mmd
+    assert "retry" in mmd
+    assert "fallback" in mmd
+    assert "_inc" in mmd
+    assert "_quad" in mmd
+    assert "branch" in dot
+    assert "retry" in dot
+    assert "fallback" in dot
+
+
+def test_h5_zip_length_validation_and_combinator_subclasses() -> None:
+    z = zip_tasks(_inc, _double)
+
+    # Extra elements raise ValueError instead of silently truncating
+    with pytest.raises(ValueError, match="expected 2 elements, got 4"):
+        cast("Any", z)((10, 20, 999, 888))
+
+    # Too few elements raise ValueError
+    with pytest.raises(ValueError, match="expected 2 elements, got 1"):
+        cast("Any", z)((10,))
+
+    # SequentialExecutor & TracingExecutor enforce the same validation
+    with pytest.raises(ValueError, match="expected 2 elements, got 3"):
+        SequentialExecutor().run(z, (1, 2, 3))
+    with pytest.raises(ValueError, match="expected 2 elements, got 1"):
+        TracingExecutor(sequential=True).run(z, (1,))
+
+    # arun validates length BEFORE creating coroutines (zero unawaited RuntimeWarning!)
+    @async_task
+    async def _a_inc(x: int) -> int:
+        await asyncio.sleep(0)
+        return x + 1
+
+    z_async = zip_tasks(_a_inc, _a_inc, _a_inc)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always", RuntimeWarning)
+        with pytest.raises(ValueError, match="expected 3 elements, got 1"):
+            asyncio.run(arun(z_async, (1,)))
+        with pytest.raises(ValueError, match="expected 3 elements, got 4"):
+            asyncio.run(arun(z_async, (1, 2, 3, 4)))
+    unawaited = [w for w in caught if "was never awaited" in str(w.message)]
+    assert unawaited == []
+
+    # Subclasses of combinators work in arun, introspect, and executors
+    class _SubMap[I, O](MapTask[I, O]):
+        pass
+
+    class _SubBranch[I, O](BranchTask[I, O]):
+        pass
+
+    class _SubRetry[I, O](RetryTask[I, O]):
+        pass
+
+    sub_pipe = _SubMap(_SubBranch(lambda x: x % 2 == 0, _SubRetry(_a_inc), _double))
+    assert asyncio.run(arun(sub_pipe, [2, 3, 4])) == [3, 6, 5]
+    assert SequentialExecutor().run(sub_pipe, [2, 3, 4]) == [3, 6, 5]
+    assert graph_stats(sub_pipe).stage_count == 2  # ruff: ignore[magic-value-comparison]
+    assert "branch" in to_mermaid(sub_pipe)
+
+
+def test_m2_select_typing_and_l2_diagram_escaping() -> None:
+    @task
+    def _to_str(x: int) -> str:
+        return f"v={x}"
+
+    pick_str = (_inc & _to_str) | select(1)
+    picked: str = pick_str(5)
+    assert picked == "v=5"
+    assert isinstance(select(0), SelectTask)
+    assert isinstance(select(1), SelectTask)
+
+    # L2: Backslash, double quote, newline, and right bracket escaping
+    def _tricky(x: int) -> int:
+        return x
+
+    _tricky.__name__ = 'a\\b "c"\nline2]end'
+    tricky_task = task(_tricky)
+
+    mmd = to_mermaid(tricky_task)
+    assert r"a\\b &quot;c&quot;\nline2&#93;end" in mmd
+    assert "\nline2" not in mmd
+
+    dot = to_dot(tricky_task, name='My "Graph"\n1')
+    assert r"a\\b \"c\"\nline2]end" in dot
+    assert r'digraph "My \"Graph\"\n1" {' in dot
+
+    with pytest.raises(ValueError, match="Unsupported diagram direction"):
+        to_mermaid(_inc, direction="LR; evil")
+    with pytest.raises(ValueError, match="Unsupported diagram direction"):
+        to_dot(_inc, direction="LR; evil")
+    with pytest.raises(ValueError, match="non-empty"):
+        to_dot(_inc, name="   ")

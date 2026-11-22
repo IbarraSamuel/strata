@@ -9,6 +9,7 @@ All pipelines built with `F[fn]`, `Unit[fn]`, `Id[T]`, `Spread[fn]`, `group`,
 - Compile-time evaluation (`comptime_run[value]`)
 """
 
+from std.builtin.rebind import downcast
 from std.reflection import get_function_name, reflect
 from std.time import perf_counter_ns
 
@@ -140,8 +141,14 @@ struct GraphBuilder(Movable):
         """
         var nid = self.next_id
         self.next_id += 1
-        var safe_label = label.replace('"', "'")
+        var safe_label: String
         if self.is_dot:
+            safe_label = (
+                label.replace("\\", "\\\\")
+                .replace('"', "'")
+                .replace("\r", "")
+                .replace("\n", "\\n")
+            )
             self.lines.append(
                 String(self._pad(), "n", nid, ' [label="', safe_label, '"];')
             )
@@ -150,6 +157,13 @@ struct GraphBuilder(Movable):
                     String(self._pad(), "n", e, " -> n", nid, ";")
                 )
         else:
+            safe_label = (
+                label.replace("\\", "\\\\")
+                .replace('"', "'")
+                .replace("\r", "")
+                .replace("\n", " ")
+                .replace("]", "&#93;")
+            )
             self.lines.append(
                 String(self._pad(), "n", nid, '["', safe_label, '"]')
             )
@@ -299,8 +313,9 @@ __async def _run_fn_task[
     in_ptr: Pointer[fns[0].I, in_orig],
     out_ptr: Pointer[Tuple[*fns.map[FnToOut]()].Ts[ci], out_orig],
 ):
+    comptime to = downcast[Tuple[*fns.map[FnToOut]()].Ts[ci], Movable]
     ref inp = rebind[fns[ci].I](in_ptr[])
-    out_ptr[] = rebind_var[Tuple[*fns.map[FnToOut]()].Ts[ci]](fns[ci].run(inp))
+    out_ptr.unsafe_bitcast[to]().unsafe_write(rebind_var[to](fns[ci].run(inp)))
 
 
 @always_inline
@@ -316,9 +331,10 @@ __async def _run_fn_task_traced[
     start_ptr: Pointer[Int, t_orig],
     end_ptr: Pointer[Int, t_orig],
 ):
+    comptime to = downcast[Tuple[*fns.map[FnToOut]()].Ts[ci], Movable]
     ref inp = rebind[fns[ci].I](in_ptr[])
     start_ptr[] = perf_counter_ns()
-    out_ptr[] = rebind_var[Tuple[*fns.map[FnToOut]()].Ts[ci]](fns[ci].run(inp))
+    out_ptr.unsafe_bitcast[to]().unsafe_write(rebind_var[to](fns[ci].run(inp)))
     end_ptr[] = perf_counter_ns()
 
 
@@ -366,9 +382,10 @@ def par_exec_sequential[
     """
     var o = uninitialized_storage[Tuple[*fns.map[FnToOut]()]]()
     comptime for ci in range(fns.length):
+        comptime to = downcast[Tuple[*fns.map[FnToOut]()].Ts[ci], Movable]
         ref inp = rebind[fns[ci].I](val)
-        o[ci] = rebind_var[Tuple[*fns.map[FnToOut]()].Ts[ci]](
-            fns[ci].run_sequential(inp)
+        Pointer(to=o[ci]).unsafe_bitcast[to]().unsafe_write(
+            rebind_var[to](fns[ci].run_sequential(inp))
         )
     return o^
 
@@ -394,18 +411,22 @@ def par_exec_with[
     var o = uninitialized_storage[Tuple[*fns.map[FnToOut]()]]()
     comptime if not E.IS_PARALLEL:
         comptime for ci in range(fns.length):
+            comptime to = downcast[Tuple[*fns.map[FnToOut]()].Ts[ci], Movable]
             ref inp = rebind[fns[ci].I](val)
-            o[ci] = rebind_var[Tuple[*fns.map[FnToOut]()].Ts[ci]](
-                fns[ci].run_with(exec, inp)
+            Pointer(to=o[ci]).unsafe_bitcast[to]().unsafe_write(
+                rebind_var[to](fns[ci].run_with(exec, inp))
             )
         return o^
     else:
         var limit = exec.concurrency_limit()
         if limit == 1:
             comptime for ci in range(fns.length):
+                comptime to = downcast[
+                    Tuple[*fns.map[FnToOut]()].Ts[ci], Movable
+                ]
                 ref inp = rebind[fns[ci].I](val)
-                o[ci] = rebind_var[Tuple[*fns.map[FnToOut]()].Ts[ci]](
-                    fns[ci].run_with(exec, inp)
+                Pointer(to=o[ci]).unsafe_bitcast[to]().unsafe_write(
+                    rebind_var[to](fns[ci].run_with(exec, inp))
                 )
             return o^
 

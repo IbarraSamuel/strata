@@ -179,12 +179,12 @@ def main():
 Sample Mermaid output:
 ```mermaid
 flowchart LR
-  n0["parse"]
-  n1["left"]
+  n0["parse (SIMD[DType.int, 1&#93; -> SIMD[DType.int, 1&#93;)"]
+  n1["left (SIMD[DType.int, 1&#93; -> SIMD[DType.int, 1&#93;)"]
   n0 --> n1
-  n2["right"]
+  n2["right (SIMD[DType.int, 1&#93; -> SIMD[DType.int, 1&#93;)"]
   n0 --> n2
-  n3["spread(merge)"]
+  n3["_spread2_fn (std.builtin.tuple.Tuple[<unprintable>, {}&#93; -> SIMD[DType.int, 1&#93;)"]
   n1 --> n3
   n2 --> n3
 ```

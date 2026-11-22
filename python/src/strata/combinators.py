@@ -2,23 +2,95 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from time import sleep
-from typing import TYPE_CHECKING, Any, Literal, cast, overload, override
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Literal,
+    Never,
+    Protocol,
+    cast,
+    overload,
+    override,
+)
 
 from strata import mojo_strata
-from strata.graph import Combinable, GroupMode, Task, TaskGroup, _Stage
+from strata.graph import (
+    Combinable,
+    GroupMode,
+    Task,
+    TaskGroup,
+    _invoke_stage,
+    _Stage,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+_MAX_RETRY_DELAY: float = 86_400.0
+
 
 def _call_stage[I, O](stage: _Stage[I, O], msg: I) -> O:
-    if isinstance(stage, mojo_strata.TaskGroup):
-        return cast("O", stage.call(msg))
-    return stage(msg)
+    return _invoke_stage(stage, msg)
+
+
+def _validate_zip_input(stage_count: int, msg: object) -> Sequence[Any]:
+    seq = cast("Sequence[Any]", msg)
+    if len(seq) != stage_count:
+        err = f"ZipTask expected {stage_count} elements, got {len(seq)}"
+        raise ValueError(err)
+    return seq
+
+
+class _RetryConfig(Protocol):
+    max_attempts: int
+    backoff: float
+    backoff_multiplier: float
+    retry_on: tuple[type[BaseException], ...]
+
+
+def _run_with_retry[I, O](
+    fn: Callable[[I], O],
+    msg: I,
+    cfg: _RetryConfig,
+) -> O:
+    delay = cfg.backoff
+    for attempt in range(cfg.max_attempts):
+        try:
+            return fn(msg)
+        except cfg.retry_on:
+            if attempt + 1 >= cfg.max_attempts:
+                raise
+            if delay > 0.0:
+                sleep(delay)
+                delay = min(delay * cfg.backoff_multiplier, _MAX_RETRY_DELAY)
+    msg_0 = "unreachable"
+    raise AssertionError(msg_0)  # pragma: no cover
+
+
+def _run_with_timeout[I, O](
+    fn: Callable[[I], O],
+    msg: I,
+    seconds: float,
+) -> O:
+    pool = ThreadPoolExecutor(max_workers=1)
+    future = pool.submit(fn, msg)
+    timed_out = False
+    try:
+        return future.result(timeout=seconds)
+    except FuturesTimeoutError as err:
+        timed_out = True
+        future.cancel()
+        pool.shutdown(wait=False, cancel_futures=True)
+        timeout_msg = f"Stage timed out after {seconds}s"
+        raise TimeoutError(timeout_msg) from err
+    finally:
+        if not timed_out:
+            pool.shutdown(wait=True)
 
 
 class IdTask[T](Combinable, Task[T, T]):
@@ -54,20 +126,45 @@ class SelectTask[I, O](Combinable, Task[I, O]):
         return seq[self.index]
 
 
-@overload
-def select[T0](index: Literal[0]) -> SelectTask[tuple[T0, *tuple[Any, ...]], T0]: ...
+class _Select0Task(SelectTask[Never, object]):
+    def __init__(self) -> None:
+        super().__init__(0)
+
+    @override
+    def __call__[T0](self, msg: tuple[T0, *tuple[object, ...]], /) -> T0:
+        return msg[0]
+
+
+class _Select1Task(SelectTask[Never, object]):
+    def __init__(self) -> None:
+        super().__init__(1)
+
+    @override
+    def __call__[T1](self, msg: tuple[object, T1, *tuple[object, ...]], /) -> T1:
+        return msg[1]
+
+
+class _Select2Task(SelectTask[Never, object]):
+    def __init__(self) -> None:
+        super().__init__(2)
+
+    @override
+    def __call__[T2](
+        self, msg: tuple[object, object, T2, *tuple[object, ...]], /
+    ) -> T2:
+        return msg[2]
 
 
 @overload
-def select[T1](
-    index: Literal[1],
-) -> SelectTask[tuple[Any, T1, *tuple[Any, ...]], T1]: ...
+def select(index: Literal[0]) -> _Select0Task: ...
 
 
 @overload
-def select[T2](
-    index: Literal[2],
-) -> SelectTask[tuple[Any, Any, T2, *tuple[Any, ...]], T2]: ...
+def select(index: Literal[1]) -> _Select1Task: ...
+
+
+@overload
+def select(index: Literal[2]) -> _Select2Task: ...
 
 
 @overload
@@ -87,6 +184,12 @@ def select(index: int) -> SelectTask[Any, Any]:
     SelectTask[Any, Any]
         Projection stage conforming to `Combinable`.
     """
+    if index == 0:
+        return _Select0Task()
+    if index == 1:
+        return _Select1Task()
+    if index == 2:  # ruff: ignore[magic-value-comparison]
+        return _Select2Task()
     return SelectTask(index)
 
 
@@ -155,10 +258,10 @@ class ZipTask[I, O](Combinable, Task[I, O]):
 
     @override
     def __call__(self, msg: I, /) -> O:
+        seq = _validate_zip_input(len(self.stages), msg)
         if len(self.stages) == 1:
-            seq = cast("Sequence[Any]", msg)
             return cast("O", (_call_stage(self.stages[0], seq[0]),))
-        return cast("O", self._runner.call(msg))
+        return cast("O", self._runner.call(seq))
 
 
 @overload
@@ -345,6 +448,12 @@ class RetryTask[I, O](Combinable, Task[I, O]):
         backoff_multiplier: float = 2.0,
         retry_on: tuple[type[BaseException], ...] = (Exception,),
     ) -> None:
+        if not math.isfinite(backoff):
+            msg = "Retry backoff must be finite"
+            raise ValueError(msg)
+        if not math.isfinite(backoff_multiplier):
+            msg = "Retry backoff_multiplier must be finite"
+            raise ValueError(msg)
         self.stage = stage
         self.max_attempts = max(max_attempts, 1)
         self.backoff = max(backoff, 0.0)
@@ -353,18 +462,10 @@ class RetryTask[I, O](Combinable, Task[I, O]):
 
     @override
     def __call__(self, msg: I, /) -> O:
-        delay = self.backoff
-        for attempt in range(self.max_attempts):
-            try:
-                return _call_stage(self.stage, msg)
-            except self.retry_on:
-                if attempt + 1 >= self.max_attempts:
-                    raise
-                if delay > 0.0:
-                    sleep(delay)
-                    delay *= self.backoff_multiplier
-        msg_0 = "unreachable"
-        raise AssertionError(msg_0)  # pragma: no cover
+        def _step(val: I) -> O:
+            return _call_stage(self.stage, val)
+
+        return _run_with_retry(_step, msg, self)
 
 
 def retry[I, O](
@@ -462,28 +563,19 @@ class TimeoutTask[I, O](Combinable, Task[I, O]):
     seconds: float
 
     def __init__(self, stage: _Stage[I, O], seconds: float) -> None:
-        if seconds <= 0:
-            msg = "Timeout seconds must be positive"
+        if not math.isfinite(seconds) or seconds <= 0:
+            msg = "Timeout seconds must be finite and positive"
             raise ValueError(msg)
         self.stage = stage
         self.seconds = seconds
 
     @override
     def __call__(self, msg: I, /) -> O:
-        pool = ThreadPoolExecutor(max_workers=1)
-        future = pool.submit(_call_stage, self.stage, msg)
-        timed_out = False
-        try:
-            return cast("O", future.result(timeout=self.seconds))
-        except FuturesTimeoutError as err:
-            timed_out = True
-            future.cancel()
-            pool.shutdown(wait=False, cancel_futures=True)
-            timeout_msg = f"Stage timed out after {self.seconds}s"
-            raise TimeoutError(timeout_msg) from err
-        finally:
-            if not timed_out:
-                pool.shutdown(wait=True)
+        return _run_with_timeout(
+            lambda m: _call_stage(self.stage, m),
+            msg,
+            self.seconds,
+        )
 
 
 def timeout[I, O](stage: _Stage[I, O], seconds: float) -> TimeoutTask[I, O]:
@@ -494,7 +586,7 @@ def timeout[I, O](stage: _Stage[I, O], seconds: float) -> TimeoutTask[I, O]:
     stage : _Stage[I, O]
         Stage to bound in time.
     seconds : float
-        Maximum allowed duration in seconds (must be positive).
+        Maximum allowed duration in seconds (must be finite and positive).
 
     Returns
     -------

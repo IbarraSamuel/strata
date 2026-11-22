@@ -164,11 +164,13 @@ trait ComposableFallibleStage(FallibleStage):
         ]
         final = uninitialized_storage[type_of(final)]()
         comptime t0 = type_of(final.tasks[0])
-        final.tasks[0] = rebind_var[t0](Pointer(to=self))
+        Pointer(to=final.tasks[0]).unsafe_write(
+            rebind_var[t0](Pointer(to=self))
+        )
         comptime for i in range(other_elems.length):
             var ptr = rebind[Pointer[other_elems[i], po]](other.tasks[i])
             comptime ti = type_of(final.tasks[i + 1])
-            final.tasks[i + 1] = rebind_var[ti](ptr)
+            Pointer(to=final.tasks[i + 1]).unsafe_write(rebind_var[ti](ptr))
 
 
 struct RaisingSequence[
@@ -327,7 +329,9 @@ struct RaisingParallel[
         self.tasks = uninitialized_storage[type_of(self.tasks)]()
         comptime for i in range(Self.elements.length):
             comptime ti = type_of(self.tasks[i])
-            self.tasks[i] = rebind_var[ti](Pointer(to=callables[i]))
+            Pointer(to=self.tasks[i]).unsafe_write(
+                rebind_var[ti](Pointer(to=callables[i]))
+            )
 
     @staticmethod
     __async def _run_elem[
@@ -344,7 +348,9 @@ struct RaisingParallel[
         comptime to = downcast[Self.O.Ts[i], Movable]
         ref in_value = rebind[Self.elements[i].I](in_ptr[])
         try:
-            out_ptr[] = rebind_var[to](task_ptr[](in_value))
+            out_ptr.unsafe_bitcast[to]().unsafe_write(
+                rebind_var[to](task_ptr[](in_value))
+            )
         except e:
             err_ptr[] = String(e)
 
@@ -385,16 +391,19 @@ struct RaisingParallel[
             if case .Some(msg) = errors[i]:
                 messages.append(msg)
 
-        if len(messages) == 1:
-            # Avoid running destructors on uninitialized tuple slots from failed branches.
+        if len(messages) > 0:
+            # Destroy only slots that succeeded; skip uninitialized slots from failed branches.
+            comptime for i in range(Self.elements.length):
+                if not errors[i]:
+                    comptime td = downcast[Self.O.Ts[i], Deinitable]
+                    Pointer(to=_out_tp[i]).unsafe_bitcast[
+                        td
+                    ]().unsafe_deinit_pointee()
             __mlir_op.`lit.ownership.mark_destroyed`(
                 __get_mvalue_as_litref(_out_tp)
             )
-            raise Error(messages[0])
-        if len(messages) > 1:
-            __mlir_op.`lit.ownership.mark_destroyed`(
-                __get_mvalue_as_litref(_out_tp)
-            )
+            if len(messages) == 1:
+                raise Error(messages[0])
             raise Error(
                 String(
                     "Parallel stage failures (",
@@ -458,10 +467,10 @@ struct RaisingParallel[
                 self.tasks[i]
             )
             comptime ti = type_of(final.tasks[i])
-            final.tasks[i] = rebind_var[ti](ptr)
+            Pointer(to=final.tasks[i]).unsafe_write(rebind_var[ti](ptr))
         comptime last_t = type_of(final.tasks[Self.elements.length])
-        final.tasks[Self.elements.length] = rebind_var[last_t](
-            Pointer(to=other)
+        Pointer(to=final.tasks[Self.elements.length]).unsafe_write(
+            rebind_var[last_t](Pointer(to=other))
         )
 
     def __and__[
@@ -494,11 +503,13 @@ struct RaisingParallel[
                 self.tasks[i]
             )
             comptime ti = type_of(final.tasks[i])
-            final.tasks[i] = rebind_var[ti](ptr)
+            Pointer(to=final.tasks[i]).unsafe_write(rebind_var[ti](ptr))
         comptime for j in range(other_elems.length):
             var ptr = rebind[Pointer[other_elems[j], po]](other.tasks[j])
             comptime tj = type_of(final.tasks[Self.elements.length + j])
-            final.tasks[Self.elements.length + j] = rebind_var[tj](ptr)
+            Pointer(to=final.tasks[Self.elements.length + j]).unsafe_write(
+                rebind_var[tj](ptr)
+            )
 
 
 @fieldwise_init("implicit")

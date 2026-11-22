@@ -203,11 +203,13 @@ trait ComposableStage(Stage):
         ]
         final = uninitialized_storage[type_of(final)]()
         comptime t0 = type_of(final.tasks[0])
-        final.tasks[0] = rebind_var[t0](Pointer(to=self))
+        Pointer(to=final.tasks[0]).unsafe_write(
+            rebind_var[t0](Pointer(to=self))
+        )
         comptime for i in range(other_elems.length):
             var ptr = rebind[Pointer[other_elems[i], po]](other.tasks[i])
             comptime ti = type_of(final.tasks[i + 1])
-            final.tasks[i + 1] = rebind_var[ti](ptr)
+            Pointer(to=final.tasks[i + 1]).unsafe_write(rebind_var[ti](ptr))
 
 
 struct Sequence[
@@ -387,7 +389,9 @@ struct Parallel[
         self.tasks = uninitialized_storage[type_of(self.tasks)]()
         comptime for i in range(Self.elements.length):
             comptime ti = type_of(self.tasks[i])
-            self.tasks[i] = rebind_var[ti](Pointer(to=callables[i]))
+            Pointer(to=self.tasks[i]).unsafe_write(
+                rebind_var[ti](Pointer(to=callables[i]))
+            )
 
     @staticmethod
     __async def _run_elem[
@@ -401,7 +405,9 @@ struct Parallel[
     ):
         comptime to = downcast[Self.O.Ts[i], Movable]
         ref in_value = rebind[Self.elements[i].I](in_ptr[])
-        out_ptr[] = rebind_var[to](task_ptr[](in_value))
+        out_ptr.unsafe_bitcast[to]().unsafe_write(
+            rebind_var[to](task_ptr[](in_value))
+        )
 
     @staticmethod
     __async def _run_elem_traced[
@@ -419,7 +425,9 @@ struct Parallel[
         comptime to = downcast[Self.O.Ts[i], Movable]
         ref in_value = rebind[Self.elements[i].I](in_ptr[])
         start_ptr[] = perf_counter_ns()
-        out_ptr[] = rebind_var[to](task_ptr[](in_value))
+        out_ptr.unsafe_bitcast[to]().unsafe_write(
+            rebind_var[to](task_ptr[](in_value))
+        )
         end_ptr[] = perf_counter_ns()
 
     def __call__(self, v: Self.I) -> Self.O:
@@ -470,7 +478,9 @@ struct Parallel[
                     Pointer[Self.elements[i], origin=Self.origin]
                 ](self.tasks[i])
                 ref in_value = rebind[Self.elements[i].I](v)
-                _out_tp[i] = rebind_var[to](task_i[].run_with(exec, in_value))
+                Pointer(to=_out_tp[i]).unsafe_bitcast[to]().unsafe_write(
+                    rebind_var[to](task_i[].run_with(exec, in_value))
+                )
             return _out_tp^
         else:
             var limit = exec.concurrency_limit()
@@ -481,8 +491,8 @@ struct Parallel[
                         Pointer[Self.elements[i], origin=Self.origin]
                     ](self.tasks[i])
                     ref in_value = rebind[Self.elements[i].I](v)
-                    _out_tp[i] = rebind_var[to](
-                        task_i[].run_with(exec, in_value)
+                    Pointer(to=_out_tp[i]).unsafe_bitcast[to]().unsafe_write(
+                        rebind_var[to](task_i[].run_with(exec, in_value))
                     )
                 return _out_tp^
 
@@ -579,10 +589,10 @@ struct Parallel[
                 self.tasks[i]
             )
             comptime ti = type_of(final.tasks[i])
-            final.tasks[i] = rebind_var[ti](ptr)
+            Pointer(to=final.tasks[i]).unsafe_write(rebind_var[ti](ptr))
         comptime last_t = type_of(final.tasks[Self.elements.length])
-        final.tasks[Self.elements.length] = rebind_var[last_t](
-            Pointer(to=other)
+        Pointer(to=final.tasks[Self.elements.length]).unsafe_write(
+            rebind_var[last_t](Pointer(to=other))
         )
 
     def __and__[
@@ -613,11 +623,13 @@ struct Parallel[
                 self.tasks[i]
             )
             comptime ti = type_of(final.tasks[i])
-            final.tasks[i] = rebind_var[ti](ptr)
+            Pointer(to=final.tasks[i]).unsafe_write(rebind_var[ti](ptr))
         comptime for j in range(other_elems.length):
             var ptr = rebind[Pointer[other_elems[j], po]](other.tasks[j])
             comptime tj = type_of(final.tasks[Self.elements.length + j])
-            final.tasks[Self.elements.length + j] = rebind_var[tj](ptr)
+            Pointer(to=final.tasks[Self.elements.length + j]).unsafe_write(
+                rebind_var[tj](ptr)
+            )
 
 
 @fieldwise_init("implicit")
@@ -862,7 +874,9 @@ struct OwnedParallel[*elements: _MovableStage](Stage, Movable):
     ):
         comptime to = downcast[Self.O.Ts[i], Movable]
         ref in_value = rebind[Self.elements[i].I](in_ptr[])
-        out_ptr[] = rebind_var[to](task_ptr[](in_value))
+        out_ptr.unsafe_bitcast[to]().unsafe_write(
+            rebind_var[to](task_ptr[](in_value))
+        )
 
     @staticmethod
     __async def _run_elem_traced[
@@ -881,7 +895,9 @@ struct OwnedParallel[*elements: _MovableStage](Stage, Movable):
         comptime to = downcast[Self.O.Ts[i], Movable]
         ref in_value = rebind[Self.elements[i].I](in_ptr[])
         start_ptr[] = perf_counter_ns()
-        out_ptr[] = rebind_var[to](task_ptr[](in_value))
+        out_ptr.unsafe_bitcast[to]().unsafe_write(
+            rebind_var[to](task_ptr[](in_value))
+        )
         end_ptr[] = perf_counter_ns()
 
     def __call__(self, v: Self.I) -> Self.O:
@@ -923,8 +939,8 @@ struct OwnedParallel[*elements: _MovableStage](Stage, Movable):
             comptime for i in range(Self.elements.length):
                 comptime to = downcast[Self.O.Ts[i], Movable]
                 ref in_value = rebind[Self.elements[i].I](v)
-                _out_tp[i] = rebind_var[to](
-                    self.tasks[i].run_with(exec, in_value)
+                Pointer(to=_out_tp[i]).unsafe_bitcast[to]().unsafe_write(
+                    rebind_var[to](self.tasks[i].run_with(exec, in_value))
                 )
             return _out_tp^
         else:
@@ -933,8 +949,8 @@ struct OwnedParallel[*elements: _MovableStage](Stage, Movable):
                 comptime for i in range(Self.elements.length):
                     comptime to = downcast[Self.O.Ts[i], Movable]
                     ref in_value = rebind[Self.elements[i].I](v)
-                    _out_tp[i] = rebind_var[to](
-                        self.tasks[i].run_with(exec, in_value)
+                    Pointer(to=_out_tp[i]).unsafe_bitcast[to]().unsafe_write(
+                        rebind_var[to](self.tasks[i].run_with(exec, in_value))
                     )
                 return _out_tp^
 

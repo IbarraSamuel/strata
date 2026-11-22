@@ -3,28 +3,49 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 from collections import deque
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from typing import TYPE_CHECKING, Any, cast
 
-from strata import mojo_strata
 from strata.async_support import arun
+from strata.graph import _invoke_stage
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterable, AsyncIterator, Iterable, Iterator
+    from collections.abc import (
+        AsyncGenerator,
+        AsyncIterable,
+        AsyncIterator,
+        Iterable,
+        Iterator,
+    )
 
 
 def _default_in_flight() -> int:
     return min(32, (os.cpu_count() or 1) + 4)
 
 
-def _invoke_sync(stage: object, item: object) -> object:
-    if isinstance(stage, mojo_strata.TaskGroup):
-        return stage.call(item)
-    if isinstance(stage, mojo_strata.NativeStage):
-        return stage.call(item)
-    return cast("Any", stage)(item)
+def _pull_next[I](
+    iterator: Iterator[I],
+) -> tuple[bool, I | None, Exception | None]:
+    try:
+        return (True, next(iterator), None)
+    except StopIteration:
+        return (False, None, None)
+    except Exception as exc:  # ruff: ignore[blind-except]
+        return (False, None, exc)
+
+
+async def _apull_next[I](
+    async_iter: AsyncIterator[I],
+) -> tuple[bool, I | None, Exception | None]:
+    try:
+        return (True, await anext(async_iter), None)
+    except StopAsyncIteration:
+        return (False, None, None)
+    except Exception as exc:  # ruff: ignore[blind-except]
+        return (False, None, exc)
 
 
 def _stream_ordered[I, O](
@@ -35,30 +56,35 @@ def _stream_ordered[I, O](
     pool = ThreadPoolExecutor(max_workers=max_in_flight)
     pending: deque[Future[object]] = deque()
     exhausted = False
+    upstream_error: Exception | None = None
+    completed = False
     try:
         while len(pending) < max_in_flight:
-            try:
-                item = next(iterator)
-            except StopIteration:
+            has_item, item, err = _pull_next(iterator)
+            if not has_item:
                 exhausted = True
+                upstream_error = err
                 break
-            pending.append(pool.submit(_invoke_sync, stage, item))
+            pending.append(pool.submit(_invoke_stage, stage, item))
 
         while pending:
             fut = pending.popleft()
-            result = cast("O", fut.result())
+            yield cast("O", fut.result())
             if not exhausted:
-                try:
-                    nxt = next(iterator)
-                except StopIteration:
+                has_item, nxt, err = _pull_next(iterator)
+                if not has_item:
                     exhausted = True
+                    upstream_error = err
                 else:
-                    pending.append(pool.submit(_invoke_sync, stage, nxt))
-            yield result
+                    pending.append(pool.submit(_invoke_stage, stage, nxt))
+
+        if upstream_error is not None:
+            raise upstream_error
+        completed = True
     finally:
         for fut in pending:
             fut.cancel()
-        pool.shutdown(wait=True, cancel_futures=True)
+        pool.shutdown(wait=completed, cancel_futures=True)
 
 
 def _stream_unordered[I, O](
@@ -69,31 +95,36 @@ def _stream_unordered[I, O](
     pool = ThreadPoolExecutor(max_workers=max_in_flight)
     pending: set[Future[object]] = set()
     exhausted = False
+    upstream_error: Exception | None = None
+    completed = False
     try:
         while len(pending) < max_in_flight:
-            try:
-                item = next(iterator)
-            except StopIteration:
+            has_item, item, err = _pull_next(iterator)
+            if not has_item:
                 exhausted = True
+                upstream_error = err
                 break
-            pending.add(pool.submit(_invoke_sync, stage, item))
+            pending.add(pool.submit(_invoke_stage, stage, item))
 
         while pending:
             done, pending = wait(pending, return_when=FIRST_COMPLETED)
             for fut in done:
-                result = cast("O", fut.result())
+                yield cast("O", fut.result())
                 if not exhausted:
-                    try:
-                        nxt = next(iterator)
-                    except StopIteration:
+                    has_item, nxt, err = _pull_next(iterator)
+                    if not has_item:
                         exhausted = True
+                        upstream_error = err
                     else:
-                        pending.add(pool.submit(_invoke_sync, stage, nxt))
-                yield result
+                        pending.add(pool.submit(_invoke_stage, stage, nxt))
+
+        if upstream_error is not None:
+            raise upstream_error
+        completed = True
     finally:
         for fut in pending:
             fut.cancel()
-        pool.shutdown(wait=True, cancel_futures=True)
+        pool.shutdown(wait=completed, cancel_futures=True)
 
 
 def stream_stage[I, O](
@@ -133,15 +164,20 @@ def stream_stage[I, O](
     if max_in_flight < 1:
         msg = "max_in_flight must be >= 1"
         raise ValueError(msg)
-    if max_in_flight == 1:
-        for item in items:
-            yield cast("O", _invoke_sync(stage, item))
-        return
     iterator = iter(items)
-    if ordered:
-        yield from _stream_ordered(stage, iterator, max_in_flight)
-    else:
-        yield from _stream_unordered(stage, iterator, max_in_flight)
+    try:
+        if max_in_flight == 1:
+            for item in iterator:
+                yield _invoke_stage(stage, item)
+            return
+        if ordered:
+            yield from _stream_ordered(stage, iterator, max_in_flight)
+        else:
+            yield from _stream_unordered(stage, iterator, max_in_flight)
+    finally:
+        close_fn = getattr(iterator, "close", None)
+        if callable(close_fn):
+            close_fn()
 
 
 def map_stage[I, O](
@@ -165,20 +201,40 @@ def map_stage[I, O](
     -------
     list[O]
         Ordered list of transformed results.
+
+    Raises
+    ------
+    ValueError
+        If `max_in_flight < 0`.
     """
+    if max_in_flight < 0:
+        msg = "max_in_flight must be >= 0"
+        raise ValueError(msg)
     limit = max_in_flight if max_in_flight > 0 else _default_in_flight()
     return list(stream_stage(stage, items, max_in_flight=limit, ordered=True))
 
 
 async def _anext_item[I](
     source: Iterable[I] | AsyncIterable[I],
-) -> AsyncIterator[I]:
+) -> AsyncGenerator[I]:
     if hasattr(source, "__aiter__"):
-        async for item in cast("AsyncIterable[I]", source):
-            yield item
+        ait = aiter(cast("AsyncIterable[I]", source))
+        try:
+            async for item in ait:
+                yield item
+        finally:
+            aclose_fn = getattr(ait, "aclose", None)
+            if callable(aclose_fn):
+                await cast("Any", aclose_fn)()
     else:
-        for item in cast("Iterable[I]", source):
-            yield item
+        it = iter(cast("Iterable[I]", source))
+        try:
+            for item in it:
+                yield item
+        finally:
+            close_fn = getattr(it, "close", None)
+            if callable(close_fn):
+                close_fn()
 
 
 async def _cancel_tasks(tasks: Iterable[asyncio.Task[object]]) -> None:
@@ -194,29 +250,32 @@ async def _astream_ordered[I, O](
     stage: object,
     async_iter: AsyncIterator[I],
     max_in_flight: int,
-) -> AsyncIterator[O]:
+) -> AsyncGenerator[O]:
     pending: deque[asyncio.Task[object]] = deque()
     exhausted = False
+    upstream_error: Exception | None = None
     try:
         while len(pending) < max_in_flight:
-            try:
-                item = await anext(async_iter)
-            except StopAsyncIteration:
+            has_item, item, err = await _apull_next(async_iter)
+            if not has_item:
                 exhausted = True
+                upstream_error = err
                 break
             pending.append(asyncio.create_task(arun(stage, item)))
 
         while pending:
             task_obj = pending.popleft()
-            result = cast("O", await task_obj)
+            yield cast("O", await task_obj)
             if not exhausted:
-                try:
-                    nxt = await anext(async_iter)
-                except StopAsyncIteration:
+                has_item, nxt, err = await _apull_next(async_iter)
+                if not has_item:
                     exhausted = True
+                    upstream_error = err
                 else:
                     pending.append(asyncio.create_task(arun(stage, nxt)))
-            yield result
+
+        if upstream_error is not None:
+            raise upstream_error
     finally:
         await _cancel_tasks(pending)
 
@@ -225,16 +284,17 @@ async def _astream_unordered[I, O](
     stage: object,
     async_iter: AsyncIterator[I],
     max_in_flight: int,
-) -> AsyncIterator[O]:
+) -> AsyncGenerator[O]:
     pending: set[asyncio.Task[object]] = set()
     done: set[asyncio.Task[object]] = set()
     exhausted = False
+    upstream_error: Exception | None = None
     try:
         while len(pending) < max_in_flight:
-            try:
-                item = await anext(async_iter)
-            except StopAsyncIteration:
+            has_item, item, err = await _apull_next(async_iter)
+            if not has_item:
                 exhausted = True
+                upstream_error = err
                 break
             pending.add(asyncio.create_task(arun(stage, item)))
 
@@ -244,15 +304,17 @@ async def _astream_unordered[I, O](
             )
             while done:
                 task_obj = done.pop()
-                result = cast("O", await task_obj)
+                yield cast("O", await task_obj)
                 if not exhausted:
-                    try:
-                        nxt = await anext(async_iter)
-                    except StopAsyncIteration:
+                    has_item, nxt, err = await _apull_next(async_iter)
+                    if not has_item:
                         exhausted = True
+                        upstream_error = err
                     else:
                         pending.add(asyncio.create_task(arun(stage, nxt)))
-                yield result
+
+        if upstream_error is not None:
+            raise upstream_error
     finally:
         await _cancel_tasks(pending | done)
 
@@ -293,14 +355,16 @@ async def astream_stage[I, O](
     if max_in_flight < 1:
         msg = "max_in_flight must be >= 1"
         raise ValueError(msg)
-    async_iter = _anext_item(items)
-    if max_in_flight == 1:
-        async for item in async_iter:
-            yield await arun(stage, item)
-        return
-    if ordered:
-        async for out in _astream_ordered(stage, async_iter, max_in_flight):
-            yield cast("O", out)
-    else:
-        async for out in _astream_unordered(stage, async_iter, max_in_flight):
-            yield cast("O", out)
+    async with contextlib.aclosing(_anext_item(items)) as async_iter:
+        if max_in_flight == 1:
+            async for item in async_iter:
+                yield await arun(stage, item)  # ruff: ignore[yield-in-context-manager-in-async-generator]
+            return
+        inner_stream = (
+            _astream_ordered(stage, async_iter, max_in_flight)
+            if ordered
+            else _astream_unordered(stage, async_iter, max_in_flight)
+        )
+        async with contextlib.aclosing(inner_stream) as stream:
+            async for out in stream:
+                yield cast("O", out)  # ruff: ignore[yield-in-context-manager-in-async-generator]

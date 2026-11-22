@@ -1,5 +1,7 @@
 """Asynchronous compile-time function composition and parallel execution."""
 
+from std.builtin.rebind import downcast
+
 from .._internal.runtime import TaskGroup, run_coro, uninitialized_storage
 
 comptime AsyncFnToOut[f: AsyncFnTrait] = f.O
@@ -68,9 +70,10 @@ __async def _run_async_fn_task[
     in_ptr: Pointer[fns[0].I, in_origin],
     out_ptr: Pointer[Tuple[*fns.map[AsyncFnToOut]()].Ts[ci], out_origin],
 ):
+    comptime to = downcast[Tuple[*fns.map[AsyncFnToOut]()].Ts[ci], Movable]
     ref inp = rebind[fns[ci].I](in_ptr[])
-    out_ptr[] = rebind_var[Tuple[*fns.map[AsyncFnToOut]()].Ts[ci]](
-        fns[ci].exec(inp)
+    out_ptr.unsafe_bitcast[to]().unsafe_write(
+        rebind_var[to](fns[ci].exec(inp))
     )
 
 

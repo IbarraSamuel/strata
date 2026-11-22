@@ -1,23 +1,28 @@
 """Comprehensive edge-case tests across all Strata v2 Mojo modules."""
 
+from std.atomic import Atomic
 from std.testing import TestSuite, assert_equal, assert_raises, assert_true
 from std.time import monotonic, sleep
+from std.utils.numerics import inf, nan
 
 from strata import pipeline, stateful
 from strata.executors import (
     AsyncRTExecutor,
     BoundedExecutor,
+    Executor,
     SequentialExecutor,
     TracingExecutor,
 )
 from strata.pipeline import Fn, group, owned, owned_group, run_with
+from strata.pipeline.async_fn import AF
 from strata.pipeline.combinators import (
     OutputSink,
     map_stage,
     spread,
     stream_map,
+    zip_stages,
 )
-from strata.pipeline.compt import F, Id, Spread2, Spread3, Spread4
+from strata.pipeline.compt import F, GraphBuilder, Id, Spread2, Spread3, Spread4
 from strata.pipeline.compt import group as ct_group
 from strata.pipeline.fallible import ComposableFallibleStage, RaisingFn
 from strata.pipeline.resilience import fallback, recover, retry, timeout
@@ -852,6 +857,361 @@ def test_stateful_async_stage_order_and_mutation_counts() raises:
         assert_true(c.end <= d.start)
         assert_true(b.start < c.end)
         assert_true(c.start < b.end)
+
+
+# ===----------------------------------------------------------------------=== #
+# 9. Safety Regression Tests (C1, C2, C5, M1, L2)
+# ===----------------------------------------------------------------------=== #
+
+comptime _BOX_MAGIC: Int = 0x5AFEC0DE
+
+
+struct _TrackedCounters:
+    var constructed: Atomic[Int64]
+    var destroyed: Atomic[Int64]
+    var corrupt: Atomic[Int64]
+
+    def __init__(out self):
+        self.constructed = Atomic[Int64](0)
+        self.destroyed = Atomic[Int64](0)
+        self.corrupt = Atomic[Int64](0)
+
+
+struct _TrackedBox(Movable):
+    var magic: Int
+    var payload: Int
+    var counters: Pointer[_TrackedCounters, MutUntrackedOrigin]
+
+    def __init__(
+        out self,
+        payload: Int,
+        counters: Pointer[_TrackedCounters, MutUntrackedOrigin],
+    ):
+        self.magic = _BOX_MAGIC
+        self.payload = payload
+        self.counters = counters
+        _ = self.counters[].constructed.fetch_add(1)
+
+    def __init__(out self, *, deinit move: Self):
+        self.magic = move.magic
+        self.payload = move.payload
+        self.counters = move.counters
+
+    def __deinit__(deinit self):
+        if self.magic == _BOX_MAGIC:
+            _ = self.counters[].destroyed.fetch_add(1)
+        else:
+            # Invoked on uninitialized / corrupted memory!
+            _ = self.counters[].corrupt.fetch_add(1)
+
+
+struct _MakeBoxStage(pipeline.ComposableStage, Movable):
+    comptime I = Int
+    comptime O = _TrackedBox
+
+    var offset: Int
+    var counters: Pointer[_TrackedCounters, MutUntrackedOrigin]
+
+    def __init__(
+        out self,
+        offset: Int,
+        counters: Pointer[_TrackedCounters, MutUntrackedOrigin],
+    ):
+        self.offset = offset
+        self.counters = counters
+
+    def __call__(self, arg: Int) -> _TrackedBox:
+        return _TrackedBox(arg + self.offset, self.counters)
+
+
+struct _FallibleBoxStage(ComposableFallibleStage, Movable):
+    comptime I = Int
+    comptime O = _TrackedBox
+
+    var offset: Int
+    var should_fail: Bool
+    var counters: Pointer[_TrackedCounters, MutUntrackedOrigin]
+
+    def __init__(
+        out self,
+        offset: Int,
+        should_fail: Bool,
+        counters: Pointer[_TrackedCounters, MutUntrackedOrigin],
+    ):
+        self.offset = offset
+        self.should_fail = should_fail
+        self.counters = counters
+
+    def __call__(self, arg: Int) raises -> _TrackedBox:
+        if self.should_fail:
+            raise Error("box_branch_failed")
+        return _TrackedBox(arg + self.offset, self.counters)
+
+
+def _make_list_stage[offset: Int](x: Int) -> List[Int]:
+    var out = List[Int](capacity=16)
+    for i in range(16):
+        out.append(x + offset + i)
+    return out^
+
+
+__async def _async_make_list[offset: Int](x: Int) -> List[Int]:
+    var out = List[Int](capacity=16)
+    for i in range(16):
+        out.append(x + offset + i)
+    return out^
+
+
+def _raising_make_list[offset: Int](x: Int) raises -> List[Int]:
+    var out = List[Int](capacity=16)
+    for i in range(16):
+        out.append(x + offset + i)
+    return out^
+
+
+def test_c1_uninitialized_storage_nontrivial_outputs() raises:
+    var counters = _TrackedCounters()
+    var cptr = Pointer(to=counters).unsafe_origin_cast[MutUntrackedOrigin]()
+
+    # 1. Borrowed Parallel (__call__ + SequentialExecutor + BoundedExecutor + TracingExecutor)
+    var b1 = _MakeBoxStage(1, cptr)
+    var b2 = _MakeBoxStage(2, cptr)
+    var b3 = _MakeBoxStage(3, cptr)
+    var par = b1 & b2 & b3
+    var r1 = par(10)
+    assert_equal(r1[0].payload, 11)
+    assert_equal(r1[1].payload, 12)
+    assert_equal(r1[2].payload, 13)
+    _ = r1^
+
+    var seq = SequentialExecutor()
+    var r2 = par.run_with(seq, 20)
+    assert_equal(r2[0].payload, 21)
+    assert_equal(r2[2].payload, 23)
+    _ = r2^
+
+    var b_exec = BoundedExecutor(max_workers=2)
+    var r3 = par.run_with(b_exec, 30)
+    assert_equal(r3[1].payload, 32)
+    _ = r3^
+
+    var tracer = TracingExecutor()
+    var r4 = par.run_with(tracer, 40)
+    assert_equal(r4[0].payload, 41)
+    _ = r4^
+
+    # 2. OwnedParallel (__call__ + run_with)
+    var own_par = owned(_MakeBoxStage(5, cptr)) & _MakeBoxStage(6, cptr)
+    var r5 = own_par(10)
+    assert_equal(r5[0].payload, 15)
+    assert_equal(r5[1].payload, 16)
+    _ = r5^
+
+    var r6 = own_par.run_with(seq, 10)
+    assert_equal(r6[0].payload, 15)
+    assert_equal(r6[1].payload, 16)
+    _ = r6^
+
+    var r7 = own_par.run_with(tracer, 10)
+    assert_equal(r7[0].payload, 15)
+    _ = r7^
+
+    # 3. Zip2 & Zip3 with TrackedBox
+    var z2 = zip_stages(b1, b2)
+    var r8 = z2((10, 20))
+    assert_equal(r8[0].payload, 11)
+    assert_equal(r8[1].payload, 22)
+    _ = r8^
+
+    var z3 = zip_stages(b1, b2, b3)
+    var r9 = z3((10, 20, 30))
+    assert_equal(r9[0].payload, 11)
+    assert_equal(r9[1].payload, 22)
+    assert_equal(r9[2].payload, 33)
+    _ = r9^
+
+    # 4. RaisingParallel success path with TrackedBox
+    var fb1 = _FallibleBoxStage(10, False, cptr)
+    var fb2 = _FallibleBoxStage(20, False, cptr)
+    var rpar = fb1 & fb2
+    var r10 = rpar(5)
+    assert_equal(r10[0].payload, 15)
+    assert_equal(r10[1].payload, 25)
+    _ = r10^
+
+    # All constructed boxes must be cleanly destroyed with ZERO uninitialized deinits!
+    assert_equal(counters.corrupt.load(), 0)
+    assert_equal(counters.constructed.load(), counters.destroyed.load())
+    assert_true(counters.constructed.load() > 0)
+
+    # 5. Heap-allocated List[Int] across Parallel, compt.Parallel, AsyncParallel, RaisingParallel
+    var l1 = Fn(_make_list_stage[1])
+    var l2 = Fn(_make_list_stage[2])
+    var lp = l1 & l2
+    var lr = lp(10)
+    assert_equal(len(lr[0]), 16)
+    assert_equal(lr[0][0], 11)
+    assert_equal(lr[1][15], 27)
+
+    comptime ct_lp = F[_make_list_stage[10]] & F[_make_list_stage[20]]
+    var ct_lr = ct_lp.run(5)
+    assert_equal(ct_lr[0][0], 15)
+    assert_equal(ct_lr[1][0], 25)
+    var ct_ls = ct_lp.run_sequential(5)
+    assert_equal(ct_ls[0][0], 15)
+    assert_equal(ct_ls[1][0], 25)
+    var ct_lw = ct_lp.run_with(seq, 5)
+    assert_equal(ct_lw[0][0], 15)
+
+    comptime async_lp = AF[_async_make_list[100]] & AF[_async_make_list[200]]
+    var async_lr = async_lp.run(7)
+    assert_equal(async_lr[0][0], 107)
+    assert_equal(async_lr[1][0], 207)
+
+    var rl1 = RaisingFn(_raising_make_list[3])
+    var rl2 = RaisingFn(_raising_make_list[4])
+    var rlp = rl1 & rl2
+    var rlr = rlp(1)
+    assert_equal(rlr[0][0], 4)
+    assert_equal(rlr[1][0], 5)
+
+
+def test_c2_raising_parallel_destroys_succeeded_branches_on_error() raises:
+    var counters = _TrackedCounters()
+    var cptr = Pointer(to=counters).unsafe_origin_cast[MutUntrackedOrigin]()
+
+    var ok1 = _FallibleBoxStage(1, False, cptr)
+    var fail_mid = _FallibleBoxStage(2, True, cptr)
+    var ok3 = _FallibleBoxStage(3, False, cptr)
+
+    # 2-branch: branch 0 succeeds, branch 1 fails -> branch 0's TrackedBox must be destroyed
+    var p2 = ok1 & fail_mid
+    with assert_raises(contains="box_branch_failed"):
+        _ = p2(20)
+    assert_equal(counters.corrupt.load(), 0)
+    assert_equal(counters.constructed.load(), 1)
+    assert_equal(counters.destroyed.load(), 1)
+
+    # 3-branch: branches 0 and 2 succeed, branch 1 fails -> both must be destroyed
+    var p3 = ok1 & fail_mid & ok3
+    with assert_raises(contains="box_branch_failed"):
+        _ = p3(20)
+    assert_equal(counters.corrupt.load(), 0)
+    assert_equal(counters.constructed.load(), 3)
+    assert_equal(counters.destroyed.load(), 3)
+
+
+def test_c5_timeout_fptosi_and_retry_nonfinite_guards() raises:
+    var slow = RaisingFn(_slow_ok_raise)
+
+    # Huge finite, +inf, -inf, NaN must never trigger fptosi poison UB
+    var t_huge = timeout(slow, timeout_secs=1e20)
+    assert_equal(t_huge.timeout_ns, Int.MAX)
+    assert_equal(t_huge(41), 42)
+
+    var t_pos_inf = timeout(slow, timeout_secs=inf[.float64]())
+    assert_equal(t_pos_inf.timeout_ns, Int.MAX)
+    assert_equal(t_pos_inf(9), 10)
+
+    var t_neg_inf = timeout(slow, timeout_secs=-inf[.float64]())
+    assert_equal(t_neg_inf.timeout_ns, 0)
+
+    var t_nan = timeout(slow, timeout_secs=nan[.float64]())
+    assert_equal(t_nan.timeout_ns, 0)
+
+    # Retry with NaN / +inf backoff parameters must sanitize cleanly
+    var calls = 0
+    var s = CountingFallibleStage(calls, fail_on_calls_le=2, offset=5)
+    var r = retry(
+        s,
+        max_attempts=3,
+        backoff_secs=nan[.float64](),
+        backoff_multiplier=inf[.float64](),
+    )
+    assert_equal(r.backoff_secs, 0.0)
+    assert_equal(r.backoff_multiplier, 1.0)
+    assert_equal(r(10), 15)
+    assert_equal(calls, 3)
+
+
+struct _TokenCheckingExecutor(Executor, Movable):
+    comptime IS_PARALLEL: Bool = False
+    var next_token: Int
+    var matched_count: Int
+    var mismatched_count: Int
+    var stack: List[Int]
+
+    def __init__(out self):
+        self.next_token = 100
+        self.matched_count = 0
+        self.mismatched_count = 0
+        self.stack = List[Int]()
+
+    def concurrency_limit(self) -> Int:
+        return 1
+
+    def is_tracing(self) -> Bool:
+        return False
+
+    def on_stage_start(mut self, name: StaticString) -> Int:
+        var tok = self.next_token
+        self.next_token += 1
+        self.stack.append(tok)
+        return tok
+
+    def on_stage_end(mut self, name: StaticString, token: Int):
+        var expected = self.stack.pop() if len(self.stack) > 0 else -1
+        if token == expected:
+            self.matched_count += 1
+        else:
+            self.mismatched_count += 1
+
+    def record_span(mut self, name: StaticString, start_ns: Int, end_ns: Int):
+        pass
+
+
+def test_m1_tracing_inner_token_and_zip3_bounded_traced() raises:
+    # TracingExecutor must forward the inner executor's token, NOT its own timestamp
+    var f1 = Fn(_add_k[1])
+    var f2 = Fn(_mul_k[2])
+    var seq_pipe = f1 | f2
+    var wrapped = TracingExecutor[_TokenCheckingExecutor](
+        _TokenCheckingExecutor()
+    )
+    assert_equal(seq_pipe.run_with(wrapped, 5), 12)
+    assert_equal(wrapped.inner.matched_count, 2)
+    assert_equal(wrapped.inner.mismatched_count, 0)
+    assert_equal(len(wrapped.spans), 2)
+
+    # Zip3.run_with must honor BoundedExecutor(max_workers=2) and emit 3 per-branch spans
+    var z1 = Fn(_slow_mul2)
+    var z2 = Fn(_add_k[1])
+    var z3_stage = Fn(_mul_k[3])
+    var z3 = zip_stages(z1, z2, z3_stage)
+
+    var t_bounded = TracingExecutor[BoundedExecutor](
+        BoundedExecutor(max_workers=2)
+    )
+    var res = z3.run_with(t_bounded, (4, 10, 7))
+    assert_equal(res[0], 8)
+    assert_equal(res[1], 11)
+    assert_equal(res[2], 21)
+    assert_equal(len(t_bounded.spans), 3)
+    # Wave 1 (branches 0, 1) finishes before Wave 2 (branch 2) starts
+    assert_true(t_bounded.spans[0].end_ns <= t_bounded.spans[2].start_ns)
+    assert_true(t_bounded.spans[1].end_ns <= t_bounded.spans[2].start_ns)
+
+
+def test_l2_graph_builder_label_escaping() raises:
+    var b_dot = GraphBuilder(is_dot=True)
+    _ = b_dot.add_node('a\\b "c"\nd]', List[Int]())
+    var dot = b_dot.finish()
+    assert_true('a\\\\b \'c\'\\nd]' in dot)
+
+    var b_mmd = GraphBuilder(is_dot=False)
+    _ = b_mmd.add_node('a\\b "c"\nd]', List[Int]())
+    var mmd = b_mmd.finish()
+    assert_true("a\\\\b 'c' d&#93;" in mmd)
 
 
 def main() raises:

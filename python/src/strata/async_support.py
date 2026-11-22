@@ -8,12 +8,14 @@ from typing import TYPE_CHECKING, Any, cast, override
 
 from strata import mojo_strata
 from strata.combinators import (
+    _MAX_RETRY_DELAY,
     BranchTask,
     FallbackTask,
     MapTask,
     RetryTask,
     TimeoutTask,
     ZipTask,
+    _validate_zip_input,
 )
 from strata.graph import (
     Combinable,
@@ -21,6 +23,7 @@ from strata.graph import (
     GroupMode,
     Task,
     _BaseTaskGroup,
+    _resolve_native,
 )
 
 if TYPE_CHECKING:
@@ -48,7 +51,7 @@ class AsyncTask[I, O](Combinable, Task[I, O]):
         except RuntimeError:
             return asyncio.run(self.inner_fn(msg))
         with ThreadPoolExecutor(max_workers=1) as pool:
-            return cast("O", pool.submit(asyncio.run, self.inner_fn(msg)).result())
+            return pool.submit(lambda: asyncio.run(self.inner_fn(msg))).result()
 
     async def arun_direct(self, msg: I, /) -> O:
         """Await the underlying coroutine directly on the active event loop.
@@ -151,13 +154,13 @@ async def _arun_retry(stage: RetryTask[Any, Any], msg: object) -> object:
                 raise
             if delay > 0.0:
                 await asyncio.sleep(delay)
-                delay *= stage.backoff_multiplier
+                delay = min(delay * stage.backoff_multiplier, _MAX_RETRY_DELAY)
     err_msg = "unreachable"
     raise AssertionError(err_msg)  # pragma: no cover
 
 
 async def _arun_zip(stage: ZipTask[Any, Any], msg: object) -> object:
-    seq = cast("Sequence[object]", msg)
+    seq = _validate_zip_input(len(stage.stages), msg)
     coros = [_arun_node(child, seq[i]) for i, child in enumerate(stage.stages)]
     return await _gather_parallel(coros)
 
@@ -170,21 +173,26 @@ async def _arun_fallback(stage: FallbackTask[Any, Any], msg: object) -> object:
 
 
 async def _arun_combinator(obj: object, msg: object) -> tuple[bool, object]:
-    handlers: dict[type[object], Any] = {
-        GroupedTask: lambda o, m: _arun_node(o.inner_stage, m),
-        ZipTask: _arun_zip,
-        MapTask: _arun_map,
-        BranchTask: lambda o, m: _arun_node(
-            o.on_true if o.predicate(m) else o.on_false, m
-        ),
-        RetryTask: _arun_retry,
-        FallbackTask: _arun_fallback,
-        TimeoutTask: lambda o, m: asyncio.wait_for(_arun_node(o.stage, m), o.seconds),
-    }
-    handler = handlers.get(type(obj))
-    if handler is None:
-        return (False, None)
-    return (True, await handler(obj, msg))
+    handled = True
+    result: object = None
+    if isinstance(obj, GroupedTask):
+        result = await _arun_node(obj.inner_stage, msg)
+    elif isinstance(obj, ZipTask):
+        result = await _arun_zip(obj, msg)
+    elif isinstance(obj, MapTask):
+        result = await _arun_map(obj, msg)
+    elif isinstance(obj, BranchTask):
+        target = obj.on_true if obj.predicate(msg) else obj.on_false
+        result = await _arun_node(target, msg)
+    elif isinstance(obj, RetryTask):
+        result = await _arun_retry(obj, msg)
+    elif isinstance(obj, FallbackTask):
+        result = await _arun_fallback(obj, msg)
+    elif isinstance(obj, TimeoutTask):
+        result = await asyncio.wait_for(_arun_node(obj.stage, msg), obj.seconds)
+    else:
+        handled = False
+    return (handled, result)
 
 
 async def _arun_node(obj: object, msg: object) -> object:
@@ -199,11 +207,8 @@ async def _arun_node(obj: object, msg: object) -> object:
     if handled:
         return result
 
-    if isinstance(obj, mojo_strata.NativeStage):
-        return await asyncio.to_thread(obj.call, msg)
-
-    if type(obj).__name__ == "PyCapsule":
-        native = mojo_strata.native_from_capsule(obj, "native_capsule")
+    native = _resolve_native(obj)
+    if native is not None:
         return await asyncio.to_thread(native.call, msg)
 
     return await asyncio.to_thread(cast("Any", obj), msg)

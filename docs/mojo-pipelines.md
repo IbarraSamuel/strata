@@ -52,7 +52,7 @@ def main():
 
 ### Unit / Void Functions (`UnitFn`)
 
-Use `UnitFn` to wrap `def() -> None` functions as `Tuple[] -> Tuple[]` stages that compose with the same `|` and `&` operators:
+Use `UnitFn` to wrap `def() -> None` functions as `NoneType -> NoneType` stages that compose with the same `|` and `&` operators:
 
 ```mojo
 from strata.pipeline import UnitFn
@@ -67,7 +67,7 @@ def main():
     var c = UnitFn(step_c)
 
     var workflow = a | (b & c)
-    _ = workflow(Tuple())
+    _ = workflow(None)
 ```
 
 ### Full Associative Parallel Flattening & `group(...)`
@@ -177,7 +177,7 @@ def main():
     var runtime_result = diamond.run(4)                     # 25
 
     # Identity pass-through in parallel fan-outs (keep original input + transformed):
-    comptime keep_and_double = Id[Int]() & F[mul_two]
+    comptime keep_and_double = Id[Int] & F[mul_two]
     var pair = keep_and_double.run(7)                       # (7, 14)
 
     # Explicit nested grouping:

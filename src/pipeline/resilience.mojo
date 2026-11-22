@@ -12,9 +12,13 @@ Provides composable fault-tolerance wrappers built on `FallibleStage`:
 """
 
 from std.time import perf_counter_ns, sleep
+from std.utils.numerics import isinf, isnan
 
 from . import ComposableStage
 from .fallible import ComposableFallibleStage, FallibleStage
+
+comptime _MAX_RETRY_DELAY_SECS: Float64 = 86400.0
+comptime _MAX_TIMEOUT_SECS: Float64 = 9_223_372_036.0
 
 
 struct Retry[origin: ImmOrigin, //, Inner: FallibleStage](
@@ -58,10 +62,20 @@ struct Retry[origin: ImmOrigin, //, Inner: FallibleStage](
         """
         self.inner = Pointer(to=inner)
         self.max_attempts = max_attempts if max_attempts > 0 else 1
-        self.backoff_secs = backoff_secs if backoff_secs > 0.0 else 0.0
-        self.backoff_multiplier = (
-            backoff_multiplier if backoff_multiplier > 0.0 else 1.0
-        )
+        if isnan(backoff_secs) or isinf(backoff_secs) or backoff_secs <= 0.0:
+            self.backoff_secs = 0.0
+        elif backoff_secs > _MAX_RETRY_DELAY_SECS:
+            self.backoff_secs = _MAX_RETRY_DELAY_SECS
+        else:
+            self.backoff_secs = backoff_secs
+        if (
+            isnan(backoff_multiplier)
+            or isinf(backoff_multiplier)
+            or backoff_multiplier <= 0.0
+        ):
+            self.backoff_multiplier = 1.0
+        else:
+            self.backoff_multiplier = backoff_multiplier
 
     def __call__(self, arg: Self.I) raises -> Self.O:
         """Execute `inner(arg)`, retrying up to `max_attempts` on failure.
@@ -82,9 +96,22 @@ struct Retry[origin: ImmOrigin, //, Inner: FallibleStage](
                 return self.inner[](arg)
             except e:
                 last_err = String(e)
-                if attempt + 1 < self.max_attempts and delay > 0.0:
+                if (
+                    attempt + 1 < self.max_attempts
+                    and not isnan(delay)
+                    and not isinf(delay)
+                    and delay > 0.0
+                ):
                     sleep(delay)
-                    delay *= self.backoff_multiplier
+                    var next_delay = delay * self.backoff_multiplier
+                    if (
+                        isnan(next_delay)
+                        or isinf(next_delay)
+                        or next_delay > _MAX_RETRY_DELAY_SECS
+                    ):
+                        delay = _MAX_RETRY_DELAY_SECS
+                    else:
+                        delay = next_delay
         raise Error(last_err)
 
 
@@ -243,8 +270,13 @@ struct Timeout[origin: ImmOrigin, //, Inner: FallibleStage](
             timeout_secs: Deadline in seconds.
         """
         self.inner = Pointer(to=inner)
-        var ns = Int(timeout_secs * 1_000_000_000.0)
-        self.timeout_ns = ns if ns > 0 else 0
+        if isnan(timeout_secs) or timeout_secs <= 0.0:
+            self.timeout_ns = 0
+        elif isinf(timeout_secs) or timeout_secs >= _MAX_TIMEOUT_SECS:
+            self.timeout_ns = Int.MAX
+        else:
+            var ns = Int(timeout_secs * 1_000_000_000.0)
+            self.timeout_ns = ns if ns > 0 else 0
 
     def __call__(self, arg: Self.I) raises -> Self.O:
         """Execute `inner(arg)` and raise if execution exceeds `timeout_ns`.

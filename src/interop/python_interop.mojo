@@ -1,7 +1,7 @@
 """Python interoperability module for task group execution and GIL-free native stages."""
 
 from std.benchmark import keep
-from std.ffi import c_long
+from std.ffi import c_int, c_long
 from std.memory import OpaquePointer
 from std.memory.alloc import Layout, ThinAllocation, alloc, dealloc
 from std.os import abort
@@ -11,8 +11,10 @@ from std.python._cpython import (
     GILReleased,
     Py_ssize_t,
     PyObjectPtr,
+    PyType_Slot,
 )
 from std.python.bindings import PythonModuleBuilder
+from std.python.python_object import _unsafe_init
 from std.runtime._asyncrt import TaskGroup as TG
 
 
@@ -39,6 +41,9 @@ comptime _OP_FLOAT_LINEAR: Int32 = 2
 comptime _OP_FLOAT_POLY: Int32 = 3
 comptime _OP_CPU_WORK: Int32 = 4
 
+comptime _NATIVE_STATUS_OVERFLOW: Int32 = -4
+comptime _PY_TP_CALL: c_int = 50
+
 comptime NativeIntFn = def(
     Int64, Optional[OpaquePointer[MutUntrackedOrigin]]
 ) thin abi("C") -> Int64
@@ -55,6 +60,11 @@ comptime NativeValueFn = def(
     Optional[OpaquePointer[MutUntrackedOrigin]],
 ) thin abi("C") -> Int32
 """C-ABI function signature for general `NativeValue -> NativeValue` native stages."""
+
+comptime NativeCtxDeleter = def(
+    OpaquePointer[MutUntrackedOrigin]
+) thin abi("C") -> None
+"""C-ABI callback signature invoked on PyCapsule destruction to free heap `ctx`."""
 
 
 @fieldwise_init
@@ -126,6 +136,8 @@ struct NativeStageDescriptor(Copyable, Defaultable, Movable):
     """Raw C-ABI function pointer matching `kind`."""
     var ctx: Optional[OpaquePointer[MutUntrackedOrigin]]
     """Optional opaque user context pointer passed to `fn_ptr`."""
+    var ctx_deleter: Optional[NativeCtxDeleter]
+    """Optional C-ABI destructor invoked on `ctx` when the owning PyCapsule is freed."""
 
     def __init__(out self):
         """Construct an empty descriptor."""
@@ -133,6 +145,7 @@ struct NativeStageDescriptor(Copyable, Defaultable, Movable):
         self._pad = 0
         self.fn_ptr = None
         self.ctx = None
+        self.ctx_deleter = None
 
 
 struct _CallResult(Movable):
@@ -165,14 +178,91 @@ struct _NativeEvalResult(Copyable, Defaultable, Movable):
         self.status = status
 
 
+def _restore_raised_exception(exc_ptr: PyObjectPtr):
+    """Set CPython's active exception pointer directly (stealing `exc_ptr`)."""
+    ref cpython = Python().cpython()
+    if cpython.lib.check_symbol("PyErr_SetRaisedException"):
+        var set_exc = cpython.lib.borrow().get_function[
+            def(PyObjectPtr) thin abi("C") -> None
+        ]("PyErr_SetRaisedException")
+        set_exc(exc_ptr)
+    elif Bool(exc_ptr):
+        var exc_type = cpython.PyObject_Type(exc_ptr)
+        cpython.PyErr_Restore(exc_type, exc_ptr, PyObjectPtr())
+    else:
+        cpython.PyErr_Clear()
+
+
+def _get_exc_global(exc_name: String) -> PyObjectPtr:
+    """Look up a CPython `PyExc_*` global pointer without importing `builtins`."""
+    ref cpython = Python().cpython()
+    if exc_name == "TypeError":
+        return cpython.get_error_global("PyExc_TypeError")
+    if exc_name == "ValueError":
+        return cpython.get_error_global("PyExc_ValueError")
+    if exc_name == "OverflowError":
+        return cpython.get_error_global("PyExc_OverflowError")
+    if exc_name == "RuntimeError":
+        return cpython.get_error_global("PyExc_RuntimeError")
+    return cpython.get_error_global("PyExc_Exception")
+
+
 def _make_py_error(exc_name: String, message: String) -> PythonObject:
-    """Create a Python exception instance while holding the GIL."""
-    try:
-        var builtins = Python.import_module("builtins")
-        var exc_cls = builtins.__getattr__(exc_name)
-        return exc_cls(message)
-    except:
-        return PythonObject()
+    """Create a Python exception instance directly via CPython C-API while holding the GIL."""
+    ref cpython = Python().cpython()
+    var exc_type = _get_exc_global(exc_name)
+    var msg_ptr = cpython.PyUnicode_DecodeUTF8(message)
+    if Bool(msg_ptr):
+        var msg_obj = PythonObject(from_owned=msg_ptr)
+        if cpython.lib.check_symbol("PyObject_CallOneArg"):
+            var call_one = cpython.lib.borrow().get_function[
+                def(PyObjectPtr, PyObjectPtr) thin abi("C") -> PyObjectPtr
+            ]("PyObject_CallOneArg")
+            var exc_ptr = call_one(exc_type, msg_obj._obj_ptr)
+            if Bool(exc_ptr):
+                return PythonObject(from_owned=exc_ptr)
+            var raised_ptr = cpython.PyErr_GetRaisedException()
+            if Bool(raised_ptr):
+                return PythonObject(from_owned=raised_ptr)
+
+    # Fallback: construct exception via PyErr_SetString + PyErr_GetRaisedException
+    var msg_copy = message
+    cpython.PyErr_SetString(exc_type, msg_copy.as_c_string_span().ptr())
+    var fallback_ptr = cpython.PyErr_GetRaisedException()
+    if Bool(fallback_ptr):
+        return PythonObject(from_owned=fallback_ptr)
+    return PythonObject(from_owned=PyObjectPtr())
+
+
+def _extract_int64_arg(
+    py_val: PythonObject, arg_name: String
+) -> Tuple[Int64, Optional[PythonObject]]:
+    """Extract an `Int64` argument while rejecting `bool` and preserving `OverflowError`."""
+    ref cpython = Python().cpython()
+    var ptr = py_val._obj_ptr
+    if cpython.PyBool_Check(ptr) != 0 or cpython.PyLong_Check(ptr) == 0:
+        return (
+            Int64(0),
+            _make_py_error(
+                "TypeError",
+                String("Expected an int for '", arg_name, "'"),
+            ),
+        )
+    var v = cpython.PyLong_AsSsize_t(ptr)
+    if v == Py_ssize_t(-1) and cpython.PyErr_Occurred():
+        var exc_ptr = cpython.PyErr_GetRaisedException()
+        return (Int64(0), PythonObject(from_owned=exc_ptr))
+    return (Int64(v), None)
+
+
+def _checked_int_linear(
+    scale: Int64, bias: Int64, x: Int64
+) -> _NativeEvalResult:
+    """Evaluate `scale * x + bias` in `Int128` and report `Int64` overflow."""
+    var acc = Int128(scale) * Int128(x) + Int128(bias)
+    if acc < Int128(Int64.MIN) or acc > Int128(Int64.MAX):
+        return _NativeEvalResult(NativeValue(), _NATIVE_STATUS_OVERFLOW)
+    return _NativeEvalResult(NativeValue.from_int(Int64(acc)), 0)
 
 
 def _unbox_for_native(
@@ -183,7 +273,7 @@ def _unbox_for_native(
     var ptr = py_val._obj_ptr
 
     if expected_kind == NATIVE_KIND_INT64:
-        if cpython.PyLong_Check(ptr) == 0:
+        if cpython.PyBool_Check(ptr) != 0 or cpython.PyLong_Check(ptr) == 0:
             return (
                 NativeValue(),
                 _make_py_error(
@@ -198,7 +288,9 @@ def _unbox_for_native(
         return (NativeValue.from_int(Int64(v)), None)
 
     if expected_kind == NATIVE_KIND_FLOAT64:
-        if cpython.PyFloat_Check(ptr) == 0 and cpython.PyLong_Check(ptr) == 0:
+        if cpython.PyBool_Check(ptr) != 0 or (
+            cpython.PyFloat_Check(ptr) == 0 and cpython.PyLong_Check(ptr) == 0
+        ):
             return (
                 NativeValue(),
                 _make_py_error(
@@ -248,8 +340,15 @@ def _box_from_native(val: NativeValue) -> _CallResult:
         )
     elif val.kind == NATIVE_VAL_FLOAT64:
         obj_ptr = cpython.PyFloat_FromDouble(val.float_val)
-    else:
+    elif val.kind == NATIVE_VAL_INT64:
         obj_ptr = cpython.PyLong_FromSsize_t(Py_ssize_t(val.int_val))
+    else:
+        return _CallResult(
+            error=_make_py_error(
+                "ValueError",
+                String("Unknown NativeValue kind: ", val.kind),
+            )
+        )
 
     if not obj_ptr:
         var exc_ptr = cpython.PyErr_GetRaisedException()
@@ -264,13 +363,13 @@ def _coerce_native_value(
     if expected_kind == NATIVE_KIND_VALUE:
         return (val.copy(), 0)
     if expected_kind == NATIVE_KIND_INT64:
-        if val.kind == NATIVE_VAL_INT64 or val.kind == NATIVE_VAL_BOOL:
+        if val.kind == NATIVE_VAL_INT64:
             return (NativeValue.from_int(val.int_val), 0)
         return (NativeValue(), -2)
     if expected_kind == NATIVE_KIND_FLOAT64:
         if val.kind == NATIVE_VAL_FLOAT64:
             return (val.copy(), 0)
-        if val.kind == NATIVE_VAL_INT64 or val.kind == NATIVE_VAL_BOOL:
+        if val.kind == NATIVE_VAL_INT64:
             return (NativeValue.from_float(Float64(val.int_val)), 0)
         return (NativeValue(), -2)
     return (NativeValue(), -3)
@@ -278,6 +377,11 @@ def _coerce_native_value(
 
 def _native_status_to_error(status: Int32) -> PythonObject:
     """Convert a non-zero native stage error code to a Python exception."""
+    if status == _NATIVE_STATUS_OVERFLOW:
+        return _make_py_error(
+            "OverflowError",
+            "Int64 overflow in NativeStage",
+        )
     if status == -2:
         return _make_py_error(
             "TypeError",
@@ -386,9 +490,7 @@ struct NativeStage(Copyable, Movable, Writable):
             `_NativeEvalResult` containing output value and status code (`0` = ok).
         """
         if self.op_kind == _OP_INT_LINEAR:
-            return _NativeEvalResult(
-                NativeValue.from_int(self.i_p0 * input.int_val + self.i_p1), 0
-            )
+            return _checked_int_linear(self.i_p0, self.i_p1, input.int_val)
 
         if self.op_kind == _OP_FLOAT_LINEAR:
             return _NativeEvalResult(
@@ -418,6 +520,19 @@ struct NativeStage(Copyable, Movable, Writable):
         # External C-ABI PyCapsule dispatch (completely GIL-free)
         if case .Some(raw_fn) = self.descriptor.fn_ptr:
             if self.descriptor.kind == NATIVE_KIND_INT64:
+                var builtin_cap_fn: NativeIntFn = _capsule_int_linear_fn
+                var builtin_cap_opaque = Pointer(
+                    to=builtin_cap_fn
+                ).unsafe_bitcast[OpaquePointer[MutUntrackedOrigin]]()[]
+                if Int(raw_fn) == Int(builtin_cap_opaque):
+                    if case .Some(raw_ctx) = self.descriptor.ctx:
+                        var p = raw_ctx.unsafe_bitcast[_IntLinearCtx]()
+                        return _checked_int_linear(
+                            p[].scale, p[].bias, input.int_val
+                        )
+                    return _NativeEvalResult(
+                        NativeValue.from_int(input.int_val), 0
+                    )
                 var int_fn = Pointer(to=raw_fn).unsafe_bitcast[NativeIntFn]()[]
                 var out_i = int_fn(input.int_val, self.descriptor.ctx)
                 return _NativeEvalResult(NativeValue.from_int(out_i), 0)
@@ -683,26 +798,112 @@ def _restore_python_exception(var exc: PythonObject) -> PythonObject:
     """Set CPython's error indicator to `exc` and return a NULL PythonObject.
 
     Must be called while holding the GIL right before returning to CPython.
+    Uses `PyErr_SetRaisedException` directly so restoration remains resilient
+    even under `RecursionError` or `MemoryError`.
     """
     ref cpython = Python().cpython()
-    try:
-        var builtins = Python.import_module("builtins")
-        var exc_type = builtins.type(exc)
-        var exc_tb = exc.__traceback__
-        var tb_ptr = PyObjectPtr()
-        if exc_tb._obj_ptr != Python.none()._obj_ptr:
-            tb_ptr = exc_tb^.steal_data()
-        cpython.PyErr_Restore(
-            exc_type^.steal_data(),
-            exc^.steal_data(),
-            tb_ptr,
+    if Bool(exc._obj_ptr):
+        _restore_raised_exception(exc^.steal_data())
+        return PythonObject(from_owned=PyObjectPtr())
+    var err_type = cpython.get_error_global("PyExc_RuntimeError")
+    var fallback_msg = String("Failed to propagate Python exception")
+    cpython.PyErr_SetString(err_type, fallback_msg.as_c_string_span().ptr())
+    return PythonObject(from_owned=PyObjectPtr())
+
+
+def _tp_call_native_stage(
+    py_self_ptr: PyObjectPtr,
+    args_ptr: PyObjectPtr,
+    kwargs_ptr: PyObjectPtr,
+) abi("C") -> PyObjectPtr:
+    """CPython `tp_call` slot making `mojo_strata.NativeStage` directly callable."""
+    ref cpython = Python().cpython()
+    if Bool(kwargs_ptr) and cpython.PyObject_Length(kwargs_ptr) > 0:
+        var err_type = cpython.get_error_global("PyExc_TypeError")
+        var msg = String("NativeStage.__call__() takes no keyword arguments")
+        cpython.PyErr_SetString(err_type, msg.as_c_string_span().ptr())
+        return PyObjectPtr()
+    if cpython.PyObject_Length(args_ptr) != 1:
+        var err_type = cpython.get_error_global("PyExc_TypeError")
+        var msg = String(
+            "NativeStage.__call__() takes exactly 1 positional argument"
         )
-        return PythonObject(from_owned=PyObjectPtr())
-    except:
+        cpython.PyErr_SetString(err_type, msg.as_c_string_span().ptr())
+        return PyObjectPtr()
+    var py_self = PythonObject(from_borrowed=py_self_ptr)
+    var arg_ptr = cpython.PyTuple_GetItem(args_ptr, 0)
+    if not arg_ptr:
+        return PyObjectPtr()
+    var arg = PythonObject(from_borrowed=arg_ptr)
+    try:
+        if case .Some(ns_ptr) = py_self._try_downcast_value[NativeStage]():
+            var res = ns_ptr[]._call_result(arg)
+            if case .Some(exc) = res.error:
+                _ = _restore_python_exception(exc)
+                return PyObjectPtr()
+            var out = res.value
+            return out^.steal_data()
+    except e:
         var err_type = cpython.get_error_global("PyExc_RuntimeError")
-        var fallback_msg = String("Failed to propagate Python exception")
-        cpython.PyErr_SetString(err_type, fallback_msg.as_c_string_span().ptr())
-        return PythonObject(from_owned=PyObjectPtr())
+        var msg = String(e)
+        cpython.PyErr_SetString(err_type, msg.as_c_string_span().ptr())
+        return PyObjectPtr()
+    var err_type = cpython.get_error_global("PyExc_TypeError")
+    var msg = String("Expected a mojo_strata.NativeStage instance")
+    cpython.PyErr_SetString(err_type, msg.as_c_string_span().ptr())
+    return PyObjectPtr()
+
+
+def _tp_init_task_group(
+    py_self_ptr: PyObjectPtr,
+    args_ptr: PyObjectPtr,
+    kwargs_ptr: PyObjectPtr,
+) abi("C") -> c_int:
+    """CPython `tp_init` slot for `TaskGroup` with strict arg validation and `TypeError`."""
+    ref cpython = Python().cpython()
+    var n_args = cpython.PyObject_Length(args_ptr)
+    var n_kwargs = cpython.PyObject_Length(kwargs_ptr) if Bool(kwargs_ptr) else 0
+    if n_args < 0 or n_kwargs < 0:
+        return -1
+
+    var task_obj: PythonObject
+    if n_args == 1 and n_kwargs == 0:
+        var arg0 = cpython.PyTuple_GetItem(args_ptr, 0)
+        if not arg0:
+            return -1
+        task_obj = PythonObject(from_borrowed=arg0)
+    elif n_args == 0 and n_kwargs == 1:
+        var kwargs = PythonObject(from_borrowed=kwargs_ptr)
+        try:
+            var key = PythonObject("task")
+            if key not in kwargs:
+                var err_type = cpython.get_error_global("PyExc_TypeError")
+                var msg = String(
+                    "TaskGroup() got an unexpected keyword argument"
+                )
+                cpython.PyErr_SetString(err_type, msg.as_c_string_span().ptr())
+                return -1
+            task_obj = kwargs[key]
+        except:
+            if not cpython.PyErr_Occurred():
+                var err_type = cpython.get_error_global("PyExc_TypeError")
+                var msg = String("TaskGroup() invalid keyword arguments")
+                cpython.PyErr_SetString(err_type, msg.as_c_string_span().ptr())
+            return -1
+    else:
+        var err_type = cpython.get_error_global("PyExc_TypeError")
+        var msg = String("TaskGroup() takes exactly 1 argument ('task')")
+        cpython.PyErr_SetString(err_type, msg.as_c_string_span().ptr())
+        return -1
+
+    try:
+        _unsafe_init(py_self_ptr, TaskGroup(task=task_obj))
+        return 0
+    except e:
+        var err_type = cpython.get_error_global("PyExc_RuntimeError")
+        var msg = String(e)
+        cpython.PyErr_SetString(err_type, msg.as_c_string_span().ptr())
+        return -1
 
 
 __async def _run_async_task(
@@ -747,23 +948,32 @@ def _capsule_int_linear_fn(
 ) abi("C") -> Int64:
     if case .Some(raw_ctx) = ctx:
         var p = raw_ctx.unsafe_bitcast[_IntLinearCtx]()
-        return p[].scale * x + p[].bias
+        var acc = Int128(p[].scale) * Int128(x) + Int128(p[].bias)
+        return Int64(acc)
     return x
+
+
+def _delete_int_linear_ctx(raw_ctx: OpaquePointer[MutUntrackedOrigin]) abi("C"):
+    dealloc(
+        ThinAllocation(
+            unsafe_owned_ptr=raw_ctx.unsafe_bitcast[_IntLinearCtx]()
+        ).unsafe_with_layout(Layout[_IntLinearCtx].single())
+    )
 
 
 def _destroy_int_linear_capsule(capsule: PyObjectPtr) abi("C"):
     ref cpython = Python().cpython()
+    var saved_exc = cpython.PyErr_GetRaisedException()
     try:
         var raw_ptr = cpython.PyCapsule_GetPointer(
             capsule, String(NATIVE_STAGE_CAPSULE_NAME)
         )
         var desc_ptr = raw_ptr.unsafe_bitcast[NativeStageDescriptor]()
-        if case .Some(raw_ctx) = desc_ptr[].ctx:
-            dealloc(
-                ThinAllocation(
-                    unsafe_owned_ptr=raw_ctx.unsafe_bitcast[_IntLinearCtx]()
-                ).unsafe_with_layout(Layout[_IntLinearCtx].single())
-            )
+        if case .Some(deleter) = desc_ptr[].ctx_deleter:
+            if case .Some(raw_ctx) = desc_ptr[].ctx:
+                deleter(raw_ctx)
+        elif case .Some(raw_ctx) = desc_ptr[].ctx:
+            _delete_int_linear_ctx(raw_ctx)
         dealloc(
             ThinAllocation(
                 unsafe_owned_ptr=desc_ptr
@@ -771,6 +981,7 @@ def _destroy_int_linear_capsule(capsule: PyObjectPtr) abi("C"):
         )
     except:
         pass
+    _restore_raised_exception(saved_exc)
 
 
 def native_from_capsule(
@@ -816,8 +1027,14 @@ def native_int_linear(
     Raises:
         Error if argument conversion fails.
     """
-    var s = Int64(Int(py=scale))
-    var b = Int64(Int(py=bias))
+    var s_res = _extract_int64_arg(scale, "scale")
+    if case .Some(exc) = s_res[1]:
+        return _restore_python_exception(exc)
+    var b_res = _extract_int64_arg(bias, "bias")
+    if case .Some(exc) = b_res[1]:
+        return _restore_python_exception(exc)
+    var s = s_res[0]
+    var b = b_res[0]
     var stage_name = String(py=name)
     var stage = NativeStage(
         stage_name^,
@@ -937,8 +1154,14 @@ def make_int_linear_capsule(
     Raises:
         Error if argument conversion or capsule allocation fails.
     """
-    var s = Int64(Int(py=scale))
-    var b = Int64(Int(py=bias))
+    var s_res = _extract_int64_arg(scale, "scale")
+    if case .Some(exc) = s_res[1]:
+        return _restore_python_exception(exc)
+    var b_res = _extract_int64_arg(bias, "bias")
+    if case .Some(exc) = b_res[1]:
+        return _restore_python_exception(exc)
+    var s = s_res[0]
+    var b = b_res[0]
     var ctx_alloc = alloc(Layout[_IntLinearCtx].single())
     var ctx_ptr = ctx_alloc^.unsafe_leak()
     ctx_ptr.write(_IntLinearCtx(s, b))
@@ -956,6 +1179,7 @@ def make_int_linear_capsule(
             ctx_ptr.unsafe_bitcast[NoneType]().unsafe_origin_cast[
                 MutUntrackedOrigin
             ](),
+            Optional[NativeCtxDeleter](_delete_int_linear_ctx),
         )
     )
     ref cpython = Python().cpython()
@@ -992,9 +1216,8 @@ def PyInit_mojo_strata() abi("C") -> PythonObject:
     try:
         var strata = PythonModuleBuilder("mojo_strata")
 
-        _ = (
+        ref tg_builder = (
             strata.add_type[TaskGroup]("mojo_strata.TaskGroup")
-            .def_py_init[TaskGroup.py_init]()
             .def_method[TaskGroup.with_task](
                 "with_task",
                 "Return a new TaskGroup with an additional task without mutating self.",
@@ -1009,8 +1232,9 @@ def PyInit_mojo_strata() abi("C") -> PythonObject:
                 "Return a shallow Python list of tasks contained in this group.",
             )
         )
+        tg_builder._insert_slot(PyType_Slot.tp_init(_tp_init_task_group))
 
-        _ = (
+        ref ns_builder = (
             strata.add_type[NativeStage]("mojo_strata.NativeStage")
             .def_py_init[NativeStage.py_init]()
             .def_method[NativeStage.call](
@@ -1026,6 +1250,11 @@ def PyInit_mojo_strata() abi("C") -> PythonObject:
                 "is_gil_free", "Return True for GIL-free native stages."
             )
         )
+        var ns_call_fn = _tp_call_native_stage
+        var ns_call_opaque = Pointer(to=ns_call_fn).unsafe_bitcast[
+            OpaquePointer[MutUntrackedOrigin]
+        ]()[]
+        ns_builder._insert_slot(PyType_Slot(_PY_TP_CALL, ns_call_opaque))
 
         strata.def_function[native_from_capsule](
             "native_from_capsule",
@@ -1267,6 +1496,7 @@ struct TaskGroup(Movable, Writable):
             tg.wait()
 
         # Keep buffers referenced by untracked pointers alive across tg.wait().
+        keep(self)
         keep(native_chains)
         keep(native_inputs)
         keep(msg)
@@ -1333,12 +1563,17 @@ struct TaskGroup(Movable, Writable):
         Raises:
             Error if invalid arguments are passed.
         """
-        if len(args) != 1 and PythonObject("task") not in kwargs:
-            raise "Bad arguments."
+        var has_kwargs = Bool(kwargs._obj_ptr)
+        var n_kwargs = len(kwargs) if has_kwargs else 0
+        var n_args = len(args)
+        var task_obj: PythonObject
+        if n_args == 1 and n_kwargs == 0:
+            task_obj = args[0]
+        elif n_args == 0 and n_kwargs == 1 and PythonObject("task") in kwargs:
+            task_obj = kwargs[PythonObject("task")]
+        else:
+            raise "TaskGroup() takes exactly 1 argument ('task')"
 
-        var task_obj = (
-            args[0] if len(args) == 1 else kwargs[PythonObject("task")]
-        )
         self = Self(task=task_obj)
 
     @staticmethod
@@ -1358,9 +1593,33 @@ struct TaskGroup(Movable, Writable):
             A new TaskGroup PythonObject containing the appended task.
 
         Raises:
-            Error if task addition fails.
+            Error if task addition fails or `_mode` is not an int in `{0, 1}`.
         """
-        var next_group = self_ptr[]._with_task(t, Int(py=_mode))
+        ref cpython = Python().cpython()
+        var mode_ptr = _mode._obj_ptr
+        if (
+            cpython.PyBool_Check(mode_ptr) != 0
+            or cpython.PyLong_Check(mode_ptr) == 0
+        ):
+            return _restore_python_exception(
+                _make_py_error(
+                    "TypeError",
+                    "TaskGroup.with_task() mode must be an int (0 or 1)",
+                )
+            )
+        var mode_raw = cpython.PyLong_AsSsize_t(mode_ptr)
+        if mode_raw == Py_ssize_t(-1) and cpython.PyErr_Occurred():
+            var exc_ptr = cpython.PyErr_GetRaisedException()
+            return _restore_python_exception(PythonObject(from_owned=exc_ptr))
+        var mode_val = Int(mode_raw)
+        if mode_val != Self.Serial.mode and mode_val != Self.Parallel.mode:
+            return _restore_python_exception(
+                _make_py_error(
+                    "ValueError",
+                    "TaskGroup.with_task() mode must be 0 (serial) or 1 (parallel)",
+                )
+            )
+        var next_group = self_ptr[]._with_task(t, mode_val)
         return PythonObject(alloc=next_group^)
 
     @staticmethod
