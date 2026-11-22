@@ -26,156 +26,88 @@ class Task[I, O](Protocol):
     def __call__(self, msg: I, /) -> O: ...
 
 
-class SerTaskGroup[I, O]:
+type _Stage[I, O] = (
+    Task[I, O]
+    | ParTaskGroup[I, O]
+    | SerTaskGroup[I, O]
+    | TaskGroup[I, O]
+    | mojo_strata.TaskGroup[I, O]
+)
+
+
+def _unwrap_target[I, O](
+    other: _Stage[I, O],
+) -> Task[I, O] | mojo_strata.TaskGroup[I, O]:
+    if isinstance(other, _BaseTaskGroup):
+        return cast("mojo_strata.TaskGroup[I, O]", other.inner)
+    return other
+
+
+class _BaseTaskGroup[I, O]:
+    """Shared base wrapper around an immutable `mojo_strata.TaskGroup`."""
+
+    inner: mojo_strata.TaskGroup[I, O]
+
+    def __init__(self, task: mojo_strata.TaskGroup[I, O]) -> None:
+        self.inner = task
+
+    def __call__(self, msg: I, /) -> O:
+        return self.inner.call(msg)
+
+    def __or__[T](self, other: _Stage[O, T]) -> SerTaskGroup[I, T]:
+        target = _unwrap_target(other)
+        return SerTaskGroup[I, T](
+            self.inner.with_task(target, GroupMode.SERIAL.value)
+        )
+
+
+class SerTaskGroup[I, O](_BaseTaskGroup[I, O]):
     """A series composition of tasks.
 
     Represents a sequential pipeline where each stage passes its output
-    to the next stage. Pipelines are directly callable.
+    to the next stage. Pipelines are directly callable and immutable under
+    further composition.
     """
 
-    inner: mojo_strata.TaskGroup[I, O]
-
-    def __init__(self, task: mojo_strata.TaskGroup[I, O]) -> None:
-        self.inner = task
-
-    def __call__(self, msg: I, /) -> O:
-        return self.inner.call(msg)
-
-    def __or__[T](
-        self,
-        other: Task[O, T]
-        | ParTaskGroup[O, T]
-        | SerTaskGroup[O, T]
-        | TaskGroup[O, T]
-        | mojo_strata.TaskGroup[O, T],
-    ) -> SerTaskGroup[I, T]:
-        target = (
-            other.inner
-            if isinstance(other, (ParTaskGroup, SerTaskGroup, TaskGroup))
-            else other
-        )
-        self.inner.add_task(target, GroupMode.SERIAL.value)
-        return cast("SerTaskGroup[I, T]", self)
-
-    def __and__[T](
-        self,
-        other: Task[I, T]
-        | SerTaskGroup[I, T]
-        | ParTaskGroup[I, T]
-        | TaskGroup[I, T]
-        | mojo_strata.TaskGroup[I, T],
-    ) -> ParTaskGroup[I, tuple[O, T]]:
-        target = (
-            other.inner
-            if isinstance(other, (SerTaskGroup, ParTaskGroup, TaskGroup))
-            else other
-        )
-        self.inner.add_task(target, GroupMode.PARALLEL.value)
+    def __and__[T](self, other: _Stage[I, T]) -> ParTaskGroup[I, tuple[O, T]]:
+        target = _unwrap_target(other)
         return ParTaskGroup[I, tuple[O, T]](
-            cast("mojo_strata.TaskGroup[I, tuple[O, T]]", self.inner)
+            self.inner.with_task(target, GroupMode.PARALLEL.value)
         )
 
 
-class ParTaskGroup[I, O]:
+class ParTaskGroup[I, O](_BaseTaskGroup[I, O]):
     """A parallel composition of tasks.
 
     Represents a parallel stage where tasks receive the same input and produce
-    a tuple of results. Pipelines are directly callable.
+    a tuple of results. Pipelines are directly callable and immutable under
+    further composition.
     """
-
-    inner: mojo_strata.TaskGroup[I, O]
-
-    def __init__(self, task: mojo_strata.TaskGroup[I, O]) -> None:
-        self.inner = task
-
-    def __call__(self, msg: I, /) -> O:
-        return self.inner.call(msg)
-
-    def __or__[T](
-        self,
-        other: Task[O, T]
-        | ParTaskGroup[O, T]
-        | SerTaskGroup[O, T]
-        | TaskGroup[O, T]
-        | mojo_strata.TaskGroup[O, T],
-    ) -> SerTaskGroup[I, T]:
-        target = (
-            other.inner
-            if isinstance(other, (ParTaskGroup, SerTaskGroup, TaskGroup))
-            else other
-        )
-        self.inner.add_task(target, GroupMode.SERIAL.value)
-        return SerTaskGroup[I, T](cast("mojo_strata.TaskGroup[I, T]", self.inner))
 
     def __and__[*Os, T](
         self: ParTaskGroup[I, tuple[*Os]],
-        other: Task[I, T]
-        | SerTaskGroup[I, T]
-        | ParTaskGroup[I, T]
-        | TaskGroup[I, T]
-        | mojo_strata.TaskGroup[I, T],
+        other: _Stage[I, T],
     ) -> ParTaskGroup[I, tuple[*Os, T]]:
-        target = (
-            other.inner
-            if isinstance(other, (SerTaskGroup, ParTaskGroup, TaskGroup))
-            else other
-        )
-        self.inner.add_task(target, GroupMode.PARALLEL.value)
+        target = _unwrap_target(other)
         return ParTaskGroup[I, tuple[*Os, T]](
-            cast(
-                "mojo_strata.TaskGroup[I, tuple[*Os, T]]",
-                cast("object", self.inner),
-            )
+            self.inner.with_task(target, GroupMode.PARALLEL.value)
         )
 
 
-class TaskGroup[I, O]:
+class TaskGroup[I, O](_BaseTaskGroup[I, O]):
     """A single-task or intermediate group wrapper.
 
     Acts as the entrypoint for composition when lifting a single `Task` into a group.
-    Pipelines are directly callable.
+    Pipelines are directly callable and immutable under further composition.
     """
 
-    inner: mojo_strata.TaskGroup[I, O]
-
     def __init__(self, task: Task[I, O]) -> None:
-        self.inner = mojo_strata.TaskGroup(task=task)
+        super().__init__(mojo_strata.TaskGroup(task=task))
 
-    def __call__(self, msg: I, /) -> O:
-        return self.inner.call(msg)
-
-    def __or__[T](
-        self,
-        other: Task[O, T]
-        | ParTaskGroup[O, T]
-        | SerTaskGroup[O, T]
-        | TaskGroup[O, T]
-        | mojo_strata.TaskGroup[O, T],
-    ) -> SerTaskGroup[I, T]:
-        target = (
-            other.inner
-            if isinstance(other, (ParTaskGroup, SerTaskGroup, TaskGroup))
-            else other
-        )
-        self.inner.add_task(target, GroupMode.SERIAL.value)
-        return SerTaskGroup[I, T](cast("mojo_strata.TaskGroup[I, T]", self.inner))
-
-    def __and__[T](
-        self,
-        other: Task[I, T]
-        | SerTaskGroup[I, T]
-        | ParTaskGroup[I, T]
-        | TaskGroup[I, T]
-        | mojo_strata.TaskGroup[I, T],
-    ) -> ParTaskGroup[I, tuple[O, T]]:
-        target = (
-            other.inner
-            if isinstance(other, (SerTaskGroup, ParTaskGroup, TaskGroup))
-            else other
-        )
-        self.inner.add_task(target, GroupMode.PARALLEL.value)
+    def __and__[T](self, other: _Stage[I, T]) -> ParTaskGroup[I, tuple[O, T]]:
+        target = _unwrap_target(other)
         return ParTaskGroup[I, tuple[O, T]](
-            cast("mojo_strata.TaskGroup[I, tuple[O, T]]", self.inner)
+            self.inner.with_task(target, GroupMode.PARALLEL.value)
         )
 
 

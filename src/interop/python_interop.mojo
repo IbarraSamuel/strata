@@ -2,25 +2,98 @@
 
 from std.os import abort
 from std.python import PythonObject, Python
-from std.python._cpython import GILReleased, GILAcquired
+from std.python._cpython import (
+    GILReleased,
+    GILAcquired,
+    PyObjectPtr,
+    Py_ssize_t,
+)
 from std.runtime._asyncrt import TaskGroup as TG
 from std.python.bindings import PythonModuleBuilder
+
+
+struct _CallResult(Movable):
+    """Internal result holding either a Python value or a captured exception."""
+
+    var value: PythonObject
+    var error: Optional[PythonObject]
+
+    def __init__(out self, var value: PythonObject):
+        self.value = value^
+        self.error = None
+
+    def __init__(out self, *, var error: PythonObject):
+        self.value = PythonObject()
+        self.error = error^
+
+
+def _invoke_py(task: PythonObject, msg: PythonObject) -> _CallResult:
+    """Invoke a Python callable or nested TaskGroup while preserving exceptions.
+
+    Must be called while holding the GIL.
+    """
+    try:
+        if case .Some(grp_ptr) = task._try_downcast_value[TaskGroup]():
+            return grp_ptr[]._call_result(msg)
+    except:
+        pass
+
+    ref cpython = Python().cpython()
+    var args_ptr = cpython.PyTuple_New(1)
+    if not args_ptr:
+        var exc_ptr = cpython.PyErr_GetRaisedException()
+        return _CallResult(error=PythonObject(from_owned=exc_ptr))
+
+    var msg_owned = msg
+    _ = cpython.PyTuple_SetItem(args_ptr, 0, msg_owned^.steal_data())
+    var args = PythonObject(from_owned=args_ptr)
+
+    var res_ptr = cpython.PyObject_CallObject(task._obj_ptr, args._obj_ptr)
+    if not res_ptr:
+        var exc_ptr = cpython.PyErr_GetRaisedException()
+        return _CallResult(error=PythonObject(from_owned=exc_ptr))
+
+    return _CallResult(PythonObject(from_owned=res_ptr))
+
+
+def _restore_python_exception(var exc: PythonObject) -> PythonObject:
+    """Set CPython's error indicator to `exc` and return a NULL PythonObject.
+
+    Must be called while holding the GIL right before returning to CPython.
+    """
+    ref cpython = Python().cpython()
+    try:
+        var builtins = Python.import_module("builtins")
+        var exc_type = builtins.type(exc)
+        var exc_tb = exc.__traceback__
+        var tb_ptr = PyObjectPtr()
+        if exc_tb._obj_ptr != Python.none()._obj_ptr:
+            tb_ptr = exc_tb^.steal_data()
+        cpython.PyErr_Restore(
+            exc_type^.steal_data(),
+            exc^.steal_data(),
+            tb_ptr,
+        )
+        return PythonObject(from_owned=PyObjectPtr())
+    except:
+        var err_type = cpython.get_error_global("PyExc_RuntimeError")
+        var fallback_msg = String("Failed to propagate Python exception")
+        cpython.PyErr_SetString(err_type, fallback_msg.as_c_string_span().ptr())
+        return PythonObject(from_owned=PyObjectPtr())
 
 
 __async def _run_async_task(
     task_ptr: Pointer[PythonObject, ImmUntrackedOrigin],
     msg_ptr: Pointer[PythonObject, ImmUntrackedOrigin],
     out_ptr: Pointer[PythonObject, MutUntrackedOrigin],
+    err_ptr: Pointer[Optional[PythonObject], MutUntrackedOrigin],
 ):
     with GILAcquired(Python()):
-        try:
-            var grp = task_ptr[]._try_downcast_value[TaskGroup]()
-            if grp:
-                out_ptr[] = grp.value()[]._call(msg_ptr[])
-                return
-            out_ptr[] = task_ptr[](msg_ptr[])
-        except:
-            pass
+        var res = _invoke_py(task_ptr[], msg_ptr[])
+        if case .Some(exc) = res.error:
+            err_ptr[] = exc
+        else:
+            out_ptr[] = res.value
 
 
 @export
@@ -36,16 +109,19 @@ def PyInit_mojo_strata() abi("C") -> PythonObject:
         _ = (
             strata.add_type[TaskGroup]("mojo_strata.TaskGroup")
             .def_py_init[TaskGroup.py_init]()
-            .def_method[TaskGroup.add_task](
-                "add_task", "Add a task to the group."
+            .def_method[TaskGroup.with_task](
+                "with_task",
+                "Return a new TaskGroup with an additional task without mutating self.",
             )
-            .def_method[TaskGroup.call]("call", "Make this group callable.")
+            .def_method[TaskGroup.call]("call", "Execute this task group.")
         )
 
         var mod = strata.finalize()
         var tg_type = mod.__getattr__("mojo_strata.TaskGroup")
         mod.TaskGroup = tg_type
-        _ = Python.import_module("builtins").delattr(mod, "mojo_strata.TaskGroup")
+        _ = Python.import_module("builtins").delattr(
+            mod, "mojo_strata.TaskGroup"
+        )
         return mod
     except e:
         abort(String("failed to create Python module: ", e))
@@ -120,57 +196,88 @@ struct TaskGroup(Movable, Writable):
         new_group.objects.append(t)
         self = new_group^
 
-    def _call(self, msg: PythonObject) raises -> PythonObject:
-        if len(self.objects) == 0:
-            return msg
+    def _with_task(self, t: PythonObject, mode: Int) raises -> Self:
+        var cloned = self.copy()
+        cloned._add_task(t, mode)
+        return cloned^
+
+    def _call_result(self, msg: PythonObject) -> _CallResult:
+        var count = len(self.objects)
+        if count == 0:
+            return _CallResult(msg)
 
         if self.mode == Self.undefined.mode:
-            if len(self.objects) == 1:
-                var pg = self.objects[0]._try_downcast_value[TaskGroup]()
-                if pg:
-                    return pg.value()[]._call(msg)
-                return self.objects[0].__call__(msg)
-            raise "Group mode not set up"
-
-        print(
-            "in mode:",
-            "undefined" if self.mode
-            == Self.undefined.mode else "Serial" if self.mode
-            == Self.Serial.mode else "Parallel",
-        )
+            if count == 1:
+                return _invoke_py(self.objects[0], msg)
+            try:
+                var builtins = Python.import_module("builtins")
+                return _CallResult(
+                    error=builtins.ValueError("Group mode not set up")
+                )
+            except:
+                return _CallResult(msg)
 
         if self.mode == Self.Serial.mode:
             var iv = msg
             for obj in self.objects:
-                var pg = obj._try_downcast_value[TaskGroup]()
-                if pg:
-                    iv = pg.value()[]._call(iv)
-                else:
-                    iv = obj.__call__(iv)
-            print("Done!..")
-            return iv
+                var res = _invoke_py(obj, iv)
+                if case .Some(exc) = res.error:
+                    return _CallResult(error=exc)
+                iv = res.value
+            return _CallResult(iv^)
 
-        var values = List[PythonObject](
-            length=len(self.objects), fill=PythonObject()
-        )
+        var values = List[PythonObject](length=count, fill=PythonObject())
+        var errors = List[Optional[PythonObject]](length=count, fill=None)
 
         var tg = TG()
-        var msg_copy = msg
-        var msg_ptr = Pointer(to=msg_copy).unsafe_origin_cast[MutUntrackedOrigin]()
+        var msg_ptr = Pointer(to=msg).unsafe_origin_cast[ImmUntrackedOrigin]()
 
-        for idx in range(len(self.objects)):
-            var t_ptr = Pointer(to=self.objects[idx]).unsafe_origin_cast[MutUntrackedOrigin]()
-            var out_ptr = Pointer(to=values[idx]).unsafe_origin_cast[MutUntrackedOrigin]()
-            tg.create_task(_run_async_task(t_ptr, msg_ptr, out_ptr))
+        for idx in range(count):
+            var t_ptr = Pointer(to=self.objects[idx]).unsafe_origin_cast[
+                ImmUntrackedOrigin
+            ]()
+            var out_ptr = Pointer(to=values[idx]).unsafe_origin_cast[
+                MutUntrackedOrigin
+            ]()
+            var err_ptr = Pointer(to=errors[idx]).unsafe_origin_cast[
+                MutUntrackedOrigin
+            ]()
+            tg.create_task(_run_async_task(t_ptr, msg_ptr, out_ptr, err_ptr))
 
         with GILReleased(Python()):
             tg.wait()
 
-        print("Done!..")
-        var tp = Python.tuple()
-        for res in values:
-            tp += Python.tuple(res)
-        return tp
+        var failed = List[PythonObject]()
+        for idx in range(count):
+            if case .Some(exc) = errors[idx]:
+                failed.append(exc)
+
+        if len(failed) == 1:
+            return _CallResult(error=failed[0])
+        if len(failed) > 1:
+            try:
+                var builtins = Python.import_module("builtins")
+                var py_errs = Python.list()
+                for exc in failed:
+                    _ = py_errs.append(exc)
+                var group = builtins.BaseExceptionGroup(
+                    "Parallel task failures", py_errs
+                )
+                return _CallResult(error=group^)
+            except:
+                return _CallResult(error=failed[0])
+
+        ref cpython = Python().cpython()
+        var tp_ptr = cpython.PyTuple_New(Py_ssize_t(count))
+        if not tp_ptr:
+            var exc_ptr = cpython.PyErr_GetRaisedException()
+            return _CallResult(error=PythonObject(from_owned=exc_ptr))
+        for idx in range(count):
+            var item = values[idx]
+            _ = cpython.PyTuple_SetItem(
+                tp_ptr, Py_ssize_t(idx), item^.steal_data()
+            )
+        return _CallResult(PythonObject(from_owned=tp_ptr))
 
     @staticmethod
     def py_init(
@@ -197,27 +304,26 @@ struct TaskGroup(Movable, Writable):
         self = Self(task=task_obj)
 
     @staticmethod
-    def add_task(
+    def with_task(
         self_ptr: Pointer[Self, MutAnyOrigin],
         t: PythonObject,
         _mode: PythonObject,
-    ) raises:
-        """Add a task to the group from Python.
+    ) raises -> PythonObject:
+        """Return a new TaskGroup with `t` added, without mutating `self`.
 
         Args:
             self_ptr: Pointer to self.
             t: Python task to add.
-            _mode: Mode integer.
+            _mode: Mode integer (0 for serial, 1 for parallel).
+
+        Returns:
+            A new TaskGroup PythonObject containing the appended task.
 
         Raises:
             Error if task addition fails.
         """
-        self_ptr[]._add_task(t, Int(py=_mode))
-
-    @staticmethod
-    def py_method():
-        """Stub method for Python interop."""
-        pass
+        var next_group = self_ptr[]._with_task(t, Int(py=_mode))
+        return PythonObject(alloc=next_group^)
 
     @staticmethod
     def call(
@@ -235,4 +341,7 @@ struct TaskGroup(Movable, Writable):
         Raises:
             Error if execution fails.
         """
-        return self_ptr[]._call(v)
+        var res = self_ptr[]._call_result(v)
+        if case .Some(exc) = res.error:
+            return _restore_python_exception(exc)
+        return res.value

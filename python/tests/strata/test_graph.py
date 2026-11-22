@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from time import sleep, time_ns
 
+import pytest
+
 from strata.graph import Combinable, task
 
 SLEEP_TIME = 0.1
@@ -593,3 +595,91 @@ def test_pipeline_reusability_multiple_inputs():
     assert pipeline("5") == "total=47|scaled=96"
     # x=0: ((2, 2), 2, 1) -> 7 -> ("total=7", 16)
     assert pipeline("0") == "total=7|scaled=16"
+
+
+class _CustomPipelineError(Exception):
+    pass
+
+
+@task
+def raise_value_error(x: int) -> int:
+    msg = f"bad value: {x}"
+    raise ValueError(msg)
+
+
+@task
+def raise_custom_error(x: int) -> int:
+    msg = f"custom boom: {x}"
+    raise _CustomPipelineError(msg)
+
+
+@task
+def add_ten(x: int) -> int:
+    return x + 10
+
+
+@task
+def sum_pair(values: tuple[int, int]) -> int:
+    return values[0] + values[1]
+
+
+def test_serial_exception_preserves_type():
+    pipeline = increment | raise_value_error | double
+
+    with pytest.raises(ValueError, match="bad value: 4"):
+        pipeline(3)
+
+
+def test_parallel_single_exception_preserves_type():
+    pipeline = increment & raise_custom_error & double
+
+    with pytest.raises(_CustomPipelineError, match="custom boom: 5"):
+        pipeline(5)
+
+
+def test_parallel_multiple_exceptions_raise_exception_group():
+    pipeline = raise_value_error & increment & raise_custom_error
+
+    with pytest.RaisesGroup(
+        pytest.RaisesExc(ValueError, match="bad value: 7"),
+        pytest.RaisesExc(_CustomPipelineError, match="custom boom: 7"),
+    ):
+        pipeline(7)
+
+
+def test_nested_parallel_exception_propagation():
+    nested_err = increment & (raise_value_error & raise_custom_error)
+
+    with pytest.RaisesGroup(
+        pytest.RaisesExc(ValueError, match="bad value: 2"),
+        pytest.RaisesExc(_CustomPipelineError, match="custom boom: 2"),
+    ):
+        nested_err(2)
+
+    branch_err = (increment | raise_value_error) & double
+    with pytest.raises(ValueError, match="bad value: 3"):
+        branch_err(2)
+
+
+def test_immutable_composition_branching_and_reuse():
+    base_seq = increment | double
+    branch_a = base_seq | increment
+    branch_b = base_seq | add_ten
+
+    # `base_seq` must remain unaffected by downstream compositions.
+    expected_base_seq = 8
+    expected_branch_a = 9
+    expected_branch_b = 18
+    assert base_seq(3) == expected_base_seq
+    assert branch_a(3) == expected_branch_a
+    assert branch_b(3) == expected_branch_b
+
+    base_par = increment & double
+    par_extended = base_par & add_ten
+    par_piped = base_par | sum_pair
+
+    # `base_par` must remain unaffected by parallel extension or piping.
+    expected_par_piped = 13
+    assert base_par(4) == (5, 8)
+    assert par_extended(4) == (5, 8, 14)
+    assert par_piped(4) == expected_par_piped

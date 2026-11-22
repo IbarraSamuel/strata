@@ -95,11 +95,11 @@ require glibc 2.34 or newer.
 
 ## Features
 
-- **Intuitive Operator Composition**: Chain stages with `>>` and fan-out with `+` for clean, expressive pipeline topologies.
+- **Intuitive Operator Composition**: Chain dataflow stages with `|` and fan-out with `&` (or `>>` and `+` for void orchestration) for clean, expressive pipeline topologies.
 - **Native Mojo Performance**: Zero-overhead generic dispatch backed by compile-time trait conformance and Mojo's multithreaded async runtime.
 - **Automatic Tuple Expansion**: Combining parallel outputs flattens results into clean tuples (`Tuple[O1, O2, O3]`), avoiding nested tuple ergonomics.
 - **In-Place Mutation Support**: Dedicated `void` pipeline modules for high-throughput zero-copy buffer transformations.
-- **Full Python Interoperability**: Write high-level graphs in Python using `@dataclass` and `Combinable` while executing compute stages concurrently in native Mojo with GIL-safe execution.
+- **Full Python Interoperability**: Write immutable, reusable graphs in Python using `@task`, `@dataclass`, and `Combinable`, with exact exception propagation (`ExceptionGroup` on multi-branch parallel failures) and GIL-safe native Mojo task dispatch.
 
 ---
 
@@ -109,7 +109,7 @@ require glibc 2.34 or newer.
 strata/
 ├── src/                          # Mojo source modules
 │   ├── generic/                  # Generic, value-returning pipeline runners
-│   │   ├── __init__.mojo         # Core Callable trait, Fn, Sequence (>>), Parallel (+)
+│   │   ├── __init__.mojo         # Core Call/Callable traits, Fn, Sequence (|), Parallel (&)
 │   │   ├── async_fn.mojo         # Async function execution via TaskGroup
 │   │   └── compt.mojo            # Compile-time task groups and execution
 │   ├── void/                     # Void-returning (in-place) pipeline runners
@@ -122,9 +122,10 @@ strata/
 │       └── python_interop.mojo   # Exports TaskGroup to Python (mojo_strata.so)
 ├── python/                       # Python bindings and package
 │   ├── src/strata/               # strata Python package
-│   │   ├── graph.py              # Combinable, Task, Graph, and BuildedGraph
+│   │   ├── graph.py              # Combinable, Task, FnTask, task, TaskGroup, SerTaskGroup, ParTaskGroup
 │   │   └── mojo_strata.so        # Compiled native extension
 │   └── tests/                    # pytest test suite
+├── examples/                     # Runnable pipeline examples
 └── tests/                        # Modular Mojo test suites
 ```
 
@@ -238,11 +239,11 @@ var complex_pipeline = (
 When operating on large data buffers in-place without copying, use `strata.void.mutable`:
 
 ```mojo
-from strata.void.mutable import MutRefTask, MutVarTask
+from strata.void.mutable import MutCallable, ParallelTask, SeriesTask
 
-# Compose in-place reference mutations sequentially or in parallel
-var pipeline = task1 >> task2 + task3
-pipeline(data_buffer)
+# Compose mutable stateful tasks sequentially (>>) or in parallel (+)
+var pipeline = task1 >> (task2 + task3)
+pipeline()
 ```
 
 ### 5. Async Task Execution (`generic.async_fn`)
@@ -382,7 +383,6 @@ pipeline = (
 )
 
 print(pipeline("5"))  # "Sum of branches: 20"
-```
 ```
 
 ---
