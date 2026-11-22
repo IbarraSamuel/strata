@@ -192,6 +192,7 @@ def main():
 `strata.pipeline.async_fn` composes Mojo `__async def` coroutines (`AF[async_fn]`) alongside synchronous reducers (`Sync[sync_fn]`) using `|`, `&`, and `group(...)`.
 
 - `AsyncParallel` conforms to `AsyncFnTrait` and supports `|` so fan-out diamonds like `(AF[a] & AF[b]) | Sync[merge]` compose cleanly.
+- `AsyncFnTrait` executes branches natively via `__async def exec_async` (`__await` directly inside `TaskGroup` tasks without blocking worker threads in nested `run_coro` calls).
 - `Sync` accepts any `I: AnyType` (including tuples, `String`, and custom structs).
 
 ```mojo
@@ -311,8 +312,9 @@ def main():
 - **Reusability & shared sub-pipelines**: Borrowed graphs (`Sequence`, `Parallel`, `Group`) hold immutable references and never consume stages, so a sub-pipeline can be called repeatedly on different inputs and shared across multiple parent pipelines.
 - **Factory-returnable owned pipelines**: `owned(...)` / `owned_group(...)` move stages by value with no borrowed origins, flatten associatively under `&`, can be safely returned from helper functions, and support `run_with(...)`.
 - **Compile-time parity (`strata.pipeline.compt`)**: `comptime_run[value]` evaluates nested diamonds, `Parallel`, `group(...)`, `group(group(...))`, `Id[T]`, and `Spread2`–`Spread4` via `run_sequential` (no async runtime calls) and produces results identical to runtime `.run(value)`.
+- **Non-trivial `Movable` outputs & leak-free unwinding**: All Mojo parallel constructs (`Parallel`, `OwnedParallel`, `Zip2`/`Zip3`, `Map`, `stream_map`, `compt.Parallel`, `AsyncParallel`, and `RaisingParallel`) initialize tuple/list slots via `unsafe_write` and safely support heap-owning `Movable` types with custom `__deinit__` (such as `List` and `String`).
 - **Fallible short-circuiting & parallel error aggregation**:
   - Sequential `|` in `strata.pipeline.fallible` stops immediately on error; downstream stages are guaranteed not to run.
-  - Parallel `&` executes all branches in one `TaskGroup`: if exactly one branch fails (first, middle, or last), its exact error message propagates; if `N > 1` branches fail, Strata raises `Error("Parallel stage failures (N): <msg1>; <msg2>; ...")`.
+  - Parallel `&` executes all branches in one `TaskGroup` (running the final branch inline on the caller thread and catching its error before `tg.wait()`): if exactly one branch fails, its exact error message propagates; if `N > 1` branches fail, Strata raises `Error("Parallel stage failures (N): <msg1>; <msg2>; ...")`, and every branch that succeeded has its output cleanly destroyed so no resources leak.
 - **Stateful barrier ordering (`strata.stateful` & `strata.stateful.async_stage`)**: In `a | (b & c) | d`, `a` completes before `b` and `c` start, `b` and `c` execute concurrently, and both complete before `d` begins; repeated invocations accumulate deterministic mutation counts.
 

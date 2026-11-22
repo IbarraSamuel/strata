@@ -200,11 +200,13 @@ print(nested(5))  # ((10, 15), (10, 15))
 
 Measured with [`examples/benchmark_hybrid.py`](examples/benchmark_hybrid.py) on GIL-enabled CPython 3.15.2 (8 CPUs):
 
-| Workload | Sequential | Parallel (`&` / `stream`) | Speedup |
+| Workload | Sequential / Baseline | Parallel / Optimized | Speedup |
 | :--- | :---: | :---: | :---: |
 | Pure Python 4× 200k mixing iters | 121.33 ms | 119.31 ms | 1.02× *(GIL-bound)* |
-| GIL-Free Mojo `NativeStage` 4× 5M iters | 33.53 ms | 10.77 ms | **3.11×** *(true multi-core)* |
-| Streaming 32 items × 1M iters (`max_in_flight=4`) | 52.18 ms | 16.01 ms | **3.26×** |
+| GIL-Free Mojo `NativeStage` 4× 5M iters | 31.24 ms | 8.38 ms | **3.73×** *(true multi-core)* |
+| Batch 32 items × 1M iters (`map(max_in_flight=4)`) | 49.99 ms | 13.41 ms | **3.73×** |
+| Low-latency `NativeStage` 4-stage serial (`\|`) | — | **0.16 µs/call** | Precomputed fused plan |
+| Low-latency `MapTask` (native 4-chain, 64 items) | — | **16.5 µs/call** | GIL-free Mojo work-stealing |
 
 ---
 
